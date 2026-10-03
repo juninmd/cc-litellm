@@ -1,0 +1,57 @@
+{
+  "name": "litellm-key",
+  "version": "0.1.0",
+  "description": "See your LiteLLM virtual key inside Claude Code: budget, spend, limits, expiry, models and recent usage.",
+  "author": { "name": "juninmd" },
+  "homepage": "https://github.com/juninmd/cc-litellm",
+  "repository": "https://github.com/juninmd/cc-litellm",
+  "keywords": ["litellm", "virtual-key", "budget", "spend", "status-line"],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "litellm_url": {
+      "type": "string",
+      "title": "LiteLLM proxy URL",
+      "description": "Leave empty to use ANTHROPIC_BASE_URL, the proxy Claude Code already talks to."
+    },
+    "litellm_key": {
+      "type": "string",
+      "title": "LiteLLM virtual key",
+      "description": "Leave empty to use the key Claude Code already sends (ANTHROPIC_AUTH_TOKEN, ANTHROPIC_API_KEY or the x-litellm-api-key custom header).",
+      "sensitive": true
+    },
+    "refresh_seconds": {
+      "type": "number",
+      "title": "Refresh interval (seconds)",
+      "description": "How often the key is re-read from the proxy.",
+      "default": 60,
+      "min": 15,
+      "max": 3600
+    },
+    "warn_percent": {
+      "type": "number",
+      "title": "Budget warning (%)",
+      "description": "Show a toast once the key has used this much of its budget (it also warns at 95% and 100%).",
+      "default": 80,
+      "min": 1,
+      "max": 99
+    },
+    "show_status_line": {
+      "type": "boolean",
+      "title": "Status line",
+      "description": "Pin a one-line budget summary under the prompt.",
+      "default": true
+    },
+    "show_related": {
+      "type": "boolean",
+      "title": "User and team budgets",
+      "description": "Also read /user/info and /team/info, since those budgets can block requests too.",
+      "default": true
+    },
+    "show_usage": {
+      "type": "boolean",
+      "title": "Usage history",
+      "description": "Also read /user/daily/activity for the last 7 days of spend and tokens (beta endpoint).",
+      "default": true
+    }
+  }
+}
