@@ -60,7 +60,7 @@ Se o Claude Code já fala com o LiteLLM, **não precisa configurar nada**. O plu
 
 Se a URL termina numa rota de pass-through (`/anthropic`, `/bedrock`, `/v1`…), o plugin também tenta a raiz do proxy. Cada chave só é usada com a URL a que pertence: as chaves do ambiente nunca vão para um `litellm_url` de outro host, e `LITELLM_PROXY_API_BASE` só se casa com `LITELLM_PROXY_API_KEY`.
 
-Opções (`/plugin configure litellm-key@cc-litellm`, ou `claude plugin configure litellm-key@cc-litellm --values-stdin`):
+Todas as opções são opcionais (o Claude Code avisa na instalação que elas "não foram definidas"; pode ignorar). Para mudar (`/plugin configure litellm-key@cc-litellm`, ou `claude plugin configure litellm-key@cc-litellm --values-stdin` com um JSON de strings):
 
 | Opção | Padrão | Para quê |
 | --- | --- | --- |
