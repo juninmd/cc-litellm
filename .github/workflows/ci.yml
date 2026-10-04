@@ -51,6 +51,13 @@ jobs:
       - name: Validate the plugin
         run: claude plugin validate plugins/litellm-key --strict
 
+      # The version lives in plugin.json, in the marketplace entry and in the release-please manifest. The release
+      # PR bumps all three together; a hand edit of one must not drift from the others.
+      - name: Versions agree
+        run: |
+          claude plugin tag --dry-run --force plugins/litellm-key
+          node -e "const v = require('./plugins/litellm-key/.claude-plugin/plugin.json').version, m = require('./.release-please-manifest.json')['.']; if (v !== m) { console.error('plugin.json says ' + v + ' but the release-please manifest says ' + m); process.exit(1) }"
+
       - name: Test
         run: claude plugin test plugins/litellm-key
 

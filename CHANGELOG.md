@@ -1,26 +1,6 @@
 # Changelog
 
-## Unreleased
-
-### Changed
-- **Pane redesign.** The key's status is a chip (`● active`); in the dock the pane gets titled sections (`BUDGETS`, `KEY`, `LAST 7 DAYS`) with a hairline, and labels, bars and values sit on shared columns. Bars fill in eighths of a cell over a dim track, so 0% reads as empty and 100% as full. The week has a letter under each day, and a day with no spend is `·`, never a short bar. Each button names its key (`Refresh (r)`, `Copy (c)`, `Close (q)`), because no surface draws the hotkey itself; the separate hint line is gone, so the compact layout has the keys too.
-- **Color is never the only signal.** `▲` marks a budget that is close to its cap and `✖` one that is spent up, in every layout (compact included). The amounts, the percentage, the keys and the weekday letters are never drawn dim.
-- **Over-budget banner** is a block: a `✖ BUDGET USED UP` pill, one row per spent-up budget (name, full red bar, percentage, amounts and reset), and the way out (`/litellm grant`).
-- **Status line** carries an 8-cell gauge: `██░░░░░░ 25% of budget · $12.50 of $50.00 · resets in 6d 12h (30d)`.
-- **Internal:** the plugin is split by responsibility behind injected ports (`ports.ts`); `register.tsx` is the only file that touches `$`. No file is over 300 lines. The split changes no behavior.
-
-### Added
-- **Runway forecast.** A `Runway` row in the pane and in `/litellm info` sets the pace of the last 7 days (a younger key is averaged over its own days, never fewer than one) against the cap: `lasts until the reset at $2.18/day`, or `out in 2d 6h at $2.18/day · resets in 6d 12h`. The status line adds `out in 2d 6h at this pace` only when the budget runs out before its reset, or within 3 days when there is none. No forecast for a key with no cap, one spent up, or one whose reset is due.
-- **Top models.** The dock lists the five models that spent most of the week, each with a share bar (default color: it compares parts, it does not judge them), the share and the amount; the amount goes under the bar in a narrow pane. `/litellm info` and the copied summary carry a `Top models` row. Inline and compact panes leave it out: rows are scarce there.
-- **MIT license** (`LICENSE`, and `license` in the plugin manifest).
-
-### Fixed
-- A key at 99.6% was drawn as spent up (red, `✖`, "100%") although the proxy still answers; red and `✖` now mean exactly what the banner means, and that key is a warning (`▲`).
-- A cap of `$0` read "no cap" in the pane and `(null%)` in the details; it is used up everywhere, as the banner already said.
-- A share above 999% showed five digits glued to the amounts; it reads `999%+`.
-- The compact footer no longer runs off the pane at 70 to 73 columns while refreshing: the status sits beside the buttons, shortened (`every Ns` dropped) when it must be, or under them.
-- In a stacked pane narrower than 40 columns the label gives way, so mark, label, bar and share still fit on a line; the button row wraps instead of overflowing.
-- Labels that would collide when cut (`Model claude…et-20241022` and `Model claude…et-20250101`) are cut in the middle, in the pane and in the copied summary.
+<!-- Written by release-please from Conventional Commits (see RELEASING.md). Edit the release PR, not this file. -->
 
 ## 0.3.0
 
