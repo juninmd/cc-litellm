@@ -5,8 +5,9 @@ import type { Admin, Send } from '../../plugins/litellm-key/hooks/admin'
 import { runAdmin } from '../../plugins/litellm-key/hooks/admin-commands'
 import type { Deps } from '../../plugins/litellm-key/hooks/admin-commands'
 import { maskKey } from '../../plugins/litellm-key/hooks/format'
+import type { Credentials } from '../../plugins/litellm-key/hooks/credentials'
 import { fetchSnapshot } from '../../plugins/litellm-key/hooks/litellm'
-import type { Credentials, Http } from '../../plugins/litellm-key/hooks/litellm'
+import type { Http } from '../../plugins/litellm-key/hooks/litellm'
 import { statusText, summaryText } from '../../plugins/litellm-key/hooks/summary'
 
 const URL_ = (process.env.LITELLM_URL ?? 'http://127.0.0.1:4000').replace(/\/+$/, '')

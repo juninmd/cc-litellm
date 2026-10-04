@@ -2,7 +2,7 @@ import type { Admin, Budgeted, Json } from './admin'
 import { fail, HASH, ok, request } from './admin'
 import { readTarget } from './admin-targets'
 import type { Outcome } from './args'
-import { isObject, str } from './litellm'
+import { isObject, str } from './json'
 
 const UPDATE: Record<Budgeted['kind'], { path: string; field: string }> = {
   key: { path: '/key/update', field: 'key' },

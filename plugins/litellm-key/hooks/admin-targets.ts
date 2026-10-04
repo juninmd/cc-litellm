@@ -2,7 +2,7 @@ import type { Admin, Budgeted, Json } from './admin'
 import { fail, ok, query, request, resolveKey } from './admin'
 import type { Outcome } from './args'
 import { truncate } from './format'
-import { isObject, num, str } from './litellm'
+import { isObject, num, str } from './json'
 
 const spendOf = (info: Json): Pick<Budgeted, 'spend' | 'limit' | 'duration'> => ({
   spend: num(info.spend) ?? 0,

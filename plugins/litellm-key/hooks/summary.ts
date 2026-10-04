@@ -1,6 +1,6 @@
 import type { Budget, Failure, Snapshot } from '../types'
 import { isSpentUp } from './exceeded'
-import { clock, compact, money, percent, plural, sparkline, truncate, until } from './format'
+import { clock, compact, gauge, money, percent, plural, sparkline, truncate, until, usedShare } from './format'
 
 export type Tone = 'ok' | 'warn' | 'error'
 export type Meter = {
@@ -8,6 +8,8 @@ export type Meter = {
   used: number
   limit: number | null
   text: string
+  /** `text` without the percentage: the pane shows that next to the bar. */
+  detail: string
   /** The same reading cut to one short line: the amounts and the reset, no percentage, no "left" or "over", no period. */
   brief: string
   tone: Tone
@@ -15,9 +17,11 @@ export type Meter = {
 export type Row = { label: string; text: string; tone: Tone }
 
 const SOON_MS = 3 * 86_400_000
+const STATUS_BAR = 8
 
-const toneOf = (pct: number | null, warnPercent: number): Tone =>
-  pct === null ? 'ok' : pct >= 100 ? 'error' : pct >= warnPercent ? 'warn' : 'ok'
+// Error means spent up, the same test the banner uses: 99.6% rounds to 100% on screen but the proxy still answers.
+const toneOf = (used: number, limit: number | null, warnPercent: number): Tone =>
+  limit === null ? 'ok' : isSpentUp(used, limit) ? 'error' : (usedShare(used, limit) ?? 0) >= warnPercent ? 'warn' : 'ok'
 
 const resetText = (budget: Budget, now: number, hasPeriod = true): string | null => {
   if (budget.resetAt === null) {
@@ -30,7 +34,7 @@ const resetText = (budget: Budget, now: number, hasPeriod = true): string | null
   return `resets ${until(budget.resetAt, now)}${hasPeriod && budget.duration ? ` (${budget.duration})` : ''}`
 }
 
-export const budgetText = (budget: Budget, now: number): string => {
+export const budgetText = (budget: Budget, now: number, hasPercent = true): string => {
   const reset = resetText(budget, now)
 
   if (budget.limit === null) {
@@ -40,7 +44,7 @@ export const budgetText = (budget: Budget, now: number): string => {
   const pct = percent(budget.spend, budget.limit)
 
   return [
-    `${money(budget.spend)} / ${money(budget.limit)} (${pct}%)`,
+    `${money(budget.spend)} / ${money(budget.limit)}${hasPercent && pct !== null ? ` (${pct}%)` : ''}`,
     left >= 0 ? `${money(left)} left` : `${money(-left)} over`,
     reset,
   ]
@@ -64,8 +68,9 @@ export const meters = (snapshot: Snapshot, now: number, warnPercent: number): Me
       used: key.budget.spend,
       limit: key.budget.limit,
       text: budgetText(key.budget, now),
+      detail: budgetText(key.budget, now, false),
       brief: budgetBrief(key.budget, now),
-      tone: toneOf(percent(key.budget.spend, key.budget.limit), warnPercent),
+      tone: toneOf(key.budget.spend, key.budget.limit, warnPercent),
     },
   ]
 
@@ -81,8 +86,9 @@ export const meters = (snapshot: Snapshot, now: number, warnPercent: number): Me
       used: spend,
       limit: window.limit,
       text,
+      detail: text,
       brief: text,
-      tone: toneOf(percent(spend, window.limit), warnPercent),
+      tone: toneOf(spend, window.limit, warnPercent),
     })
   }
   for (const item of key.modelBudgets) {
@@ -94,8 +100,9 @@ export const meters = (snapshot: Snapshot, now: number, warnPercent: number): Me
         used: item.spend,
         limit: item.limit,
         text,
+        detail: text,
         brief: text,
-        tone: toneOf(percent(item.spend, item.limit), warnPercent),
+        tone: toneOf(item.spend, item.limit, warnPercent),
       })
     }
   }
@@ -106,8 +113,9 @@ export const meters = (snapshot: Snapshot, now: number, warnPercent: number): Me
         used: related.budget.spend,
         limit: related.budget.limit,
         text: budgetText(related.budget, now),
+        detail: budgetText(related.budget, now, false),
         brief: budgetBrief(related.budget, now),
-        tone: toneOf(percent(related.budget.spend, related.budget.limit), warnPercent),
+        tone: toneOf(related.budget.spend, related.budget.limit, warnPercent),
       })
     }
   }
@@ -140,19 +148,31 @@ export const modelsText = (snapshot: Snapshot, max = 4): string => {
   return `${shown}${more}`
 }
 
-const usageText = (snapshot: Snapshot): string | null => {
+const initialOf = (date: string): string => {
+  const day = new Date(`${date}T00:00:00Z`).getUTCDay()
+
+  return Number.isNaN(day) ? '·' : 'SMTWTFS'.charAt(day)
+}
+
+/** The last days as a sparkline, the weekday under each, and the totals. */
+export const usageParts = (snapshot: Snapshot): { spark: string; days: string; rest: string } | null => {
   const { usage } = snapshot
 
   if (!usage) {
     return null
   }
 
-  return [
-    sparkline(usage.days.map(day => day.spend)),
-    money(usage.spend),
-    plural(usage.requests, 'request'),
-    `${compact(usage.tokens)} tokens`,
-  ].join(' · ')
+  return {
+    spark: sparkline(usage.days.map(day => day.spend)),
+    days: usage.days.map(day => initialOf(day.date)).join(''),
+    rest: [money(usage.spend), plural(usage.requests, 'request'), `${compact(usage.tokens)} tokens`].join(' · '),
+  }
+}
+
+const usageText = (snapshot: Snapshot): string | null => {
+  const parts = usageParts(snapshot)
+
+  return parts && `${parts.spark} · ${parts.rest}`
 }
 
 export const facts = (snapshot: Snapshot, now: number): Row[] => {
@@ -241,7 +261,7 @@ export const statusText = (snapshot: Snapshot | null, failure: Failure | null, n
     return failure ? shortFailure(failure) : undefined
   }
   const { key } = snapshot
-  const pct = percent(key.budget.spend, key.budget.limit)
+  const pct = usedShare(key.budget.spend, key.budget.limit)
   const expiresSoon = key.expiresAt !== null && key.expiresAt > now && key.expiresAt - now < SOON_MS
   const parts: (string | null)[] = []
 
@@ -250,8 +270,10 @@ export const statusText = (snapshot: Snapshot | null, failure: Failure | null, n
   } else if (pct === null) {
     parts.push(`${money(key.budget.spend)} spent`, 'no cap')
   } else {
+    const { full, track } = gauge(pct / 100, STATUS_BAR)
+
     parts.push(
-      `${pct}% of budget`,
+      `${full}${track} ${pct}% of budget`,
       `${money(key.budget.spend)} of ${money(key.budget.limit)}`,
       isSpentUp(key.budget.spend, key.budget.limit) ? 'over budget' : resetText(key.budget, now),
     )

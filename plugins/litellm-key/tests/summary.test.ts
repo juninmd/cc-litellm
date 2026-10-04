@@ -68,8 +68,9 @@ describe('statusText', () => {
     const warn = await snapshotOf(withKey({ spend: 42 }))
     const over = await snapshotOf(withKey({ spend: 52 }))
 
-    expect(statusText(ok, null, NOW)).toBe('25% of budget · $12.50 of $50.00 · resets in 6d 12h (30d)')
-    expect(statusText(warn, null, NOW)).toContain('84%')
+    expect(statusText(ok, null, NOW)).toBe('██░░░░░░ 25% of budget · $12.50 of $50.00 · resets in 6d 12h (30d)')
+    expect(statusText(warn, null, NOW)).toContain('██████▊░ 84% of budget')
+    expect(statusText(over, null, NOW)).toContain('████████ 104% of budget')
     expect(statusText(over, null, NOW)).toContain('over budget')
   })
 
@@ -105,7 +106,7 @@ describe('summaryText', () => {
     expect(text).toMatch(/Limits\s+60 rpm · 100k tpm · 5 parallel/)
     expect(text).toMatch(/Expires\s+in 40d/)
     expect(text).toMatch(/Models\s+claude-haiku-4-5, claude-opus-4-1, claude-sonnet-4-5 \(3\)/)
-    expect(text).toMatch(/Last 7 days\s+[▁-█]{7} · \$14\.20 · 150 requests · 2\.8M tokens/)
+    expect(text).toMatch(/Last 7 days\s+[·▁-█]{7} · \$14\.20 · 150 requests · 2\.8M tokens/)
     expect(text).toMatch(/Updated\s+\d\d:\d\d:\d\d · via ANTHROPIC_AUTH_TOKEN/)
   })
 
@@ -165,6 +166,24 @@ describe('meters and facts', () => {
     }
   })
 
+  test('error means spent up: 99.6% rounds to 100% on screen, but the proxy still answers, so it is a warning', async () => {
+    const [almost] = meters(await snapshotOf(withKey({ spend: 49.8 })), NOW, 80)
+    const [spent] = meters(await snapshotOf(withKey({ spend: 50 })), NOW, 80)
+
+    expect(almost?.tone).toBe('warn')
+    expect(almost?.text).toContain('(100%)')
+    expect(spent?.tone).toBe('error')
+  })
+
+  test('a cap of $0 is used up everywhere the banner says so: tone, share and status, and never "(null%)"', async () => {
+    const snapshot = await snapshotOf(withKey({ max_budget: 0, spend: 0 }))
+    const [budget] = meters(snapshot, NOW, 80)
+
+    expect(budget?.tone).toBe('error')
+    expect(budget?.text).not.toContain('null')
+    expect(statusText(snapshot, null, NOW)).toContain('████████ 100% of budget · $0.00 of $0.00 · over budget')
+  })
+
   test('flags an expired key and an expiry that is near', async () => {
     const expired = await snapshotOf(withKey({ status: 'expired', expires: new Date(NOW - DAY).toISOString() }))
     const soon = await snapshotOf(withKey({ expires: new Date(NOW + DAY).toISOString() }))
@@ -201,7 +220,7 @@ describe('meters and facts', () => {
   })
 
   test('oneLine and failureText', async () => {
-    expect(oneLine(await snapshotOf(), NOW)).toBe('25% of budget · $12.50 of $50.00 · resets in 6d 12h (30d)')
+    expect(oneLine(await snapshotOf(), NOW)).toBe('██░░░░░░ 25% of budget · $12.50 of $50.00 · resets in 6d 12h (30d)')
     expect(failureText({ ...failure('auth', 401), hint: 'check it' })).toBe('boom\ncheck it')
   })
 })
