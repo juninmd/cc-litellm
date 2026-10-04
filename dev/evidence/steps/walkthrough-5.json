@@ -1,0 +1,15 @@
+[
+  {"wait": 10},
+  {"shot": "23-expired", "title": "An expired key is named as expired"},
+
+  {"send": "/litellm\r"},
+  {"wait": 4},
+  {"shot": "24-expired-pane", "title": "/litellm on an expired key"},
+  {"key": "esc"},
+
+  {"send": "/litellm keys --all\r"},
+  {"wait": 4},
+  {"shot": "25-keys-all", "title": "/litellm keys --all (admin)"},
+
+  {"send": "/exit\r"}
+]

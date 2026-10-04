@@ -1,0 +1,25 @@
+[
+  {"wait": 10},
+  {"shot": "12-warning", "title": "86% of the budget used: toast + status line"},
+
+  {"send": "/litellm key block claude-code-ana\r"},
+  {"wait": 4},
+  {"shot": "13-block-dialog", "title": "/litellm key block claude-code-ana"},
+  {"key": "enter"},
+  {"wait": 8},
+  {"shot": "14-blocked", "title": "A blocked key is named as blocked, not as a generic auth error"},
+
+  {"send": "/litellm key unblock claude-code-ana --yes\r"},
+  {"wait": 8},
+  {"shot": "15-unblocked", "title": "/litellm key unblock claude-code-ana --yes"},
+
+  {"send": "/litellm debug\r"},
+  {"wait": 4},
+  {"shot": "16-debug", "title": "/litellm debug (keys are always masked)"},
+
+  {"send": "/litellm help\r"},
+  {"wait": 3},
+  {"shot": "17-help", "title": "/litellm help"},
+
+  {"send": "/exit\r"}
+]

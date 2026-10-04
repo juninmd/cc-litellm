@@ -1,0 +1,15 @@
+[
+  {"wait_for": "% of budget", "timeout": 60},
+  {"shot": "01-statusline", "title": "Claude Code with the litellm-key status line"},
+
+  {"send": "/litellm\r"},
+  {"wait_for": "Budget", "timeout": 20},
+  {"shot": "02-pane", "title": "/litellm"},
+
+  {"key": "esc"},
+  {"send": "/litellm models\r"},
+  {"wait": 2},
+  {"shot": "03-models", "title": "/litellm models"},
+
+  {"send": "/exit\r"}
+]

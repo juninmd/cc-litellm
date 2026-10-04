@@ -76,6 +76,7 @@ def user_info(c):
         "user_info": {
             "user_id": "demo",
             "user_email": "demo@example.com",
+            "user_role": "internal_user",
             "spend": c["user"],
             "max_budget": 150.0,
             "budget_duration": "30d",
