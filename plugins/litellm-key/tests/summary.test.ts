@@ -173,6 +173,14 @@ describe('meters and facts', () => {
     expect(facts(soon, NOW).find(row => row.label === 'Expires')?.tone).toBe('warn')
   })
 
+  test('shows the user role, and nothing when the proxy gave none', async () => {
+    const known = await snapshotOf(withKey({}))
+    const unknown = { ...known, userRole: null }
+
+    expect(facts(known, NOW).find(row => row.label === 'Role')?.text).toBe('internal_user')
+    expect(facts(unknown, NOW).some(row => row.label === 'Role')).toBe(false)
+  })
+
   test('notes the lifetime spend only when a reset hid some of it', async () => {
     const hidden = await snapshotOf(withKey({ total_spend: 312.8 }))
     const same = await snapshotOf(withKey({ total_spend: 12.5 }))

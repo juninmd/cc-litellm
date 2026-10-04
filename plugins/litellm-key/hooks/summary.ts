@@ -1,4 +1,5 @@
 import type { Budget, Failure, Snapshot } from '../types'
+import { isSpentUp } from './exceeded'
 import { clock, compact, money, percent, plural, sparkline, truncate, until } from './format'
 
 export type Tone = 'ok' | 'warn' | 'error'
@@ -165,6 +166,7 @@ export const facts = (snapshot: Snapshot, now: number): Row[] => {
   const expires = key.expiresAt === null ? null : until(key.expiresAt, now)
 
   add('Status', key.status, key.status === 'active' ? 'ok' : 'error')
+  add('Role', snapshot.userRole)
   add('Soft limit', key.budget.softLimit === null ? null : `alerts at ${money(key.budget.softLimit)}`)
   add('Limits', limitsText(snapshot))
   add(
@@ -210,6 +212,10 @@ const shortFailure = (failure: Failure): string => {
   switch (failure.kind) {
     case 'auth':
       return 'key rejected (401)'
+    case 'blocked':
+      return 'key blocked'
+    case 'expired':
+      return 'key expired'
     case 'forbidden':
       return 'no access to key info (403)'
     case 'not-found':
@@ -247,7 +253,7 @@ export const statusText = (snapshot: Snapshot | null, failure: Failure | null, n
     parts.push(
       `${pct}% of budget`,
       `${money(key.budget.spend)} of ${money(key.budget.limit)}`,
-      pct >= 100 ? 'over budget' : resetText(key.budget, now),
+      isSpentUp(key.budget.spend, key.budget.limit) ? 'over budget' : resetText(key.budget, now),
     )
   }
   if (expiresSoon && key.expiresAt !== null) {

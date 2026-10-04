@@ -65,7 +65,7 @@ const SHA256 = /^[0-9a-f]{64}$/i
 export const isObject = (value: unknown): value is Json =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
-const num = (value: unknown): number | null => {
+export const num = (value: unknown): number | null => {
   if (typeof value === 'number') {
     return Number.isFinite(value) ? value : null
   }
@@ -78,7 +78,7 @@ const num = (value: unknown): number | null => {
   return null
 }
 
-const str = (value: unknown): string | null =>
+export const str = (value: unknown): string | null =>
   typeof value === 'string' && value.trim() !== '' ? value : null
 
 const strings = (value: unknown): string[] =>
@@ -101,7 +101,7 @@ export const date = (value: unknown): number | null => {
   return Number.isNaN(parsed) ? null : parsed
 }
 
-const parse = (text: string): unknown => {
+export const parse = (text: string): unknown => {
   try {
     return JSON.parse(text)
   } catch {
@@ -283,7 +283,7 @@ const looksLikeLiteLLM = (status: number, json: unknown): boolean => {
   return 'detail' in json && !(status === 404 && json.detail === 'Not Found')
 }
 
-const messageOf = (json: unknown, text: string): string => {
+export const messageOf = (json: unknown, text: string): string => {
   if (isObject(json)) {
     const { error, detail, message } = json
 
@@ -315,6 +315,18 @@ const classify = (status: number, json: unknown, text: string, key: string, now:
   const message = truncate(redact(messageOf(json, text).replace(/\s+/g, ' '), [key]), 200)
   const extra = { status }
 
+  if (status === 401 && /key is blocked/i.test(message)) {
+    return failure('blocked', 'The proxy says this key is blocked.', now, {
+      ...extra,
+      hint: 'Ask a proxy admin to unblock it (/key/unblock), or use another key.',
+    })
+  }
+  if (status === 401 && /expired key|key (?:has )?expired/i.test(message)) {
+    return failure('expired', 'The proxy says this key has expired.', now, {
+      ...extra,
+      hint: 'Ask a proxy admin for a new key or a later expiry.',
+    })
+  }
   if (status === 401) {
     return failure('auth', `The proxy rejected the key (401): ${message}`, now, {
       ...extra,
@@ -453,6 +465,9 @@ export const parseUser = (body: unknown): Related | null => {
     : { id, label: str(info.user_alias) ?? str(info.user_email) ?? id, budget }
 }
 
+export const parseUserRole = (body: unknown): string | null =>
+  isObject(body) && isObject(body.user_info) ? str(body.user_info.user_role) : null
+
 export const parseTeam = (body: unknown): Related | null => {
   const info = isObject(body) && isObject(body.team_info) ? body.team_info : null
   const id = (isObject(body) ? str(body.team_id) : null) ?? str(info?.team_id)
@@ -534,7 +549,7 @@ const NETWORK_ERRORS: readonly [RegExp, string][] = [
   [/CERT|SSL|TLS/i, 'TLS certificate problem'],
 ]
 
-const describeError = (error: unknown, key: string): string => {
+export const describeError = (error: unknown, key: string): string => {
   const raw = error instanceof Error ? error.message : String(error)
   const bare = raw
     .replace(/^[\w-]+: \$\.http\.fetch\([^)]*\) (?:failed|aborted): /, '')
@@ -608,9 +623,12 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
   }
   const { root, body, info } = found
   const keyInfo = parseKey(body, info, now)
-  const get = async (path: string): Promise<unknown> => {
+  const get = async (path: string, isOptional = false): Promise<unknown> => {
     const reply = await http(`${root}${path}`, headers)
 
+    if (isOptional && reply.status === 404) {
+      return null
+    }
     if (reply.status !== 200) {
       throw new Error(`${path.split('?')[0]} answered ${reply.status}`)
     }
@@ -639,12 +657,12 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
     .join('&')
   const { previous, refreshSlow, wantRelated } = request
   const wantUsage = request.wantUsage && keyInfo.userId !== null
-  const [user, team, models, usage] = await Promise.all([
+  const [userBody, team, models, usage] = await Promise.all([
     wantRelated && keyInfo.userId
-      ? attempt('user budget', async () => parseUser(await get(`/user/info?user_id=${encodeURIComponent(keyInfo.userId ?? '')}`)))
+      ? attempt('user budget', () => get(`/user/info?user_id=${encodeURIComponent(keyInfo.userId ?? '')}`, true))
       : Promise.resolve(null),
     wantRelated && keyInfo.teamId
-      ? attempt('team budget', async () => parseTeam(await get(`/team/info?team_id=${encodeURIComponent(keyInfo.teamId ?? '')}&key_limit=1`)))
+      ? attempt('team budget', async () => parseTeam(await get(`/team/info?team_id=${encodeURIComponent(keyInfo.teamId ?? '')}&key_limit=1`, true)))
       : Promise.resolve(null),
     refreshSlow
       ? attempt('model list', async () => parseModels(await get('/v1/models')))
@@ -665,7 +683,8 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
       keySource: credentials.keySource,
       keyHint: maskKey(key),
       key: keyInfo,
-      user,
+      user: parseUser(userBody),
+      userRole: parseUserRole(userBody),
       team,
       models,
       usage,

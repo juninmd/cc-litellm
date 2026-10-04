@@ -1,93 +1,12 @@
-import { describe, expect, mock, test } from 'claude-code/testing'
+import { describe, expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
-import type { On, RenderSurface } from 'claude-code'
+import type { RenderSurface } from 'claude-code'
 
-import { BASE, KEY, NOW, keyBody, reply, router, standardRoutes } from './support'
-import type { Route } from './support'
+import { boot, run, start, urls } from './boot'
+import { BASE, HASH, KEY, NOW, keyBody, reply, standardRoutes } from './support'
 
 const DAY = 86_400_000
 const SURFACES = ['terminal', 'desktop', 'vscode', 'mobile'] as const
-
-type Setup = {
-  routes?: Record<string, Route>
-  env?: Record<string, string>
-  settingsEnv?: Record<string, string>
-  surfaces?: readonly RenderSurface[]
-  store?: Record<string, unknown>
-  open?: { isPlaced: boolean; reason?: string }
-}
-
-const boot = (on: On, setup: Setup = {}) => {
-  const log = {
-    statuses: [] as (string | undefined)[],
-    toasts: [] as string[],
-    opens: [] as string[],
-    closes: [] as string[],
-    copies: [] as string[],
-    commands: [] as string[],
-  }
-  const net = router(setup.routes ?? standardRoutes())
-  const clock = mock.clock(on, { now: NOW })
-
-  mock.store(on, setup.store)
-  mock.env(on, setup.env ?? { ANTHROPIC_BASE_URL: BASE, ANTHROPIC_AUTH_TOKEN: KEY })
-  on('session.start', (_$, e) => ({ cwd: e.cwd }))
-  on('turn.complete', (_$, e) => ({ text: e.answer }))
-  on('settings.read', () => ({ value: setup.settingsEnv ? { env: setup.settingsEnv } : {} }))
-  on('session.surfaces', () => ({ value: setup.surfaces ?? ['terminal'] }))
-  on('command.register', (_$, e) => {
-    log.commands.push(e.name)
-
-    return { value: { command: e.name } }
-  })
-  on('http.fetch', async (_$, e) => {
-    const answer = await net.http(e.url, e.init?.headers ?? {})
-
-    return { value: { status: answer.status, ok: answer.status < 300, headers: {}, text: answer.text } }
-  })
-  on('ui.status', (_$, e) => {
-    log.statuses.push(e.text)
-
-    return { value: undefined }
-  })
-  on('ui.toast', (_$, e) => {
-    log.toasts.push(e.text)
-
-    return { value: undefined }
-  })
-  on('ui.open', (_$, e) => {
-    log.opens.push(e.id)
-
-    return { value: setup.open ? { isPlaced: setup.open.isPlaced, reason: setup.open.reason ?? '' } : { isPlaced: true } }
-  })
-  on('ui.close', (_$, e) => {
-    log.closes.push(e.id)
-
-    return { value: undefined }
-  })
-  on('ui.copy', (_$, e) => {
-    log.copies.push(e.text)
-
-    return { value: { isCopied: true } }
-  })
-
-  return { log, net, clock }
-}
-
-const run = ($: Engine, args: string) =>
-  $.command.run({
-    command: 'litellm',
-    args,
-    origin: { kind: 'composer' },
-    presentation: { isFullscreen: true, columns: 100 },
-  })
-
-const start = async ($: Engine, clock: { advance: (ms: number) => Promise<void> }) => {
-  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: true })
-  await clock.advance(300)
-}
-
-const urls = (net: { calls: { url: string }[] }) => net.calls.map(call => call.url.replace(BASE, '').split('?')[0] ?? '')
 
 describe('session start', () => {
   test('registers /litellm, reads the key and pins the status line', async ($, on) => {
@@ -407,12 +326,32 @@ describe('warnings', () => {
   test('remembers what it already said across sessions', async ($, on) => {
     const { log, clock } = boot(on, {
       routes: near(41),
-      store: { notified: ['budget:sk-...7890:' + Date.parse('2026-10-10T00:00:00Z') / 60_000 + ':80'] },
+      store: { notified: ['budget:sk-...7890:' + Date.parse('2026-10-10T00:00:00Z') / 60_000 + ':50:80'] },
     })
 
     await start($, clock)
 
     expect(log.toasts).toEqual([])
+  })
+
+  test('a raised budget is a new threshold, so the same percentage warns again after a grant', async ($, on) => {
+    let spend = 41
+    let limit = 50
+    const routes = {
+      ...standardRoutes(),
+      '/key/info': () => reply(200, keyBody({ spend, max_budget: limit })),
+    }
+    const { log, clock } = boot(on, { routes })
+
+    await start($, clock)
+    expect(log.toasts).toEqual(['82% of the key budget is used ($41.00 of $50.00)'])
+    limit = 100
+    spend = 85
+    await run($, 'refresh')
+    expect(log.toasts).toEqual([
+      '82% of the key budget is used ($41.00 of $50.00)',
+      '85% of the key budget is used ($85.00 of $100.00)',
+    ])
   })
 
   test('does not repeat itself when the proxy jitters the reset time by a few seconds', async ($, on) => {
@@ -736,5 +675,192 @@ describe('privacy', () => {
       expect(call.headers.authorization).toBe(`Bearer ${KEY}`)
     }
     expect(JSON.stringify(log)).not.toContain(KEY)
+  })
+})
+
+describe('the over-budget band', () => {
+  const BAND = { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 100, isFocused: false, scroll: { offset: 0, bodyRows: 10 }, view: {} } as const
+  const mountBand = ($: Engine, surface: 'terminal' | 'desktop', hasSurvey = false) =>
+    $.ui.mount({ plugin: 'litellm-key', surface, component: 'AbovePrompt', props: { ...BAND, hasSurvey } })
+  // When the hook yields (next), the test engine has nothing else that draws the band: that is the "not shown" case.
+  const isDrawn = async ($: Engine, hasSurvey = false): Promise<boolean> => {
+    try {
+      return (await (await mountBand($, 'terminal', hasSurvey)).find({ type: 'Text', text: /Budget used up/ })) !== undefined
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('no implementation for ui.render')) {
+        return false
+      }
+      throw error
+    }
+  }
+  const routesAt = (state: { spend: number; limit: number }) => ({
+    ...standardRoutes(),
+    '/key/info': () => reply(200, keyBody({ spend: state.spend, max_budget: state.limit })),
+  })
+
+  test('stays above the prompt while the key is over budget, and goes when the budget is normal again', async ($, on) => {
+    const state = { spend: 55, limit: 50 }
+    const { log, clock } = boot(on, { routes: routesAt(state) })
+
+    await start($, clock)
+    for (const surface of ['terminal', 'desktop'] as const) {
+      const ui = await mountBand($, surface)
+
+      expect(await ui.find({ type: 'Text', text: /Budget used up/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /key prod-claude: \$55\.00 of \$50\.00/ })).toBeDefined()
+      await ui.unmount()
+    }
+    // the toast is a one-off; the band is what keeps saying it
+    expect(log.toasts.filter(text => text.includes('over budget'))).toHaveLength(1)
+
+    state.limit = 80
+    await run($, 'refresh')
+    expect(await isDrawn($)).toBe(false)
+  })
+
+  test('names the team budget that is spent, not only the key', async ($, on) => {
+    const routes = {
+      ...standardRoutes(),
+      '/team/info': reply(200, { team_id: 'eng', team_info: { team_alias: 'Eng', spend: 1000, max_budget: 1000, budget_duration: '30d', budget_reset_at: '2026-11-01T00:00:00Z' } }),
+    }
+    const { clock } = boot(on, { routes })
+
+    await start($, clock)
+    const ui = await mountBand($, 'terminal')
+
+    expect(await ui.find({ type: 'Text', text: /team Eng: \$1,000\.00 of \$1,000\.00 · resets in/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /key prod-claude/ })).toBeUndefined()
+  })
+
+  test('is not drawn while the budget is fine', async ($, on) => {
+    const { clock } = boot(on, { routes: routesAt({ spend: 5, limit: 50 }) })
+
+    await start($, clock)
+    expect(await isDrawn($)).toBe(false)
+  })
+
+  test('yields to a survey that holds the band', async ($, on) => {
+    const { clock } = boot(on, { routes: routesAt({ spend: 55, limit: 50 }) })
+
+    await start($, clock)
+    expect(await isDrawn($)).toBe(true)
+    expect(await isDrawn($, true)).toBe(false)
+  })
+})
+
+describe('admin commands', () => {
+  const ADMIN = 'sk-admin-from-option-99999'
+  const NEW_SECRET = 'sk-brand-new-secret-123456'
+  const only = reply(401, { error: { message: 'Authentication Error, Only proxy admin can be used to generate, delete, update info for new keys/users/teams.', type: 'auth_error', param: 'None', code: '401' } })
+  const adminRoutes = (state = { limit: 50 }) => ({
+    ...standardRoutes(),
+    '/key/info': () => reply(200, keyBody({ max_budget: state.limit })),
+    '/key/update': (_url: string, _headers: Record<string, string>, init?: { body?: string }) => {
+      state.limit = (JSON.parse(init?.body ?? '{}') as { max_budget: number }).max_budget
+
+      return reply(200, { key: 'sk-raw-echo-of-the-key-000', max_budget: state.limit })
+    },
+    '/key/generate': reply(200, { key: NEW_SECRET, token: 'ab'.repeat(32), key_name: 'sk-...3456', key_alias: 'ci' }),
+  })
+  const OPTIONS = { litellm_admin_key: ADMIN }
+
+  test('a grant goes out with the admin key, not the virtual one, and the status line catches up', { options: OPTIONS }, async ($, on) => {
+    const { log, net, clock } = boot(on, { routes: adminRoutes() })
+
+    await start($, clock)
+    const { text } = await run($, 'grant 10 --yes')
+
+    await clock.advance(300)
+    const update = net.calls.find(call => call.url.includes('/key/update'))
+
+    expect(update?.method).toBe('POST')
+    expect(update?.headers.authorization).toBe(`Bearer ${ADMIN}`)
+    expect(JSON.parse(update?.body ?? '{}')).toEqual({ key: HASH, max_budget: 60 })
+    expect(text).toContain('now has a budget of $60.00')
+    expect(text).not.toContain('sk-raw-echo')
+    expect(log.statuses.at(-1)).toContain('$12.50 of $60.00')
+    expect(net.calls.filter(call => call.url.endsWith('/key/info')).every(call => call.headers.authorization === `Bearer ${KEY}`)).toBe(true)
+  })
+
+  test('key new puts the secret on the clipboard and keeps it out of the answer and the logs', async ($, on) => {
+    const { log, clock } = boot(on, { routes: adminRoutes() })
+
+    await start($, clock)
+    const { text } = await run($, 'key new ci --budget 5 --yes')
+
+    expect(log.copies).toEqual([NEW_SECRET])
+    expect(text).toContain('Copied to the clipboard')
+    expect(text).not.toContain(NEW_SECRET)
+    expect(JSON.stringify(log.statuses) + JSON.stringify(log.toasts)).not.toContain(NEW_SECRET)
+  })
+
+  test('key new without a screen to copy to refuses, unless --reveal is given', async ($, on) => {
+    const { net, clock } = boot(on, { routes: adminRoutes(), surfaces: [] })
+
+    await start($, clock)
+    const { text } = await run($, 'key new ci --yes')
+
+    expect(text).toContain('--reveal')
+    expect(net.calls.some(call => call.method === 'POST')).toBe(false)
+  })
+
+  test('without litellm_admin_key the virtual key is what asks, and a refusal names the fix', async ($, on) => {
+    const { net, clock } = boot(on, { routes: { ...adminRoutes(), '/key/list': only } })
+
+    await start($, clock)
+    const { text } = await run($, 'keys')
+    const call = net.calls.find(item => item.url.includes('/key/list'))
+
+    expect(call?.headers.authorization).toBe(`Bearer ${KEY}`)
+    expect(text).toContain('litellm_admin_key')
+  })
+
+  test('a rejected session key explains why the admin key stays unused', { options: OPTIONS }, async ($, on) => {
+    const expired = reply(401, { error: { message: 'Authentication Error - Expired Key. Key Expiry time 2026-10-01 and current time 2026-10-03', type: 'expired_key', param: 'None', code: '401' } })
+    const { net, clock } = boot(on, { routes: { ...adminRoutes(), '/key/info': expired } })
+
+    await start($, clock)
+    const { text } = await run($, 'keys --all')
+
+    expect(text).toContain('expired')
+    expect(text).toContain('Admin commands wait until the proxy accepts this session')
+    expect(net.calls.some(call => call.headers.authorization === `Bearer ${ADMIN}`)).toBe(false)
+  })
+
+  test('says why it cannot run when Claude Code is not behind a proxy', async ($, on) => {
+    const { net, clock } = boot(on, { env: {} })
+
+    await start($, clock)
+    const { text } = await run($, 'grant 10 --yes')
+
+    expect(text).toContain('not routed through a LiteLLM proxy')
+    expect(net.calls).toHaveLength(0)
+  })
+
+  test('debug shows the admin key masked, help lists the new commands', { options: OPTIONS }, async ($, on) => {
+    const { log, clock } = boot(on, { routes: adminRoutes() })
+
+    await start($, clock)
+    const debug = (await run($, 'debug')).text
+    const help = (await run($, 'help')).text
+
+    expect(debug).toContain('Admin    sk-…9999')
+    expect(debug).not.toContain(ADMIN)
+    for (const word of ['keys', 'key new', 'grant', 'fallbacks']) {
+      expect(help).toContain(`/litellm ${word}`)
+    }
+    expect(JSON.stringify(log)).not.toContain(ADMIN)
+  })
+
+  test('fallbacks reads the router settings', async ($, on) => {
+    const routes = {
+      ...adminRoutes(),
+      '/router/settings': reply(200, { current_values: { fallbacks: [{ 'cloud/auto': ['cloud/auto-long'] }] } }),
+    }
+    const { clock } = boot(on, { routes })
+
+    await start($, clock)
+
+    expect((await run($, 'fallbacks')).text).toContain('cloud/auto  → cloud/auto-long')
   })
 })

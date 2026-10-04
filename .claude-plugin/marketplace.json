@@ -8,11 +8,11 @@
     {
       "name": "litellm-key",
       "source": "./plugins/litellm-key",
-      "description": "See your LiteLLM virtual key inside Claude Code: budget, spend, limits, expiry, models and recent usage.",
-      "version": "0.2.0",
+      "description": "See your LiteLLM virtual key inside Claude Code: budget, spend, limits, expiry, models and recent usage. Admins can also create keys, grant extra budget and read router fallbacks.",
+      "version": "0.3.0",
       "author": { "name": "juninmd" },
       "category": "monitoring",
-      "keywords": ["litellm", "virtual-key", "budget", "spend", "status-line"]
+      "keywords": ["litellm", "virtual-key", "budget", "spend", "status-line", "key-management"]
     }
   ]
 }

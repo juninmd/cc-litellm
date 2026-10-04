@@ -1,13 +1,14 @@
 import type { Snapshot } from '../types'
 import { fetchSnapshot } from '../hooks/litellm'
-import type { Http, Reply } from '../hooks/litellm'
+import type { Reply } from '../hooks/litellm'
 
 export const NOW = Date.parse('2026-10-03T12:00:00Z')
 export const KEY = 'sk-test-secret-1234567890'
 export const HASH = '0123456789abcdef'.repeat(4)
 export const BASE = 'https://litellm.test'
 
-export type Route = Reply | ((url: string, headers: Record<string, string>) => Reply | Promise<Reply>)
+export type Init = { method: string; body?: string }
+export type Route = Reply | ((url: string, headers: Record<string, string>, init?: Init) => Reply | Promise<Reply>)
 
 export const reply = (status: number, body: unknown): Reply => ({
   status,
@@ -61,6 +62,7 @@ export const standardRoutes = (): Record<string, Route> => ({
     user_info: {
       user_id: 'jane',
       user_email: 'jane@acme.test',
+      user_role: 'internal_user',
       spend: 26.1,
       max_budget: 100,
       budget_duration: '30d',
@@ -97,9 +99,9 @@ export const standardRoutes = (): Record<string, Route> => ({
 })
 
 export const router = (routes: Record<string, Route>) => {
-  const calls: { url: string; headers: Record<string, string> }[] = []
-  const http: Http = async (url, headers) => {
-    calls.push({ url, headers })
+  const calls: { url: string; headers: Record<string, string>; method: string; body?: string }[] = []
+  const http = async (url: string, headers: Record<string, string>, init?: Init): Promise<Reply> => {
+    calls.push({ url, headers, method: init?.method ?? 'GET', ...(init?.body === undefined ? {} : { body: init.body }) })
     const path = url.replace(/^https?:\/\/[^/]+/, '').split('?')[0] ?? ''
     const route = routes[path]
 
@@ -107,7 +109,7 @@ export const router = (routes: Record<string, Route>) => {
       return reply(404, { detail: 'Not Found' })
     }
 
-    return typeof route === 'function' ? await route(url, headers) : route
+    return typeof route === 'function' ? await route(url, headers, init) : route
   }
 
   return { http, calls }

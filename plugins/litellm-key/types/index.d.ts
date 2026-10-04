@@ -77,6 +77,8 @@ export type Snapshot = {
   keyHint: string
   key: KeyInfo
   user: Related | null
+  /** The user's proxy role (proxy_admin, internal_user…), known even when the user has no budget cap. */
+  userRole: string | null
   team: Related | null
   models: string[] | null
   usage: Usage | null
@@ -87,6 +89,8 @@ export type FailureKind =
   | 'not-configured'
   | 'not-litellm'
   | 'auth'
+  | 'blocked'
+  | 'expired'
   | 'forbidden'
   | 'not-found'
   | 'db'

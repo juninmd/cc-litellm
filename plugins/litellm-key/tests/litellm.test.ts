@@ -9,6 +9,7 @@ import {
   parseTeam,
   parseUsage,
   parseUser,
+  parseUserRole,
   resolveCredentials,
 } from '../hooks/litellm'
 import type { Credentials, FetchRequest, Sources } from '../hooks/litellm'
@@ -306,6 +307,15 @@ describe('related budgets, models and usage', () => {
     expect(parseUser('nope')).toBeNull()
   })
 
+  test('the role is read even when the user has no budget cap', () => {
+    const uncapped = { user_id: 'root', user_info: { user_role: 'proxy_admin', spend: 3 } }
+
+    expect(parseUser(uncapped)).toBeNull()
+    expect(parseUserRole(uncapped)).toBe('proxy_admin')
+    expect(parseUserRole({ user_id: 'x', user_info: {} })).toBeNull()
+    expect(parseUserRole(null)).toBeNull()
+  })
+
   test('models are unique and sorted', () => {
     expect(parseModels({ data: [{ id: 'b' }, { id: 'a' }, { id: 'b' }, { nope: 1 }] })).toEqual(['a', 'b'])
     expect(parseModels({})).toBeNull()
@@ -421,6 +431,33 @@ describe('fetchSnapshot', () => {
     expect(!result.ok && result.failure.kind).toBe('auth')
     expect(!result.ok && result.failure.status).toBe(401)
     expect(JSON.stringify(result)).not.toContain(KEY)
+  })
+
+  test('names a blocked key instead of calling it invalid (message as LiteLLM v1.99 sends it)', async () => {
+    const message = "Authentication Error, Key is blocked. Update via `/key/unblock` if you're an admin."
+    const { http } = router({ '/key/info': reply(401, { error: { message, type: 'auth_error', param: 'None', code: '401' } }) })
+    const result = await fetchSnapshot(request(http))
+
+    expect(!result.ok && result.failure.kind).toBe('blocked')
+    expect(!result.ok && result.failure.hint).toContain('unblock')
+  })
+
+  test('names an expired key (message as LiteLLM v1.99 sends it)', async () => {
+    const message = 'Authentication Error - Expired Key. Key Expiry time 2026-10-04 03:47:58+00:00 and current time 2026-10-04 03:48:00+00:00'
+    const { http } = router({ '/key/info': reply(401, { error: { message, type: 'expired_key', param: 'sk-...c817', code: '401' } }) })
+    const result = await fetchSnapshot(request(http))
+
+    expect(!result.ok && result.failure.kind).toBe('expired')
+  })
+
+  test('a user or team without a record is not a problem: no budget there, no note', async () => {
+    const missing = reply(404, { error: { message: 'User jane not found', type: 'internal_server_error', param: 'None', code: '404' } })
+    const { http } = router({ ...standardRoutes(), '/user/info': missing, '/team/info': missing })
+    const result = await fetchSnapshot(request(http))
+
+    expect(result.ok && result.snapshot.user).toBeNull()
+    expect(result.ok && result.snapshot.team).toBeNull()
+    expect(result.ok && result.snapshot.notes).toEqual([])
   })
 
   test('explains a key the database does not know (the master key)', async () => {
