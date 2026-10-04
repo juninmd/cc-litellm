@@ -6,7 +6,7 @@
   <a href="#install"><img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=for-the-badge"></a>
   <img alt="LiteLLM v1.99.1" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20tested-6366f1?style=for-the-badge">
   <img alt="Claude Code 2.1.289" src="https://img.shields.io/badge/Claude%20Code-2.1.289%20tested-0ea5e9?style=for-the-badge">
-  <img alt="217 tests सफल" src="https://img.shields.io/badge/tests-217%20passing-22c55e?style=for-the-badge">
+  <img alt="232 tests सफल" src="https://img.shields.io/badge/tests-232%20passing-22c55e?style=for-the-badge">
   <img alt="संस्करण 0.3.0" src="https://img.shields.io/badge/version-0.3.0-f472b6?style=for-the-badge">
 </p>
 
@@ -153,7 +153,7 @@ Plugin एक सामान्य *401* दिखाने की बजाय
 
 🔐 = admin command, नीचे देखें। Pane में (click से या `ctrl+x` `tab` से focus करें): `r` refresh करता है, `c` summary copy करता है, `q` बंद करता है, arrow keys से scroll होता है। खाली prompt पर `Esc` भी इसे बंद कर देता है।
 
-Pane उपलब्ध जगह के हिसाब से ढल जाता है: conversation के बगल में (full screen, 110 columns से) हर meter दो lines लेता है; prompt के ऊपर, 122 columns से, meters एक table बन जाते हैं; और संकरे terminals में यह हर meter के लिए दो lines ही रखता है, या `compact_pane` enable करने पर **compact** हो जाता है।
+Pane उपलब्ध जगह के हिसाब से ढल जाता है: conversation के बगल में (full screen, 110 columns से) हर meter दो lines लेता है; prompt के ऊपर, 122 columns से, meters एक table बन जाते हैं; और संकरे terminals में यह हर meter के लिए दो lines ही रखता है, या `compact_pane` enable करने पर **compact** हो जाता है। Conversation के बगल में pane में titles वाले sections (`BUDGETS`, `KEY`, `LAST 7 DAYS`) दिखते हैं और हफ़्ते के हर दिन के नीचे एक letter होता है। Color कभी अकेला signal नहीं होता: `▲` उस budget को दिखाता है जो अपनी cap के क़रीब है, `✖` उसे जो पूरी तरह खर्च हो चुका है, और बिना spend वाला दिन `·` होता है, कभी छोटा bar नहीं।
 
 <p align="center">
   <img src="../evidence/help.png" alt="/litellm help" width="92%">
@@ -299,7 +299,7 @@ claude plugin test plugins/litellm-key                  # tests (they use Claude
 tsc -p plugins/litellm-key                              # types (.claude-plugin/types appears on first load)
 ```
 
-Plugin का layout: `hooks/register.tsx` events, commands, timers और toasts को जोड़ता है; `hooks/litellm.ts` credentials resolve करता है और जवाबों को पढ़कर normalize करता है; `hooks/admin*.ts` admin commands हैं (`admin.ts` proxy के reads, `admin-writes.ts` उसके writes, `admin-plan.ts` previews और plans, `admin-commands.ts` flow, `args.ts` argument parser); `hooks/exceeded.ts` और `hooks/band.tsx` over-budget banner हैं; `hooks/summary.ts` और `hooks/view.tsx` text और pane बनाते हैं; `hooks/format.ts` में pure formatters हैं; `types/index.d.ts` state contract है।
+Plugin का layout: `hooks/register.tsx` अकेली ऐसी file है जो Claude Code के `$` को छूती है; यह injected ports (`hooks/ports.ts`) बनाती है और events, commands, timers और toasts को जोड़ती है। बाक़ी सब plain functions हैं जो उन ports को लेती हैं, इसलिए वे engine boot किए बिना test में चलती हैं। `hooks/session.ts` reading cycle है (config, ticker, queue में लगा forced refresh); `hooks/credentials.ts` और `hooks/settings.ts` key और options resolve करते हैं; `hooks/litellm.ts` proxy को पढ़ता है, `hooks/parsers.ts` और `hooks/json.ts` जवाबों को normalize करते हैं और `hooks/failures.ts` बताता है कि क्या गड़बड़ हुई; `hooks/alerts.ts` तय करता है कि कौन-से toasts दिखें। `hooks/commands.ts` `/litellm` की command table है और `hooks/admin*.ts` admin commands हैं (`admin.ts` proxy के reads, `admin-targets.ts` key, user और team के lookups, `admin-writes.ts` उसके writes, `admin-plan.ts` previews और plans, `admin-link.ts` admin key का proxy से link, `admin-commands.ts` flow, `args.ts` argument parser)। `hooks/exceeded.ts` और `hooks/band.tsx` over-budget banner हैं; `hooks/summary.ts` text बनाता है, `hooks/view.tsx` और `hooks/parts.tsx` pane बनाते हैं (gauge, section titles, status chip, meter rows); `hooks/format.ts` में pure formatters हैं; `types/index.d.ts` state contract है।
 
 ## ज्ञात सीमाएँ
 

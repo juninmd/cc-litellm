@@ -6,7 +6,7 @@
   <a href="#install"><img alt="Claude Code プラグイン" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=for-the-badge"></a>
   <img alt="LiteLLM v1.99.1 検証済み" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20tested-6366f1?style=for-the-badge">
   <img alt="Claude Code 2.1.289 検証済み" src="https://img.shields.io/badge/Claude%20Code-2.1.289%20tested-0ea5e9?style=for-the-badge">
-  <img alt="217 件のテストが成功" src="https://img.shields.io/badge/tests-217%20passing-22c55e?style=for-the-badge">
+  <img alt="232 件のテストが成功" src="https://img.shields.io/badge/tests-232%20passing-22c55e?style=for-the-badge">
   <img alt="バージョン 0.3.0" src="https://img.shields.io/badge/version-0.3.0-f472b6?style=for-the-badge">
 </p>
 
@@ -153,7 +153,7 @@ Claude Code がすでに LiteLLM と通信している場合、**設定は不要
 
 🔐 = 管理者コマンド(下記を参照)。ペイン内の操作(クリック、または `ctrl+x` `tab` でフォーカス): `r` で更新、`c` でサマリーをコピー、`q` で閉じる、矢印キーでスクロール。空のプロンプトでは `Esc` でも閉じられます。
 
-ペインは利用できる幅に合わせて表示を変えます。会話の横に表示する場合(全画面、110 桁以上)は、各メーターが 2 行になります。プロンプトの上に表示する場合は、122 桁以上でメーターが表になります。それより狭いターミナルでは、メーターは 1 つあたり 2 行のままですが、`compact_pane` を有効にすると**コンパクト**表示になります。
+ペインは利用できる幅に合わせて表示を変えます。会話の横に表示する場合(全画面、110 桁以上)は、各メーターが 2 行になります。プロンプトの上に表示する場合は、122 桁以上でメーターが表になります。それより狭いターミナルでは、メーターは 1 つあたり 2 行のままですが、`compact_pane` を有効にすると**コンパクト**表示になります。会話の横に表示する場合、ペインにはタイトル付きのセクション(`BUDGETS`、`KEY`、`LAST 7 DAYS`)が付き、各曜日の下に 1 文字が表示されます。色だけが唯一の手がかりになることはありません。`▲` は上限に近い予算、`✖` は使い切った予算を示し、使用額がない日は短いバーではなく `·` で表します。
 
 <p align="center">
   <img src="../evidence/help.png" alt="/litellm help" width="92%">
@@ -299,7 +299,7 @@ claude plugin test plugins/litellm-key                  # tests (they use Claude
 tsc -p plugins/litellm-key                              # types (.claude-plugin/types appears on first load)
 ```
 
-プラグインの構成: `hooks/register.tsx` がイベント、コマンド、タイマー、トーストを結び付けます。`hooks/litellm.ts` は認証情報の解決と、応答の読み取り・正規化を担当します。`hooks/admin*.ts` は管理者コマンドです(`admin.ts` がプロキシの読み取り、`admin-writes.ts` が書き込み、`admin-plan.ts` がプレビューとプラン、`admin-commands.ts` が処理フロー、`args.ts` が引数パーサー)。`hooks/exceeded.ts` と `hooks/band.tsx` は予算超過バナーです。`hooks/summary.ts` と `hooks/view.tsx` はテキストとペインを組み立てます。`hooks/format.ts` は純粋なフォーマッタ群で、`types/index.d.ts` は状態のコントラクトです。
+プラグインの構成: `hooks/register.tsx` は Claude Code の `$` に触れる唯一のファイルで、注入されるポート(`hooks/ports.ts`)を組み立て、イベント、コマンド、タイマー、トーストを結び付けます。それ以外はすべてそのポートを受け取る単純な関数なので、エンジンを起動せずにテストで実行できます。`hooks/session.ts` は読み取りサイクル(設定、ティッカー、キューに積まれた強制更新)です。`hooks/credentials.ts` と `hooks/settings.ts` はキーとオプションを解決します。`hooks/litellm.ts` はプロキシを読み取り、`hooks/parsers.ts` と `hooks/json.ts` は応答を正規化し、`hooks/failures.ts` は何がうまくいかなかったかを名前で示します。`hooks/alerts.ts` はトーストを出すかどうかを決めます。`hooks/commands.ts` は `/litellm` のコマンドテーブルで、`hooks/admin*.ts` は管理者コマンドです(`admin.ts` がプロキシの読み取り、`admin-targets.ts` がキー、ユーザー、チームの検索、`admin-writes.ts` が書き込み、`admin-plan.ts` がプレビューとプラン、`admin-link.ts` が管理者キーとプロキシの紐付け、`admin-commands.ts` が処理フロー、`args.ts` が引数パーサー)。`hooks/exceeded.ts` と `hooks/band.tsx` は予算超過バナーです。`hooks/summary.ts` はテキストを、`hooks/view.tsx` と `hooks/parts.tsx` はペイン(ゲージ、セクションタイトル、ステータスチップ、メーター行)を組み立てます。`hooks/format.ts` は純粋なフォーマッタ群で、`types/index.d.ts` は状態のコントラクトです。
 
 ## 既知の制限
 

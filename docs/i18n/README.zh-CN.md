@@ -6,7 +6,7 @@
   <a href="#install"><img alt="Claude Code 插件" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=for-the-badge"></a>
   <img alt="LiteLLM v1.99.1" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20tested-6366f1?style=for-the-badge">
   <img alt="Claude Code 2.1.289" src="https://img.shields.io/badge/Claude%20Code-2.1.289%20tested-0ea5e9?style=for-the-badge">
-  <img alt="217 项测试通过" src="https://img.shields.io/badge/tests-217%20passing-22c55e?style=for-the-badge">
+  <img alt="232 项测试通过" src="https://img.shields.io/badge/tests-232%20passing-22c55e?style=for-the-badge">
   <img alt="版本 0.3.0" src="https://img.shields.io/badge/version-0.3.0-f472b6?style=for-the-badge">
 </p>
 
@@ -152,7 +152,7 @@
 
 🔐 = 管理员命令，见下文。在面板中（点击面板，或按 `ctrl+x` `tab` 获得焦点）：`r` 刷新，`c` 复制摘要，`q` 关闭，方向键滚动。输入框为空时，`Esc` 同样可以关闭面板。
 
-面板会随可用空间自适应：位于对话旁边时（全屏，宽度 110 列起），每个用量条占两行；位于输入框上方时，从 122 列起，用量条会变成一张表；在更窄的终端里，每个用量条仍占两行，如果启用了 `compact_pane`，则切换为**紧凑**布局。
+面板会随可用空间自适应：位于对话旁边时（全屏，宽度 110 列起），每个用量条占两行；位于输入框上方时，从 122 列起，用量条会变成一张表；在更窄的终端里，每个用量条仍占两行，如果启用了 `compact_pane`，则切换为**紧凑**布局。位于对话旁边时，面板会显示带标题的分区（`BUDGETS`、`KEY`、`LAST 7 DAYS`），并在一周每一天的下方标出一个字母。颜色从来不是唯一的信号：`▲` 表示接近上限的预算，`✖` 表示已用尽的预算，没有花费的一天显示为 `·`，而不是一根很短的条。
 
 <p align="center">
   <img src="../evidence/help.png" alt="/litellm help" width="92%">
@@ -296,7 +296,7 @@ claude plugin test plugins/litellm-key                  # tests (they use Claude
 tsc -p plugins/litellm-key                              # types (.claude-plugin/types appears on first load)
 ```
 
-插件的结构：`hooks/register.tsx` 负责把事件、命令、定时器和 toast 接起来；`hooks/litellm.ts` 负责解析凭据，并读取和规范化响应；`hooks/admin*.ts` 是管理员命令（`admin.ts` 负责对代理的读取，`admin-writes.ts` 负责写入，`admin-plan.ts` 负责预览和方案，`admin-commands.ts` 是整体流程，`args.ts` 是参数解析器）；`hooks/exceeded.ts` 和 `hooks/band.tsx` 构成超预算横幅；`hooks/summary.ts` 和 `hooks/view.tsx` 构建文本与面板；`hooks/format.ts` 放纯格式化函数；`types/index.d.ts` 是状态契约。
+插件的结构：`hooks/register.tsx` 是唯一接触 Claude Code 的 `$` 的文件；它构建注入的端口（`hooks/ports.ts`），并把事件、命令、定时器和 toast 接起来。其余全是接收这些端口的普通函数，因此无需启动引擎即可在测试中运行。`hooks/session.ts` 是读取周期（配置、ticker、排队中的强制刷新）；`hooks/credentials.ts` 和 `hooks/settings.ts` 负责解析密钥和选项；`hooks/litellm.ts` 负责读取代理，`hooks/parsers.ts` 和 `hooks/json.ts` 负责规范化响应，`hooks/failures.ts` 负责说明出了什么问题；`hooks/alerts.ts` 决定何时弹出 toast。`hooks/commands.ts` 是 `/litellm` 的命令表，`hooks/admin*.ts` 是管理员命令（`admin.ts` 负责对代理的读取，`admin-targets.ts` 负责对密钥、用户和团队的查找，`admin-writes.ts` 负责写入，`admin-plan.ts` 负责预览和方案，`admin-link.ts` 负责管理员密钥与代理的关联，`admin-commands.ts` 是整体流程，`args.ts` 是参数解析器）；`hooks/exceeded.ts` 和 `hooks/band.tsx` 构成超预算横幅；`hooks/summary.ts` 构建文本，`hooks/view.tsx` 和 `hooks/parts.tsx` 构建面板（仪表、分区标题、状态标签、用量条行）；`hooks/format.ts` 放纯格式化函数；`types/index.d.ts` 是状态契约。
 
 ## 已知限制
 

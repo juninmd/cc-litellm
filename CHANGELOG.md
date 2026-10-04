@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- **Pane redesign.** The key's status is a chip (`● active`); in the dock the pane gets titled sections (`BUDGETS`, `KEY`, `LAST 7 DAYS`) with a hairline, and labels, bars and values sit on shared columns. Bars fill in eighths of a cell over a dim track, so 0% reads as empty and 100% as full. The week has a letter under each day, and a day with no spend is `·`, never a short bar. The keys (`r`, `c`, `q`) are written out in normal strength, in the failure state too (the compact layout has no room for the line: its buttons are there, the keys are in the README).
+- **Color is never the only signal.** `▲` marks a budget that is close to its cap and `✖` one that is spent up, in every layout (compact included). The amounts, the percentage, the keys and the weekday letters are never drawn dim.
+- **Over-budget banner** is a block: a `✖ BUDGET USED UP` pill, one row per spent-up budget (name, full red bar, percentage, amounts and reset), and the way out (`/litellm grant`).
+- **Status line** carries an 8-cell gauge: `██░░░░░░ 25% of budget · $12.50 of $50.00 · resets in 6d 12h (30d)`.
+- **Internal:** the plugin is split by responsibility behind injected ports (`ports.ts`); `register.tsx` is the only file that touches `$`. No file is over 300 lines. The split changes no behavior.
+
+### Fixed
+- A key at 99.6% was drawn as spent up (red, `✖`, "100%") although the proxy still answers; red and `✖` now mean exactly what the banner means, and that key is a warning (`▲`).
+- A cap of `$0` read "no cap" in the pane and `(null%)` in the details; it is used up everywhere, as the banner already said.
+- A share above 999% showed five digits glued to the amounts; it reads `999%+`.
+
 ## 0.3.0
 
 Homologated against a real LiteLLM v1.99.1 (Postgres, virtual keys, router fallbacks) and Claude Code 2.1.289.

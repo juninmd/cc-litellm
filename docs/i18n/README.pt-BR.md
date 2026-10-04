@@ -6,7 +6,7 @@
   <a href="#install"><img alt="Plugin do Claude Code" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=for-the-badge"></a>
   <img alt="LiteLLM v1.99.1" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20tested-6366f1?style=for-the-badge">
   <img alt="Claude Code 2.1.289" src="https://img.shields.io/badge/Claude%20Code-2.1.289%20tested-0ea5e9?style=for-the-badge">
-  <img alt="217 testes passando" src="https://img.shields.io/badge/tests-217%20passing-22c55e?style=for-the-badge">
+  <img alt="232 testes passando" src="https://img.shields.io/badge/tests-232%20passing-22c55e?style=for-the-badge">
   <img alt="Versão 0.3.0" src="https://img.shields.io/badge/version-0.3.0-f472b6?style=for-the-badge">
 </p>
 
@@ -153,7 +153,7 @@ Tudo acima é a UI de admin real do LiteLLM v1.99.1 refletindo o que o plugin fe
 
 🔐 = comando de admin, veja abaixo. No painel (dê foco com um clique ou `ctrl+x` `tab`): `r` atualiza, `c` copia o resumo, `q` fecha, as setas rolam. `Esc` também o fecha com o prompt vazio.
 
-O painel se adapta ao espaço: ao lado da conversa (tela cheia, a partir de 110 colunas) cada medidor ocupa duas linhas; acima do prompt, a partir de 122 colunas, os medidores viram uma tabela; em terminais mais estreitos ele mantém duas linhas por medidor, ou fica **compacto** se você ativar `compact_pane`.
+O painel se adapta ao espaço: ao lado da conversa (tela cheia, a partir de 110 colunas) cada medidor ocupa duas linhas; acima do prompt, a partir de 122 colunas, os medidores viram uma tabela; em terminais mais estreitos ele mantém duas linhas por medidor, ou fica **compacto** se você ativar `compact_pane`. Ao lado da conversa, o painel ganha seções com título (`BUDGETS`, `KEY`, `LAST 7 DAYS`) e uma letra embaixo de cada dia da semana. A cor nunca é o único sinal: `▲` marca um orçamento perto do teto, `✖` um que estourou, e um dia sem gasto é um `·`, nunca uma barra curta.
 
 <p align="center">
   <img src="../evidence/help.png" alt="/litellm help" width="92%">
@@ -299,7 +299,7 @@ claude plugin test plugins/litellm-key                  # tests (they use Claude
 tsc -p plugins/litellm-key                              # types (.claude-plugin/types appears on first load)
 ```
 
-Estrutura do plugin: `hooks/register.tsx` liga eventos, comandos, timers e toasts; `hooks/litellm.ts` resolve credenciais e lê e normaliza as respostas; `hooks/admin*.ts` são os comandos de admin (`admin.ts` as leituras do proxy, `admin-writes.ts` as escritas, `admin-plan.ts` as prévias e os planos, `admin-commands.ts` o fluxo, `args.ts` o parser de argumentos); `hooks/exceeded.ts` e `hooks/band.tsx` são o banner de orçamento estourado; `hooks/summary.ts` e `hooks/view.tsx` montam o texto e o painel; `hooks/format.ts` tem os formatadores puros; `types/index.d.ts` é o contrato de estado.
+Estrutura do plugin: `hooks/register.tsx` é o único arquivo que toca o `$` do Claude Code; ele monta as portas injetadas (`hooks/ports.ts`) e liga eventos, comandos, timers e toasts. Todo o resto são funções simples que recebem essas portas, então rodam nos testes sem subir o motor. `hooks/session.ts` é o ciclo de leitura (configuração, ticker, atualização forçada em fila); `hooks/credentials.ts` e `hooks/settings.ts` resolvem a chave e as opções; `hooks/litellm.ts` lê o proxy, `hooks/parsers.ts` e `hooks/json.ts` normalizam as respostas e `hooks/failures.ts` dá nome ao que deu errado; `hooks/alerts.ts` decide os toasts. `hooks/commands.ts` é a tabela de comandos do `/litellm` e `hooks/admin*.ts` os comandos de admin (`admin.ts` as leituras do proxy, `admin-targets.ts` as buscas de chave, usuário e time, `admin-writes.ts` as escritas, `admin-plan.ts` as prévias e os planos, `admin-link.ts` o vínculo da chave de admin com o proxy, `admin-commands.ts` o fluxo, `args.ts` o parser de argumentos). `hooks/exceeded.ts` e `hooks/band.tsx` são o banner de orçamento estourado; `hooks/summary.ts` monta o texto, `hooks/view.tsx` e `hooks/parts.tsx` o painel (indicador, títulos de seção, chip de status, linhas de medidor); `hooks/format.ts` tem os formatadores puros; `types/index.d.ts` é o contrato de estado.
 
 ## Limites conhecidos
 
