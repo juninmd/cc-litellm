@@ -18,7 +18,7 @@ const mount = ($: Engine, props: Record<string, unknown> = {}) =>
 const spending = (spend: number) => ({ ...standardRoutes(), '/key/info': reply(200, keyBody({ spend })) })
 
 describe('how the pane looks', () => {
-  test('an empty budget reads as an empty bar: the track is dim and nothing is filled', { options: { show_related: false } }, async ($, on) => {
+  test('an empty budget reads as an empty bar: the track is dim and nothing is filled', { options: { show_related: false, show_usage: false } }, async ($, on) => {
     const { clock } = boot(on, { routes: spending(0) })
 
     await start($, clock)
@@ -132,24 +132,28 @@ describe('how the pane looks', () => {
     expect(await ui.find({ type: 'Text', text: /^Last 7 days$/ })).toBeDefined()
   })
 
-  test('the keys are written down where the buttons are, and not dim: nothing else says them', async ($, on) => {
+  test('each button names its key, because no surface draws the hotkey, and nothing else repeats them', async ($, on) => {
     const { clock } = boot(on)
 
     await start($, clock)
-    const keys = await (await mount($)).find({ type: 'Text', text: /r refresh · c copy · q close/ })
+    const ui = await mount($)
+    const buttons = await ui.findAll({ type: 'Button' })
 
-    expect(keys).toBeDefined()
-    expect(keys?.props.dimColor).toBeFalsy()
+    expect(buttons.map(button => [button.props.label, button.props.hotkey])).toEqual([
+      ['Refresh (r)', 'r'],
+      ['Copy (c)', 'c'],
+      ['Close (q)', 'q'],
+    ])
+    expect(await ui.find({ type: 'Text', text: /r refresh/ })).toBeUndefined()
   })
 
-  test('the failure state keeps its keys too, and its hint is not dim', async ($, on) => {
+  test('the failure state keeps its keys too, without Copy, and its hint is not dim', async ($, on) => {
     const { clock } = boot(on, { env: {} })
 
     await start($, clock)
     const ui = await mount($)
 
-    expect(await ui.find({ type: 'Text', text: /r refresh · q close/ })).toBeDefined()
-    expect((await ui.find({ type: 'Text', text: /r refresh · q close/ }))?.props.dimColor).toBeFalsy()
+    expect((await ui.findAll({ type: 'Button' })).map(button => button.props.label)).toEqual(['Refresh (r)', 'Close (q)'])
     const hint = await ui.find({ type: 'Text', text: /claude plugin configure litellm-key/ })
 
     expect(hint).toBeDefined()

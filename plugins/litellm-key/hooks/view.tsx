@@ -2,14 +2,16 @@ import type { RenderElement, UiPressArgument } from 'claude-code'
 
 import type { Failure, Snapshot } from '../types'
 import { clock } from './format'
+import type { Placement } from './layout'
+import { buttonsWidth, footerPlan, geometryOf, isCompactAt, modelPlan } from './layout'
 import type { Ui } from './parts'
-import { MARK_WIDTH, MeterRow, Pill, SectionTitle, tint } from './parts'
+import { MeterRow, ModelRow, Pill, SectionTitle, tint } from './parts'
 import type { Row, Tone } from './summary'
-import { facts, identity, meters, usageParts } from './summary'
+import { facts, identity, modelShares, usageParts } from './facts'
+import { meters } from './summary'
 
 export type { Ui } from './parts'
-
-export type Placement = 'dock' | 'inline'
+export type { Placement } from './layout'
 
 export type DashboardProps = {
   snapshot: Snapshot | null
@@ -27,25 +29,14 @@ export type DashboardProps = {
   onClose: () => void
 }
 
-// Body columns from which the meters sit in a table, one line each.
-const WIDE = 118
-// Fewest body columns the compact layout serves: a meter needs its label, its bar and the amounts on one line.
-const COMPACT_MIN = 70
-const COMPACT_BAR = 10
-const COMPACT_LABEL = 22
 const FACT_GAP = 3
+const LABEL = { refresh: 'Refresh (r)', copy: 'Copy (c)', close: 'Close (q)' }
 
 const SETUP = [
   'Set these under "env" in ~/.claude/settings.json:',
   '  ANTHROPIC_BASE_URL    https://your-litellm-host',
   '  ANTHROPIC_AUTH_TOKEN  <your virtual key>',
 ]
-
-// Where the compact layout can serve: inline above the prompt, where rows are scarce (the pane shrinks to its content,
-// never past what the layout spares) and the table has no room, below WIDE. Narrower than COMPACT_MIN a meter's text
-// would not fit beside its bar, so the stacked layout, with the text on a line of its own, serves better there.
-const fitsCompact = (placement: Placement, columns: number): boolean =>
-  placement === 'inline' && columns >= COMPACT_MIN && columns < WIDE
 
 const sizeOf = (row: Row): number => row.label.length + 1 + row.text.length
 
@@ -76,16 +67,17 @@ export const packFacts = (rows: readonly Row[], width: number): Row[][] => {
 export const dashboard = (ui: Ui, props: DashboardProps): RenderElement => {
   const { Box, Text, Button } = ui
   const { snapshot, failure, isLoading, now } = props
-  const isWide = props.columns >= WIDE
-  const compact = props.isCompact && fitsCompact(props.placement, props.columns)
+  const compact = isCompactAt(props.placement, props.columns, props.isCompact)
   // Titles and hairlines cost rows: only the dock, which has them to spare, gets them.
   const hasSections = !compact && props.placement === 'dock'
   const gap = compact ? 0 : 1
+  // The key sits in the label because no surface draws a hotkey itself.
+  const labels = [LABEL.refresh, ...(snapshot ? [LABEL.copy] : []), LABEL.close]
   const buttons = (
-    <Box gap={1}>
-      <Button key="refresh" label="Refresh" hotkey="r" variant="primary" onPress={props.onRefresh} />
-      {snapshot && <Button key="copy" label="Copy" hotkey="c" onPress={props.onCopy} />}
-      <Button key="close" label="Close" hotkey="q" role="dismiss" onPress={props.onClose} />
+    <Box gap={1} flexWrap="wrap">
+      <Button key="refresh" label={LABEL.refresh} hotkey="r" variant="primary" onPress={props.onRefresh} />
+      {snapshot && <Button key="copy" label={LABEL.copy} hotkey="c" onPress={props.onCopy} />}
+      <Button key="close" label={LABEL.close} hotkey="q" role="dismiss" onPress={props.onClose} />
     </Box>
   )
 
@@ -108,7 +100,6 @@ export const dashboard = (ui: Ui, props: DashboardProps): RenderElement => {
           </Box>
         )}
         <Box marginTop={gap}>{buttons}</Box>
-        <Text>r refresh · q close</Text>
       </Box>
     )
   }
@@ -116,18 +107,23 @@ export const dashboard = (ui: Ui, props: DashboardProps): RenderElement => {
   const list = meters(snapshot, now, props.warnPercent)
   const everyRow = facts(snapshot, now).filter(row => row.label !== 'Status')
   const usage = compact ? null : usageParts(snapshot)
-  const rows = everyRow.filter(row => compact || row.label !== 'Last 7 days')
-  const longest = Math.max(...list.map(item => item.label.length))
-  // Compact: marks and labels take about a quarter of the width (10 to 22 cells for the label), so the amounts keep the rest.
-  const labelWidth = compact
-    ? Math.min(COMPACT_LABEL, Math.max(10, Math.floor(props.columns * 0.27) - MARK_WIDTH), longest)
-    : Math.min(24, Math.max(8, longest, ...everyRow.map(row => row.label.length)))
-  const barWidth = isWide ? 18 : compact ? COMPACT_BAR : Math.max(8, Math.min(30, props.columns - labelWidth - 11))
+  const shares = hasSections ? modelShares(snapshot) : []
+  const rows = everyRow.filter(row => row.label !== 'Top models' && (compact || row.label !== 'Last 7 days'))
+  const { variant, labelWidth, barWidth } = geometryOf({
+    columns: props.columns,
+    placement: props.placement,
+    isCompact: props.isCompact,
+    longest: Math.max(...list.map(item => item.label.length)),
+    longestFact: Math.max(...everyRow.map(row => row.label.length)),
+  })
   const statusTone: Tone = key.status === 'active' ? 'ok' : 'error'
   const state = Pill(ui, `${key.status === 'active' ? '●' : '✗'} ${key.status}`, statusTone)
-  const variant = compact ? 'compact' : isWide ? 'table' : 'stacked'
+  const modelLayout = { labelWidth, ...modelPlan(props.columns, { variant, labelWidth, barWidth }) }
   const meterRows = list.map(meter => MeterRow(ui, meter, { variant, labelWidth, barWidth, columns: props.columns }))
   const title = (text: string) => hasSections && SectionTitle(ui, text, props.columns)
+  const updated = (isShort: boolean): string =>
+    `Updated ${clock(snapshot.fetchedAt)}${isShort ? '' : ` · every ${props.refreshSeconds}s`}${isLoading ? ' · refreshing…' : ''}`
+  const plan = footerPlan(props.columns, buttonsWidth(labels), updated(false), updated(true))
 
   return (
     <Box flexDirection="column">
@@ -207,27 +203,22 @@ export const dashboard = (ui: Ui, props: DashboardProps): RenderElement => {
               {hasSections && <Text>{usage.days}</Text>}
             </Box>
           )}
+          {shares.length > 0 && title('TOP MODELS')}
+          {shares.map(item => ModelRow(ui, item, modelLayout))}
         </Box>
       )}
       {snapshot.notes.map(note => (
         <Text>· {note}</Text>
       ))}
       {compact ? (
-        <Box marginTop={gap} gap={2}>
+        <Box marginTop={gap} gap={plan === 'column' ? 0 : 2} flexDirection={plan === 'column' ? 'column' : 'row'}>
           {buttons}
-          <Text dimColor>
-            Updated {clock(snapshot.fetchedAt)} · every {props.refreshSeconds}s{isLoading ? ' · refreshing…' : ''}
-          </Text>
+          <Text dimColor>{updated(plan === 'row-short')}</Text>
         </Box>
       ) : (
         <Box flexDirection="column" marginTop={gap}>
           {buttons}
-          <Text>
-            <Text dimColor>
-              Updated {clock(snapshot.fetchedAt)} · every {props.refreshSeconds}s{isLoading ? ' · refreshing…' : ''} ·{' '}
-            </Text>
-            <Text>r refresh · c copy · q close</Text>
-          </Text>
+          <Text dimColor>{updated(false)}</Text>
         </Box>
       )}
     </Box>

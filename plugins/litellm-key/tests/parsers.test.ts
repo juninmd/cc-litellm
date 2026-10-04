@@ -146,4 +146,19 @@ describe('related budgets, models and usage', () => {
     expect(usage?.topModels[0]?.model).toBe('claude-sonnet-4-5')
     expect(parseUsage({}, days)).toBeNull()
   })
+
+  test('usage keeps the five biggest models of the week, biggest first, and drops those that spent nothing', () => {
+    const spends: Record<string, number> = { a: 1, b: 7, c: 3, d: 6, e: 2, f: 5, g: 4, idle: 0 }
+    const body = {
+      results: [
+        {
+          date: '2026-10-03',
+          metrics: { spend: 28 },
+          breakdown: { models: Object.fromEntries(Object.entries(spends).map(([name, spend]) => [name, { metrics: { spend } }])) },
+        },
+      ],
+    }
+
+    expect(parseUsage(body, ['2026-10-03'])?.topModels.map(item => item.model)).toEqual(['b', 'd', 'f', 'g', 'c'])
+  })
 })

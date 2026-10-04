@@ -6,7 +6,8 @@
   <a href="#install"><img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=for-the-badge"></a>
   <img alt="LiteLLM v1.99.1" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20tested-6366f1?style=for-the-badge">
   <img alt="Claude Code 2.1.289" src="https://img.shields.io/badge/Claude%20Code-2.1.289%20tested-0ea5e9?style=for-the-badge">
-  <img alt="232 tests सफल" src="https://img.shields.io/badge/tests-232%20passing-22c55e?style=for-the-badge">
+  <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/juninmd/cc-litellm/ci.yml?branch=main&style=for-the-badge&label=CI">
+  <img alt="License: MIT" src="https://img.shields.io/github/license/juninmd/cc-litellm?style=for-the-badge&color=22c55e">
   <img alt="संस्करण 0.3.0" src="https://img.shields.io/badge/version-0.3.0-f472b6?style=for-the-badge">
 </p>
 
@@ -41,7 +42,7 @@
 | | | |
 | --- | --- | --- |
 | 👀 **निगरानी** | **Status line** prompt के नीचे, हमेशा दिखती है | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
-| | **`/litellm` pane** | key, team और user budgets के meters, user का **role**, limits, expiry, models, 7-day sparkline; अपने आप refresh होता है |
+| | **`/litellm` pane** | key, team और user budgets के meters, user का **role**, limits, expiry, models, 7-day sparkline, हफ़्ते के **top models** और **runway** forecast; अपने आप refresh होता है |
 | | **Toasts** | 80% (configurable), 95% और 100% पर; key की expiry नज़दीक होने पर; key के blocked या expired होने पर। हर budget window में सिर्फ़ एक बार, अलग-अलग sessions में भी |
 | | **Over-budget banner** | prompt के ऊपर एक लाल band जो **जब तक कोई budget पूरी तरह खर्च हो चुका है तब तक बना रहता है** (key, user, team, window या model) और numbers सामान्य होने पर ही हटता है |
 | 🛠️ **प्रबंधन** *(admin)* | **`/litellm key new`** | virtual key बनाएँ; secret आपके **clipboard** में जाता है, **transcript में कभी नहीं** |
@@ -151,9 +152,17 @@ Plugin एक सामान्य *401* दिखाने की बजाय
 | `/litellm grant <amount> [--key \| --user \| --team] [--set]` | Budget जोड़ता है। 🔐 |
 | `/litellm fallbacks [model]` | Router की fallback chains, चाहें तो नाम से मेल खाने वाले models के लिए। 🔐 |
 
-🔐 = admin command, नीचे देखें। Pane में (click से या `ctrl+x` `tab` से focus करें): `r` refresh करता है, `c` summary copy करता है, `q` बंद करता है, arrow keys से scroll होता है। खाली prompt पर `Esc` भी इसे बंद कर देता है।
+🔐 = admin command, नीचे देखें। Pane में (click से या `ctrl+x` `tab` से focus करें): `r` refresh करता है, `c` summary copy करता है, `q` बंद करता है, arrow keys से scroll होता है; हर button अपनी key का नाम बताता है (`Refresh (r)`, `Copy (c)`, `Close (q)`)। खाली prompt पर `Esc` भी इसे बंद कर देता है।
 
-Pane उपलब्ध जगह के हिसाब से ढल जाता है: conversation के बगल में (full screen, 110 columns से) हर meter दो lines लेता है; prompt के ऊपर, 122 columns से, meters एक table बन जाते हैं; और संकरे terminals में यह हर meter के लिए दो lines ही रखता है, या `compact_pane` enable करने पर **compact** हो जाता है। Conversation के बगल में pane में titles वाले sections (`BUDGETS`, `KEY`, `LAST 7 DAYS`) दिखते हैं और हफ़्ते के हर दिन के नीचे एक letter होता है। Color कभी अकेला signal नहीं होता: `▲` उस budget को दिखाता है जो अपनी cap के क़रीब है, `✖` उसे जो पूरी तरह खर्च हो चुका है, और बिना spend वाला दिन `·` होता है, कभी छोटा bar नहीं।
+Pane उपलब्ध जगह के हिसाब से ढल जाता है: conversation के बगल में (full screen, 110 columns से) हर meter दो lines लेता है; prompt के ऊपर, 122 columns से, meters एक table बन जाते हैं; और संकरे terminals में यह हर meter के लिए दो lines ही रखता है, या `compact_pane` enable करने पर **compact** हो जाता है। Conversation के बगल में pane में titles वाले sections (`BUDGETS`, `KEY`, `LAST 7 DAYS`, `TOP MODELS`) दिखते हैं और हफ़्ते के हर दिन के नीचे एक letter होता है; `TOP MODELS` सबसे ज़्यादा spend करने वाले पाँच models को rank करता है, हर model के साथ हफ़्ते में उसका हिस्सा एक bar के रूप में। लंबा नाम बीच से काट दिया जाता है, ताकि `claude-sonnet-4-5` और `claude-sonnet-4-6` अलग-अलग पहचाने जा सकें। Color कभी अकेला signal नहीं होता: `▲` उस budget को दिखाता है जो अपनी cap के क़रीब है, `✖` उसे जो पूरी तरह खर्च हो चुका है, और बिना spend वाला दिन `·` होता है, कभी छोटा bar नहीं।
+
+**Runway.** `Runway` row (pane में और `/litellm info` में) पिछले 7 दिनों की pace (इससे नई key के लिए कम दिन, पर एक दिन से कम कभी नहीं) की cap से तुलना करता है: `lasts until the reset at $2.18/day`, या budget के पहले ही पूरी तरह खर्च हो जाने पर `out in 2d 6h at $2.18/day · resets in 6d 12h`। Status line `out in 2d 6h at this pace` तभी जोड़ती है जब ऐसा होने वाला हो: reset से पहले, या बिना reset वाली key के लिए 3 दिनों के भीतर। बिना cap वाली key, पहले से पूरी तरह खर्च हो चुकी key, और वह key जिसका reset due हो चुका है, इन तीनों के लिए forecast नहीं दिखता।
+
+<p align="center">
+  <img src="../evidence/runway.png" alt="ऐसी key का pane जिसका budget जल्द खत्म होने वाला है: Runway row और status line चेतावनी देती हैं, और हफ़्ते को model के हिसाब से बाँटा गया है" width="92%">
+</p>
+
+<sub>`dev/mock-litellm.py --scenario warning` पर ली गई screenshot: local lab में forecast करने लायक एक हफ़्ते की history नहीं है।</sub>
 
 <p align="center">
   <img src="../evidence/help.png" alt="/litellm help" width="92%">
@@ -247,7 +256,7 @@ Plugin वही URL और key पढ़ता है जो Claude Code इस
 | `/key/info` | Alias, spend, budget और windows, reset, limits, expiry, status, models, per-model budgets। हर read पर। |
 | `/user/info`, `/team/info` | Key के user और team का budget, जब cap लगा हो। हर read पर। |
 | `/v1/models` | वे models जो वाकई allowed हैं। हर 10 मिनट में। |
-| `/user/daily/activity` | पिछले 7 दिनों का spend, requests और tokens। हर 10 मिनट में। |
+| `/user/daily/activity` | पिछले 7 दिनों का spend, requests और tokens, और model के हिसाब से spend। हर 10 मिनट में। |
 
 **Managing** तभी होता है जब आप कोई admin command टाइप करते हैं: `GET /key/list`, `/key/info`, `/user/info`, `/team/info`, `/v2/team/list`, `/router/settings`, और `POST /key/generate`, `/key/delete` (सिर्फ़ rollback के लिए), `/key/block`, `/key/unblock`, `/key/update`, `/user/update`, `/team/update`।
 
@@ -297,6 +306,7 @@ claude plugin validate .                                # marketplace
 claude plugin validate plugins/litellm-key --strict     # plugin
 claude plugin test plugins/litellm-key                  # tests (they use Claude Code's engine)
 tsc -p plugins/litellm-key                              # types (.claude-plugin/types appears on first load)
+bash dev/check-file-size.sh                             # no source file over 300 lines
 ```
 
 Plugin का layout: `hooks/register.tsx` अकेली ऐसी file है जो Claude Code के `$` को छूती है; यह injected ports (`hooks/ports.ts`) बनाती है और events, commands, timers और toasts को जोड़ती है। बाक़ी सब plain functions हैं जो उन ports को लेती हैं, इसलिए वे engine boot किए बिना test में चलती हैं। `hooks/session.ts` reading cycle है (config, ticker, queue में लगा forced refresh); `hooks/credentials.ts` और `hooks/settings.ts` key और options resolve करते हैं; `hooks/litellm.ts` proxy को पढ़ता है, `hooks/parsers.ts` और `hooks/json.ts` जवाबों को normalize करते हैं और `hooks/failures.ts` बताता है कि क्या गड़बड़ हुई; `hooks/alerts.ts` तय करता है कि कौन-से toasts दिखें। `hooks/commands.ts` `/litellm` की command table है और `hooks/admin*.ts` admin commands हैं (`admin.ts` proxy के reads, `admin-targets.ts` key, user और team के lookups, `admin-writes.ts` उसके writes, `admin-plan.ts` previews और plans, `admin-link.ts` admin key का proxy से link, `admin-commands.ts` flow, `args.ts` argument parser)। `hooks/exceeded.ts` और `hooks/band.tsx` over-budget banner हैं; `hooks/summary.ts` text बनाता है, `hooks/view.tsx` और `hooks/parts.tsx` pane बनाते हैं (gauge, section titles, status chip, meter rows); `hooks/format.ts` में pure formatters हैं; `types/index.d.ts` state contract है।
@@ -309,6 +319,10 @@ Plugin का layout: `hooks/register.tsx` अकेली ऐसी file है
 - Over-budget banner terminal और desktop surfaces पर बनता है (Claude Code band सिर्फ़ वहीं देता है); बाक़ी जगह status line और pane यही बात बताते हैं।
 - Status line से पहले का `⚠` Claude Code हर plugin status entry के लिए ख़ुद बनाता है; इसका मतलब यह नहीं कि key मुसीबत में है (यह बात text बताता है)।
 - Claude Code का plugin API early-access है और versions के बीच बदल सकता है।
+
+## लाइसेंस
+
+[MIT](../../LICENSE).
 
 ## अन्य भाषाएँ
 

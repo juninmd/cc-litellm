@@ -6,7 +6,8 @@
   <a href="#install"><img alt="Plugin Claude Code" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=for-the-badge"></a>
   <img alt="LiteLLM v1.99.1" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20tested-6366f1?style=for-the-badge">
   <img alt="Claude Code 2.1.289" src="https://img.shields.io/badge/Claude%20Code-2.1.289%20tested-0ea5e9?style=for-the-badge">
-  <img alt="232 tests réussis" src="https://img.shields.io/badge/tests-232%20passing-22c55e?style=for-the-badge">
+  <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/juninmd/cc-litellm/ci.yml?branch=main&style=for-the-badge&label=CI">
+  <img alt="License: MIT" src="https://img.shields.io/github/license/juninmd/cc-litellm?style=for-the-badge&color=22c55e">
   <img alt="Version 0.3.0" src="https://img.shields.io/badge/version-0.3.0-f472b6?style=for-the-badge">
 </p>
 
@@ -41,7 +42,7 @@ Ce dépôt est une marketplace de plugins (`cc-litellm`) qui contient un seul pl
 | | | |
 | --- | --- | --- |
 | 👀 **Surveiller** | **Barre d'état** sous le prompt, toujours visible | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
-| | **Volet `/litellm`** | jauges des budgets de la clé, de l'équipe et de l'utilisateur, **rôle** de l'utilisateur, limites, expiration, modèles, sparkline sur 7 jours ; se rafraîchit tout seul |
+| | **Volet `/litellm`** | jauges des budgets de la clé, de l'équipe et de l'utilisateur, **rôle** de l'utilisateur, limites, expiration, modèles, sparkline sur 7 jours, le **top des modèles** de la semaine et une prévision de **runway** ; se rafraîchit tout seul |
 | | **Notifications toast** | à 80 % (configurable), 95 %, 100 % ; clé sur le point d'expirer ; clé bloquée ou expirée. Une seule fois par fenêtre budgétaire, même entre les sessions |
 | | **Bannière de dépassement de budget** | un bandeau rouge au-dessus du prompt qui **reste tant qu'un budget est épuisé** (clé, utilisateur, équipe, fenêtre ou modèle) et ne disparaît que lorsque les chiffres redeviennent normaux |
 | 🛠️ **Gérer** *(admin)* | **`/litellm key new`** | créer une clé virtuelle ; le secret va dans votre **presse-papiers, jamais dans la transcription** |
@@ -151,9 +152,17 @@ Tout ce qui précède, c'est la vraie interface d'administration de LiteLLM v1.9
 | `/litellm grant <amount> [--key \| --user \| --team] [--set]` | Ajoute du budget. 🔐 |
 | `/litellm fallbacks [model]` | Chaînes de fallback du routeur, éventuellement pour les modèles correspondant à un nom. 🔐 |
 
-🔐 = commande admin, voir ci-dessous. Dans le volet (donnez-lui le focus par un clic ou `ctrl+x` `tab`) : `r` rafraîchit, `c` copie le résumé, `q` ferme, les flèches font défiler. `Esc` le ferme aussi lorsque le prompt est vide.
+🔐 = commande admin, voir ci-dessous. Dans le volet (donnez-lui le focus par un clic ou `ctrl+x` `tab`) : `r` rafraîchit, `c` copie le résumé, `q` ferme, les flèches font défiler ; chaque bouton indique sa touche (`Refresh (r)`, `Copy (c)`, `Close (q)`). `Esc` le ferme aussi lorsque le prompt est vide.
 
-Le volet s'adapte à l'espace disponible : à côté de la conversation (plein écran, à partir de 110 colonnes), chaque jauge occupe deux lignes ; au-dessus du prompt, à partir de 122 colonnes, les jauges deviennent un tableau ; dans les terminaux plus étroits, il garde deux lignes par jauge, ou devient **compact** si vous activez `compact_pane`. À côté de la conversation, le volet affiche des sections titrées (`BUDGETS`, `KEY`, `LAST 7 DAYS`) et une lettre sous chaque jour de la semaine. La couleur n'est jamais le seul signal : `▲` signale un budget proche de son plafond, `✖` un budget épuisé, et un jour sans dépense est un `·`, jamais une barre courte.
+Le volet s'adapte à l'espace disponible : à côté de la conversation (plein écran, à partir de 110 colonnes), chaque jauge occupe deux lignes ; au-dessus du prompt, à partir de 122 colonnes, les jauges deviennent un tableau ; dans les terminaux plus étroits, il garde deux lignes par jauge, ou devient **compact** si vous activez `compact_pane`. À côté de la conversation, le volet affiche des sections titrées (`BUDGETS`, `KEY`, `LAST 7 DAYS`, `TOP MODELS`) et une lettre sous chaque jour de la semaine ; `TOP MODELS` classe les cinq modèles qui ont le plus dépensé, chacun avec sa part de la semaine sous forme de barre. Un nom long est coupé au milieu, de sorte que `claude-sonnet-4-5` et `claude-sonnet-4-6` restent distincts. La couleur n'est jamais le seul signal : `▲` signale un budget proche de son plafond, `✖` un budget épuisé, et un jour sans dépense est un `·`, jamais une barre courte.
+
+**Runway.** La ligne `Runway` (dans le volet et dans `/litellm info`) compare le rythme des 7 derniers jours (moins de jours pour une clé plus récente, jamais moins d'un) au plafond : `lasts until the reset at $2.18/day`, ou `out in 2d 6h at $2.18/day · resets in 6d 12h` lorsque le budget serait épuisé avant. La barre d'état ajoute `out in 2d 6h at this pace` uniquement lorsque c'est imminent : avant la réinitialisation, ou dans les 3 jours pour une clé sans réinitialisation. Une clé sans plafond, une clé déjà épuisée et une clé dont la réinitialisation est échue ne reçoivent aucune prévision.
+
+<p align="center">
+  <img src="../evidence/runway.png" alt="Le volet d'une clé en passe d'être épuisée : la ligne Runway et la barre d'état avertissent, et la semaine est répartie par modèle" width="92%">
+</p>
+
+<sub>Capture réalisée contre `dev/mock-litellm.py --scenario warning` : le laboratoire local n'a pas une semaine d'historique sur laquelle fonder une prévision.</sub>
 
 <p align="center">
   <img src="../evidence/help.png" alt="/litellm help" width="92%">
@@ -247,7 +256,7 @@ Toutes les options sont facultatives (à l'installation, Claude Code indique qu'
 | `/key/info` | Alias, dépense, budget et fenêtres, réinitialisation, limites, expiration, statut, modèles, budgets par modèle. À chaque lecture. |
 | `/user/info`, `/team/info` | Budget de l'utilisateur et de l'équipe de la clé, lorsqu'il est plafonné. À chaque lecture. |
 | `/v1/models` | Les modèles réellement autorisés. Toutes les 10 min. |
-| `/user/daily/activity` | Dépense, requêtes et tokens des 7 derniers jours. Toutes les 10 min. |
+| `/user/daily/activity` | Dépense, requêtes et tokens des 7 derniers jours, et la dépense par modèle. Toutes les 10 min. |
 
 **Gérer** n'intervient que lorsque vous saisissez une commande admin : `GET /key/list`, `/key/info`, `/user/info`, `/team/info`, `/v2/team/list`, `/router/settings`, et `POST /key/generate`, `/key/delete` (rollback uniquement), `/key/block`, `/key/unblock`, `/key/update`, `/user/update`, `/team/update`.
 
@@ -297,6 +306,7 @@ claude plugin validate .                                # marketplace
 claude plugin validate plugins/litellm-key --strict     # plugin
 claude plugin test plugins/litellm-key                  # tests (they use Claude Code's engine)
 tsc -p plugins/litellm-key                              # types (.claude-plugin/types appears on first load)
+bash dev/check-file-size.sh                             # no source file over 300 lines
 ```
 
 Structure du plugin : `hooks/register.tsx` est le seul fichier qui touche au `$` de Claude Code ; il construit les ports injectés (`hooks/ports.ts`) et câble les événements, les commandes, les minuteurs et les toasts. Tout le reste est constitué de fonctions simples qui reçoivent ces ports, ce qui leur permet de s'exécuter en test sans démarrer le moteur. `hooks/session.ts` est le cycle de lecture (configuration, ticker, rafraîchissement forcé mis en file d'attente) ; `hooks/credentials.ts` et `hooks/settings.ts` résolvent la clé et les options ; `hooks/litellm.ts` lit le proxy, `hooks/parsers.ts` et `hooks/json.ts` normalisent les réponses et `hooks/failures.ts` nomme ce qui a mal tourné ; `hooks/alerts.ts` décide des toasts. `hooks/commands.ts` est la table des commandes `/litellm` et `hooks/admin*.ts` les commandes admin (`admin.ts` pour les lectures du proxy, `admin-targets.ts` pour les recherches de clé, d'utilisateur et d'équipe, `admin-writes.ts` pour ses écritures, `admin-plan.ts` pour les aperçus et les plans, `admin-link.ts` pour le lien de la clé admin avec le proxy, `admin-commands.ts` pour le flux, `args.ts` pour l'analyseur d'arguments). `hooks/exceeded.ts` et `hooks/band.tsx` forment la bannière de dépassement de budget ; `hooks/summary.ts` construit le texte, `hooks/view.tsx` et `hooks/parts.tsx` le volet (cadran, titres de section, pastille d'état, lignes de jauge) ; `hooks/format.ts` contient les formateurs purs ; `types/index.d.ts` est le contrat d'état.
@@ -309,6 +319,10 @@ Structure du plugin : `hooks/register.tsx` est le seul fichier qui touche au `$`
 - La bannière de dépassement de budget s'affiche sur les surfaces terminal et bureau (Claude Code n'y propose le bandeau que là) ; ailleurs, la barre d'état et le volet le signalent.
 - Le `⚠` devant la barre d'état est dessiné par Claude Code pour chaque entrée d'état de plugin ; il ne signifie pas que la clé a un problème (c'est le texte qui le dit).
 - L'API de plugins de Claude Code est en accès anticipé et peut changer d'une version à l'autre.
+
+## Licence
+
+[MIT](../../LICENSE).
 
 ## Autres langues
 

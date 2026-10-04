@@ -6,7 +6,8 @@
   <a href="#install"><img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=for-the-badge"></a>
   <img alt="LiteLLM v1.99.1" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20tested-6366f1?style=for-the-badge">
   <img alt="Claude Code 2.1.289" src="https://img.shields.io/badge/Claude%20Code-2.1.289%20tested-0ea5e9?style=for-the-badge">
-  <img alt="232 tests passing" src="https://img.shields.io/badge/tests-232%20passing-22c55e?style=for-the-badge">
+  <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/juninmd/cc-litellm/ci.yml?branch=main&style=for-the-badge&label=CI">
+  <img alt="License: MIT" src="https://img.shields.io/github/license/juninmd/cc-litellm?style=for-the-badge&color=22c55e">
   <img alt="Version 0.3.0" src="https://img.shields.io/badge/version-0.3.0-f472b6?style=for-the-badge">
 </p>
 
@@ -39,7 +40,7 @@ This repository is a plugin marketplace (`cc-litellm`) with one plugin: [`litell
 | | | |
 | --- | --- | --- |
 | 👀 **Watch** | **Status line** under the prompt, always visible | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
-| | **`/litellm` pane** | meters for key, team and user budgets, the user's **role**, limits, expiry, models, 7-day sparkline; refreshes itself |
+| | **`/litellm` pane** | meters for key, team and user budgets, the user's **role**, limits, expiry, models, 7-day sparkline, **top models** of the week, and a **runway** forecast; refreshes itself |
 | | **Toasts** | at 80% (configurable), 95%, 100%; key about to expire; key blocked or expired. Once per budget window, even across sessions |
 | | **Over-budget banner** | a red band above the prompt that **stays for as long as a budget is spent up** (key, user, team, window or model) and leaves only when the numbers are normal again |
 | 🛠️ **Manage** *(admin)* | **`/litellm key new`** | create a virtual key; the secret goes to your **clipboard, never the transcript** |
@@ -147,9 +148,17 @@ Everything above is the real LiteLLM v1.99.1 admin UI reflecting what the plugin
 | `/litellm grant <amount> [--key \| --user \| --team] [--set]` | Add budget. 🔐 |
 | `/litellm fallbacks [model]` | Router fallback chains, optionally for models matching a name. 🔐 |
 
-🔐 = admin command, see below. In the pane (focus it with a click or `ctrl+x` `tab`): `r` refreshes, `c` copies the summary, `q` closes, arrows scroll. `Esc` also closes it on an empty prompt.
+🔐 = admin command, see below. In the pane (focus it with a click or `ctrl+x` `tab`): `r` refreshes, `c` copies the summary, `q` closes, arrows scroll; each button names its key (`Refresh (r)`, `Copy (c)`, `Close (q)`). `Esc` also closes it on an empty prompt.
 
-The pane adapts to the space: beside the conversation (full screen, from 110 columns) each meter takes two lines; above the prompt, from 122 columns, the meters become a table; in narrower terminals it keeps two lines per meter, or turns **compact** if you enable `compact_pane`. Beside the conversation the pane gets titled sections (`BUDGETS`, `KEY`, `LAST 7 DAYS`) and a letter under each day of the week. Color is never the only signal: `▲` marks a budget that is close to its cap, `✖` one that is spent up, and a day with no spend is a `·`, never a short bar.
+The pane adapts to the space: beside the conversation (full screen, from 110 columns) each meter takes two lines; above the prompt, from 122 columns, the meters become a table; in narrower terminals it keeps two lines per meter, or turns **compact** if you enable `compact_pane`. Beside the conversation the pane gets titled sections (`BUDGETS`, `KEY`, `LAST 7 DAYS`, `TOP MODELS`) and a letter under each day of the week; `TOP MODELS` ranks the five models that spent most, each with its share of the week as a bar. A long name is cut in the middle, so `claude-sonnet-4-5` and `claude-sonnet-4-6` stay apart. Color is never the only signal: `▲` marks a budget that is close to its cap, `✖` one that is spent up, and a day with no spend is a `·`, never a short bar.
+
+**Runway.** The `Runway` row (in the pane and in `/litellm info`) sets the pace of the last 7 days (fewer for a key younger than that, never fewer than one) against the cap: `lasts until the reset at $2.18/day`, or `out in 2d 6h at $2.18/day · resets in 6d 12h` when the budget would run out first. The status line adds `out in 2d 6h at this pace` only when that is coming: before the reset, or within 3 days for a key with no reset. A key with no cap, one already spent up, and one whose reset is due get no forecast.
+
+<p align="center">
+  <img src="docs/evidence/runway.png" alt="The pane for a key on course to run out: the Runway row and the status line warn, and the week is split by model" width="92%">
+</p>
+
+<sub>Shot against `dev/mock-litellm.py --scenario warning`: the local lab has no week of history to forecast from.</sub>
 
 <p align="center">
   <img src="docs/evidence/help.png" alt="/litellm help" width="92%">
@@ -239,7 +248,7 @@ All options are optional (Claude Code says at install that they are "not set"; t
 | `/key/info` | Alias, spend, budget and windows, reset, limits, expiry, status, models, per-model budgets. Every read. |
 | `/user/info`, `/team/info` | Budget of the key's user and team, when capped. Every read. |
 | `/v1/models` | The models actually allowed. Every 10 min. |
-| `/user/daily/activity` | Spend, requests and tokens of the last 7 days. Every 10 min. |
+| `/user/daily/activity` | Spend, requests and tokens of the last 7 days, and the spend per model. Every 10 min. |
 
 **Managing** only happens when you type an admin command: `GET /key/list`, `/key/info`, `/user/info`, `/team/info`, `/v2/team/list`, `/router/settings`, and `POST /key/generate`, `/key/delete` (rollback only), `/key/block`, `/key/unblock`, `/key/update`, `/user/update`, `/team/update`.
 
@@ -289,6 +298,7 @@ claude plugin validate .                                # marketplace
 claude plugin validate plugins/litellm-key --strict     # plugin
 claude plugin test plugins/litellm-key                  # tests (they use Claude Code's engine)
 tsc -p plugins/litellm-key                              # types (.claude-plugin/types appears on first load)
+bash dev/check-file-size.sh                             # no source file over 300 lines
 ```
 
 Layout of the plugin: `hooks/register.tsx` is the only file that touches Claude Code's `$`; it builds the injected ports (`hooks/ports.ts`) and wires events, commands, timers and toasts. Everything else is plain functions that take those ports, so it runs under test without booting the engine. `hooks/session.ts` is the reading cycle (config, ticker, queued forced refresh); `hooks/credentials.ts` and `hooks/settings.ts` resolve the key and the options; `hooks/litellm.ts` reads the proxy, `hooks/parsers.ts` and `hooks/json.ts` normalize the answers and `hooks/failures.ts` names what went wrong; `hooks/alerts.ts` decides the toasts. `hooks/commands.ts` is the `/litellm` command table and `hooks/admin*.ts` the admin commands (`admin.ts` the proxy reads, `admin-targets.ts` the key, user and team lookups, `admin-writes.ts` its writes, `admin-plan.ts` the previews and plans, `admin-link.ts` the admin key's link to the proxy, `admin-commands.ts` the flow, `args.ts` the argument parser). `hooks/exceeded.ts` and `hooks/band.tsx` are the over-budget banner; `hooks/summary.ts` builds the text, `hooks/view.tsx` and `hooks/parts.tsx` the pane (gauge, section titles, status chip, meter rows); `hooks/format.ts` has the pure formatters; `types/index.d.ts` is the state contract.
@@ -301,6 +311,10 @@ Layout of the plugin: `hooks/register.tsx` is the only file that touches Claude 
 - The over-budget banner is drawn on the terminal and desktop surfaces (Claude Code only offers the band there); on others, the status line and the pane say it.
 - The `⚠` before the status line is drawn by Claude Code for every plugin status entry; it does not mean the key is in trouble (the text does).
 - The plugin API of Claude Code is early-access and may change between versions.
+
+## License
+
+[MIT](LICENSE).
 
 ## Other languages
 

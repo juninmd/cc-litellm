@@ -1,6 +1,8 @@
 import type { Elements } from 'claude-code'
 
-import { gauge, truncate, usedShare } from './format'
+import { gauge, money, rule, truncateMiddle, usedShare } from './format'
+import type { Variant } from './layout'
+import { MARK_WIDTH, readingWidth } from './layout'
 import type { Meter, Tone } from './summary'
 
 export type Ui = Pick<Elements['terminal'], 'Box' | 'Text' | 'Button'>
@@ -15,12 +17,8 @@ export const barTint = (tone: Tone): Tint => (tone === 'ok' ? { color: 'success'
 
 /** Color is never the only signal: a mark sits beside every number that is not fine. */
 const MARK: Record<Tone, string> = { ok: ' ', warn: '▲', error: '✖' }
-/** The mark's column, and the room every layout leaves for it. */
-export const MARK_WIDTH = 2
 // Past this the share reads "999%+": the column is four cells wide, and a fifth would touch the amounts.
 const SHARE_MAX = 999
-// Bar, a gap, the share (four cells, five for "999%+"), and a gap before the amounts.
-const readingWidth = (barWidth: number): number => barWidth + 7
 
 /** The bar: the filled part in the tone's color, the track dim, so 0% reads as empty and 100% as full. */
 const Gauge = ({ Box, Text }: Ui, fraction: number, width: number, tone: Tone) => {
@@ -50,7 +48,7 @@ export const Pill = ({ Text }: Ui, text: string, tone: Tone) => (
 )
 
 export type MeterLayout = {
-  variant: 'table' | 'stacked' | 'compact'
+  variant: Variant
   labelWidth: number
   barWidth: number
   columns: number
@@ -63,7 +61,7 @@ export const MeterRow = (ui: Ui, meter: Meter, layout: MeterLayout) => {
   const pct = usedShare(meter.used, meter.limit)
   const label = (
     <Box width={labelWidth + 1} flexShrink={0}>
-      <Text bold>{truncate(meter.label, labelWidth)}</Text>
+      <Text bold>{truncateMiddle(meter.label, labelWidth)}</Text>
     </Box>
   )
   const mark = (
@@ -121,6 +119,58 @@ export const MeterRow = (ui: Ui, meter: Meter, layout: MeterLayout) => {
       <Box paddingLeft={2}>
         <Text {...tint(meter.tone)}>{meter.detail}</Text>
       </Box>
+    </Box>
+  )
+}
+
+export type ModelShare = { model: string; spend: number; share: number }
+
+/** A share bar: slim, in the default color (it compares parts, it does not judge them), over a dim track. */
+const Rule = ({ Box, Text }: Ui, fraction: number, width: number) => {
+  const { full, track } = rule(fraction, width)
+
+  return (
+    <Box flexShrink={0}>
+      {full !== '' && <Text>{full}</Text>}
+      {track !== '' && <Text dimColor>{track}</Text>}
+    </Box>
+  )
+}
+
+/** A model's week: name, a share bar, the share, and the amount. */
+export const ModelRow = (
+  ui: Ui,
+  item: ModelShare,
+  layout: { labelWidth: number; barWidth: number; isOneLine: boolean },
+) => {
+  const { Box, Text } = ui
+  const amount = <Text bold>{money(item.spend)}</Text>
+  const head = (
+    <Box>
+      <Box width={MARK_WIDTH} flexShrink={0}>
+        <Text> </Text>
+      </Box>
+      <Box width={layout.labelWidth + 1} flexShrink={0}>
+        <Text bold>{truncateMiddle(item.model, layout.labelWidth)}</Text>
+      </Box>
+      <Box gap={1} flexShrink={0}>
+        {Rule(ui, item.share / 100, layout.barWidth)}
+        <Text bold>{`${item.share}%`.padStart(4)}</Text>
+      </Box>
+      {layout.isOneLine && (
+        <Box paddingLeft={1} flexShrink={0}>
+          {amount}
+        </Box>
+      )}
+    </Box>
+  )
+
+  return layout.isOneLine ? (
+    head
+  ) : (
+    <Box flexDirection="column">
+      {head}
+      <Box paddingLeft={MARK_WIDTH}>{amount}</Box>
     </Box>
   )
 }

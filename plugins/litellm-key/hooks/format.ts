@@ -62,6 +62,14 @@ export const gauge = (fraction: number, width: number): { full: string; track: s
   return { full, track: '░'.repeat(width - whole - (part > 0 ? 1 : 0)) }
 }
 
+/** A slim bar in whole cells, low in the cell, so rows stacked on each other stay apart. Any share above zero gets a cell. */
+export const rule = (fraction: number, width: number): { full: string; track: string } => {
+  const clamped = Number.isFinite(fraction) ? Math.min(1, Math.max(0, fraction)) : 0
+  const cells = clamped > 0 ? Math.min(width, Math.max(1, Math.round(clamped * width))) : 0
+
+  return { full: '▄'.repeat(cells), track: '▁'.repeat(width - cells) }
+}
+
 /** One block per value, scaled to the biggest; a day with nothing is a dot, so "none" never looks like "a little". */
 export const sparkline = (values: readonly number[]): string => {
   const max = Math.max(0, ...values)
@@ -136,6 +144,21 @@ export const redact = (text: string, secrets: readonly string[] = []): string =>
 
 export const truncate = (text: string, max: number): string =>
   text.length <= max ? text : `${text.slice(0, Math.max(0, max - 1))}…`
+
+/** Cuts from the middle, so names that differ at the end (claude-sonnet-4-5, claude-sonnet-4-6) stay apart. */
+export const truncateMiddle = (text: string, max: number): string => {
+  if (text.length <= max) {
+    return text
+  }
+  if (max <= 1) {
+    return max === 1 ? '…' : ''
+  }
+  const room = max - 1
+  const head = Math.ceil(room / 2)
+  const tail = room - head
+
+  return `${text.slice(0, head)}…${tail > 0 ? text.slice(-tail) : ''}`
+}
 
 export const plural = (count: number, word: string): string =>
   `${count} ${word}${count === 1 ? '' : 's'}`

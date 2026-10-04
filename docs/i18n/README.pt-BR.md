@@ -6,7 +6,8 @@
   <a href="#install"><img alt="Plugin do Claude Code" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=for-the-badge"></a>
   <img alt="LiteLLM v1.99.1" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20tested-6366f1?style=for-the-badge">
   <img alt="Claude Code 2.1.289" src="https://img.shields.io/badge/Claude%20Code-2.1.289%20tested-0ea5e9?style=for-the-badge">
-  <img alt="232 testes passando" src="https://img.shields.io/badge/tests-232%20passing-22c55e?style=for-the-badge">
+  <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/juninmd/cc-litellm/ci.yml?branch=main&style=for-the-badge&label=CI">
+  <img alt="License: MIT" src="https://img.shields.io/github/license/juninmd/cc-litellm?style=for-the-badge&color=22c55e">
   <img alt="Versão 0.3.0" src="https://img.shields.io/badge/version-0.3.0-f472b6?style=for-the-badge">
 </p>
 
@@ -41,7 +42,7 @@ Este repositório é um marketplace de plugins (`cc-litellm`) com um único plug
 | | | |
 | --- | --- | --- |
 | 👀 **Acompanhar** | **Linha de status** abaixo do prompt, sempre visível | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
-| | **Painel `/litellm`** | medidores dos orçamentos de chave, time e usuário, o **role** do usuário, limites, validade, modelos, sparkline dos 7 dias; atualiza sozinho |
+| | **Painel `/litellm`** | medidores dos orçamentos de chave, time e usuário, o **role** do usuário, limites, validade, modelos, sparkline dos 7 dias, os **modelos que mais gastaram** na semana e uma previsão de **runway**; atualiza sozinho |
 | | **Toasts** | aos 80% (configurável), 95% e 100%; chave prestes a expirar; chave bloqueada ou expirada. Uma vez por janela de orçamento, mesmo entre sessões |
 | | **Banner de orçamento estourado** | uma faixa vermelha acima do prompt que **permanece enquanto algum orçamento estiver estourado** (chave, usuário, time, janela ou modelo) e só some quando os números voltam ao normal |
 | 🛠️ **Gerenciar** *(admin)* | **`/litellm key new`** | cria uma chave virtual; o segredo vai para a sua **área de transferência, nunca para o histórico da conversa** |
@@ -151,9 +152,17 @@ Tudo acima é a UI de admin real do LiteLLM v1.99.1 refletindo o que o plugin fe
 | `/litellm grant <amount> [--key \| --user \| --team] [--set]` | Adiciona orçamento. 🔐 |
 | `/litellm fallbacks [model]` | Cadeias de fallback do router, opcionalmente só dos modelos que casam com um nome. 🔐 |
 
-🔐 = comando de admin, veja abaixo. No painel (dê foco com um clique ou `ctrl+x` `tab`): `r` atualiza, `c` copia o resumo, `q` fecha, as setas rolam. `Esc` também o fecha com o prompt vazio.
+🔐 = comando de admin, veja abaixo. No painel (dê foco com um clique ou `ctrl+x` `tab`): `r` atualiza, `c` copia o resumo, `q` fecha, as setas rolam; cada botão mostra a sua tecla (`Refresh (r)`, `Copy (c)`, `Close (q)`). `Esc` também o fecha com o prompt vazio.
 
-O painel se adapta ao espaço: ao lado da conversa (tela cheia, a partir de 110 colunas) cada medidor ocupa duas linhas; acima do prompt, a partir de 122 colunas, os medidores viram uma tabela; em terminais mais estreitos ele mantém duas linhas por medidor, ou fica **compacto** se você ativar `compact_pane`. Ao lado da conversa, o painel ganha seções com título (`BUDGETS`, `KEY`, `LAST 7 DAYS`) e uma letra embaixo de cada dia da semana. A cor nunca é o único sinal: `▲` marca um orçamento perto do teto, `✖` um que estourou, e um dia sem gasto é um `·`, nunca uma barra curta.
+O painel se adapta ao espaço: ao lado da conversa (tela cheia, a partir de 110 colunas) cada medidor ocupa duas linhas; acima do prompt, a partir de 122 colunas, os medidores viram uma tabela; em terminais mais estreitos ele mantém duas linhas por medidor, ou fica **compacto** se você ativar `compact_pane`. Ao lado da conversa, o painel ganha seções com título (`BUDGETS`, `KEY`, `LAST 7 DAYS`, `TOP MODELS`) e uma letra embaixo de cada dia da semana; `TOP MODELS` ordena os cinco modelos que mais gastaram, cada um com a sua parte da semana em uma barra. Um nome longo é cortado no meio, para que `claude-sonnet-4-5` e `claude-sonnet-4-6` continuem distintos. A cor nunca é o único sinal: `▲` marca um orçamento perto do teto, `✖` um que estourou, e um dia sem gasto é um `·`, nunca uma barra curta.
+
+**Runway.** A linha `Runway` (no painel e em `/litellm info`) compara o ritmo dos últimos 7 dias (menos dias para uma chave mais nova que isso, nunca menos de um) com o teto: `lasts until the reset at $2.18/day`, ou `out in 2d 6h at $2.18/day · resets in 6d 12h` quando o orçamento acabaria antes. A linha de status acrescenta `out in 2d 6h at this pace` só quando isso está por vir: antes do reset, ou em até 3 dias para uma chave sem reset. Uma chave sem teto, uma que já estourou e uma cujo reset está vencido não recebem previsão.
+
+<p align="center">
+  <img src="../evidence/runway.png" alt="O painel de uma chave a caminho de esgotar: a linha Runway e a linha de status avisam, e a semana aparece dividida por modelo" width="92%">
+</p>
+
+<sub>Captura feita contra `dev/mock-litellm.py --scenario warning`: o laboratório local não tem uma semana de histórico em que basear a previsão.</sub>
 
 <p align="center">
   <img src="../evidence/help.png" alt="/litellm help" width="92%">
@@ -247,7 +256,7 @@ Todas as opções são opcionais (o Claude Code avisa na instalação que elas e
 | `/key/info` | Alias, gasto, orçamento e janelas, reset, limites, validade, status, modelos, orçamentos por modelo. A cada leitura. |
 | `/user/info`, `/team/info` | Orçamento do usuário e do time da chave, quando há limite. A cada leitura. |
 | `/v1/models` | Os modelos realmente permitidos. A cada 10 min. |
-| `/user/daily/activity` | Gasto, requisições e tokens dos últimos 7 dias. A cada 10 min. |
+| `/user/daily/activity` | Gasto, requisições e tokens dos últimos 7 dias, e o gasto por modelo. A cada 10 min. |
 
 **Gerenciar** só acontece quando você digita um comando de admin: `GET /key/list`, `/key/info`, `/user/info`, `/team/info`, `/v2/team/list`, `/router/settings`, e `POST /key/generate`, `/key/delete` (somente rollback), `/key/block`, `/key/unblock`, `/key/update`, `/user/update`, `/team/update`.
 
@@ -297,6 +306,7 @@ claude plugin validate .                                # marketplace
 claude plugin validate plugins/litellm-key --strict     # plugin
 claude plugin test plugins/litellm-key                  # tests (they use Claude Code's engine)
 tsc -p plugins/litellm-key                              # types (.claude-plugin/types appears on first load)
+bash dev/check-file-size.sh                             # no source file over 300 lines
 ```
 
 Estrutura do plugin: `hooks/register.tsx` é o único arquivo que toca o `$` do Claude Code; ele monta as portas injetadas (`hooks/ports.ts`) e liga eventos, comandos, timers e toasts. Todo o resto são funções simples que recebem essas portas, então rodam nos testes sem subir o motor. `hooks/session.ts` é o ciclo de leitura (configuração, ticker, atualização forçada em fila); `hooks/credentials.ts` e `hooks/settings.ts` resolvem a chave e as opções; `hooks/litellm.ts` lê o proxy, `hooks/parsers.ts` e `hooks/json.ts` normalizam as respostas e `hooks/failures.ts` dá nome ao que deu errado; `hooks/alerts.ts` decide os toasts. `hooks/commands.ts` é a tabela de comandos do `/litellm` e `hooks/admin*.ts` os comandos de admin (`admin.ts` as leituras do proxy, `admin-targets.ts` as buscas de chave, usuário e time, `admin-writes.ts` as escritas, `admin-plan.ts` as prévias e os planos, `admin-link.ts` o vínculo da chave de admin com o proxy, `admin-commands.ts` o fluxo, `args.ts` o parser de argumentos). `hooks/exceeded.ts` e `hooks/band.tsx` são o banner de orçamento estourado; `hooks/summary.ts` monta o texto, `hooks/view.tsx` e `hooks/parts.tsx` o painel (indicador, títulos de seção, chip de status, linhas de medidor); `hooks/format.ts` tem os formatadores puros; `types/index.d.ts` é o contrato de estado.
@@ -309,6 +319,10 @@ Estrutura do plugin: `hooks/register.tsx` é o único arquivo que toca o `$` do 
 - O banner de orçamento estourado é desenhado nas superfícies de terminal e desktop (o Claude Code só oferece a faixa nelas); nas demais, a linha de status e o painel avisam.
 - O `⚠` antes da linha de status é desenhado pelo Claude Code em toda entrada de status de plugin; ele não significa que a chave tem problema (o texto é que diz).
 - A API de plugins do Claude Code é de acesso antecipado e pode mudar entre versões.
+
+## Licença
+
+[MIT](../../LICENSE).
 
 ## Outros idiomas
 

@@ -6,7 +6,8 @@
   <a href="#install"><img alt="Claude Code プラグイン" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=for-the-badge"></a>
   <img alt="LiteLLM v1.99.1 検証済み" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20tested-6366f1?style=for-the-badge">
   <img alt="Claude Code 2.1.289 検証済み" src="https://img.shields.io/badge/Claude%20Code-2.1.289%20tested-0ea5e9?style=for-the-badge">
-  <img alt="232 件のテストが成功" src="https://img.shields.io/badge/tests-232%20passing-22c55e?style=for-the-badge">
+  <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/juninmd/cc-litellm/ci.yml?branch=main&style=for-the-badge&label=CI">
+  <img alt="License: MIT" src="https://img.shields.io/github/license/juninmd/cc-litellm?style=for-the-badge&color=22c55e">
   <img alt="バージョン 0.3.0" src="https://img.shields.io/badge/version-0.3.0-f472b6?style=for-the-badge">
 </p>
 
@@ -41,7 +42,7 @@
 | | | |
 | --- | --- | --- |
 | 👀 **監視** | **ステータスライン**: プロンプトの下に常時表示 | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
-| | **`/litellm` ペイン** | キー、チーム、ユーザーの予算メーター、ユーザーの**ロール**、制限、有効期限、モデル、7 日間のスパークライン。自動で更新 |
+| | **`/litellm` ペイン** | キー、チーム、ユーザーの予算メーター、ユーザーの**ロール**、制限、有効期限、モデル、7 日間のスパークライン、週の**上位モデル**、**Runway** の予測。自動で更新 |
 | | **トースト** | 予算が 80%(変更可)、95%、100% に達したとき、キーの期限切れが近いとき、キーがブロックまたは期限切れになったとき。予算ウィンドウごとに 1 回のみで、セッションをまたいでも重複しない |
 | | **予算超過バナー** | プロンプトの上に出る赤い帯。予算(キー、ユーザー、チーム、ウィンドウ、モデル)を使い切っている間は**表示され続け**、数値が正常に戻ったときだけ消える |
 | 🛠️ **管理** *(管理者)* | **`/litellm key new`** | 仮想キーを作成。シークレットは**クリップボードに入り、トランスクリプトには残らない** |
@@ -151,9 +152,17 @@ Claude Code がすでに LiteLLM と通信している場合、**設定は不要
 | `/litellm grant <amount> [--key \| --user \| --team] [--set]` | 予算を追加する。🔐 |
 | `/litellm fallbacks [model]` | ルーターのフォールバックチェーン。名前に一致するモデルに絞ることもできる。🔐 |
 
-🔐 = 管理者コマンド(下記を参照)。ペイン内の操作(クリック、または `ctrl+x` `tab` でフォーカス): `r` で更新、`c` でサマリーをコピー、`q` で閉じる、矢印キーでスクロール。空のプロンプトでは `Esc` でも閉じられます。
+🔐 = 管理者コマンド(下記を参照)。ペイン内の操作(クリック、または `ctrl+x` `tab` でフォーカス): `r` で更新、`c` でサマリーをコピー、`q` で閉じる、矢印キーでスクロール。各ボタンには対応するキーが併記されます(`Refresh (r)`、`Copy (c)`、`Close (q)`)。空のプロンプトでは `Esc` でも閉じられます。
 
-ペインは利用できる幅に合わせて表示を変えます。会話の横に表示する場合(全画面、110 桁以上)は、各メーターが 2 行になります。プロンプトの上に表示する場合は、122 桁以上でメーターが表になります。それより狭いターミナルでは、メーターは 1 つあたり 2 行のままですが、`compact_pane` を有効にすると**コンパクト**表示になります。会話の横に表示する場合、ペインにはタイトル付きのセクション(`BUDGETS`、`KEY`、`LAST 7 DAYS`)が付き、各曜日の下に 1 文字が表示されます。色だけが唯一の手がかりになることはありません。`▲` は上限に近い予算、`✖` は使い切った予算を示し、使用額がない日は短いバーではなく `·` で表します。
+ペインは利用できる幅に合わせて表示を変えます。会話の横に表示する場合(全画面、110 桁以上)は、各メーターが 2 行になります。プロンプトの上に表示する場合は、122 桁以上でメーターが表になります。それより狭いターミナルでは、メーターは 1 つあたり 2 行のままですが、`compact_pane` を有効にすると**コンパクト**表示になります。会話の横に表示する場合、ペインにはタイトル付きのセクション(`BUDGETS`、`KEY`、`LAST 7 DAYS`、`TOP MODELS`)が付き、各曜日の下に 1 文字が表示されます。`TOP MODELS` では、使用額の多い上位 5 モデルを、週の使用額に占める割合のバーとともに並べます。長い名前は中央で切り詰められるため、`claude-sonnet-4-5` と `claude-sonnet-4-6` は区別できます。色だけが唯一の手がかりになることはありません。`▲` は上限に近い予算、`✖` は使い切った予算を示し、使用額がない日は短いバーではなく `·` で表します。
+
+**Runway.** `Runway` 行(ペインと `/litellm info` に表示)は、直近 7 日間の使用ペース(それより新しいキーでは日数が少なくなり、最小は 1 日)を上限と比べます。予算がリセットまで持つなら `lasts until the reset at $2.18/day`、先に尽きる場合は `out in 2d 6h at $2.18/day · resets in 6d 12h` と表示されます。ステータスラインが `out in 2d 6h at this pace` を加えるのは、その事態が迫っているときだけです。リセット前に尽きる場合、またはリセットのないキーでは 3 日以内に尽きる場合です。上限のないキー、すでに使い切ったキー、リセット日を過ぎたキーには予測が表示されません。
+
+<p align="center">
+  <img src="../evidence/runway.png" alt="使い切りそうなキーのペイン: Runway 行とステータスラインが警告し、1 週間の支出がモデル別に分かれている" width="92%">
+</p>
+
+<sub>`dev/mock-litellm.py --scenario warning` に対して撮影: ローカルのラボには、予測の基になる 1 週間分の履歴がありません。</sub>
 
 <p align="center">
   <img src="../evidence/help.png" alt="/litellm help" width="92%">
@@ -247,7 +256,7 @@ URL がパススルーのルート(`/anthropic`、`/bedrock`、`/v1` など)で�
 | `/key/info` | エイリアス、使用額、予算とウィンドウ、リセット、制限、有効期限、ステータス、モデル、モデル別の予算。読み取りのたびに取得。 |
 | `/user/info`、`/team/info` | キーのユーザーとチームの予算(上限がある場合)。読み取りのたびに取得。 |
 | `/v1/models` | 実際に許可されているモデル。10 分ごと。 |
-| `/user/daily/activity` | 直近 7 日間の使用額、リクエスト数、トークン数。10 分ごと。 |
+| `/user/daily/activity` | 直近 7 日間の使用額、リクエスト数、トークン数、およびモデル別の使用額。10 分ごと。 |
 
 **管理**は、管理者コマンドを入力したときにだけ行われます: `GET /key/list`、`/key/info`、`/user/info`、`/team/info`、`/v2/team/list`、`/router/settings`、および `POST /key/generate`、`/key/delete`(ロールバック時のみ)、`/key/block`、`/key/unblock`、`/key/update`、`/user/update`、`/team/update`。
 
@@ -297,6 +306,7 @@ claude plugin validate .                                # marketplace
 claude plugin validate plugins/litellm-key --strict     # plugin
 claude plugin test plugins/litellm-key                  # tests (they use Claude Code's engine)
 tsc -p plugins/litellm-key                              # types (.claude-plugin/types appears on first load)
+bash dev/check-file-size.sh                             # no source file over 300 lines
 ```
 
 プラグインの構成: `hooks/register.tsx` は Claude Code の `$` に触れる唯一のファイルで、注入されるポート(`hooks/ports.ts`)を組み立て、イベント、コマンド、タイマー、トーストを結び付けます。それ以外はすべてそのポートを受け取る単純な関数なので、エンジンを起動せずにテストで実行できます。`hooks/session.ts` は読み取りサイクル(設定、ティッカー、キューに積まれた強制更新)です。`hooks/credentials.ts` と `hooks/settings.ts` はキーとオプションを解決します。`hooks/litellm.ts` はプロキシを読み取り、`hooks/parsers.ts` と `hooks/json.ts` は応答を正規化し、`hooks/failures.ts` は何がうまくいかなかったかを名前で示します。`hooks/alerts.ts` はトーストを出すかどうかを決めます。`hooks/commands.ts` は `/litellm` のコマンドテーブルで、`hooks/admin*.ts` は管理者コマンドです(`admin.ts` がプロキシの読み取り、`admin-targets.ts` がキー、ユーザー、チームの検索、`admin-writes.ts` が書き込み、`admin-plan.ts` がプレビューとプラン、`admin-link.ts` が管理者キーとプロキシの紐付け、`admin-commands.ts` が処理フロー、`args.ts` が引数パーサー)。`hooks/exceeded.ts` と `hooks/band.tsx` は予算超過バナーです。`hooks/summary.ts` はテキストを、`hooks/view.tsx` と `hooks/parts.tsx` はペイン(ゲージ、セクションタイトル、ステータスチップ、メーター行)を組み立てます。`hooks/format.ts` は純粋なフォーマッタ群で、`types/index.d.ts` は状態のコントラクトです。
@@ -309,6 +319,10 @@ tsc -p plugins/litellm-key                              # types (.claude-plugin/
 - 予算超過バナーが描画されるのは、ターミナルとデスクトップのサーフェスです(Claude Code がバンドを提供するのはそこだけ)。それ以外では、ステータスラインとペインで知らせます。
 - ステータスラインの前の `⚠` は、プラグインのステータス項目すべてに対して Claude Code が描画するもので、キーに問題があることを意味しません(それを示すのはテキストです)。
 - Claude Code のプラグイン API はアーリーアクセスであり、バージョン間で変更される可能性があります。
+
+## ライセンス
+
+[MIT](../../LICENSE).
 
 ## 他の言語
 

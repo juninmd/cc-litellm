@@ -1,13 +1,12 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import type { Failure } from '../types'
+import { facts, modelShares, modelsText } from '../hooks/facts'
 import {
   budgetBrief,
   budgetText,
   failureText,
-  facts,
   meters,
-  modelsText,
   oneLine,
   statusText,
   summaryText,
@@ -107,6 +106,7 @@ describe('summaryText', () => {
     expect(text).toMatch(/Expires\s+in 40d/)
     expect(text).toMatch(/Models\s+claude-haiku-4-5, claude-opus-4-1, claude-sonnet-4-5 \(3\)/)
     expect(text).toMatch(/Last 7 days\s+[·▁-█]{7} · \$14\.20 · 150 requests · 2\.8M tokens/)
+    expect(text).toMatch(/Top models\s+claude-sonnet-4-5 \$10\.65 \(75%\) · claude-opus-4-1 \$3\.55 \(25%\)/)
     expect(text).toMatch(/Updated\s+\d\d:\d\d:\d\d · via ANTHROPIC_AUTH_TOKEN/)
   })
 
@@ -206,6 +206,20 @@ describe('meters and facts', () => {
 
     expect(facts(hidden, NOW).some(row => row.label === 'Lifetime')).toBe(true)
     expect(facts(same, NOW).some(row => row.label === 'Lifetime')).toBe(false)
+  })
+
+  test('modelShares: each top model against the whole week, never past 100%, and nothing without spend', async () => {
+    const snapshot = await snapshotOf()
+    const usage = snapshot.usage
+
+    expect(modelShares(snapshot).map(item => [item.model, item.share])).toEqual([
+      ['claude-sonnet-4-5', 75],
+      ['claude-opus-4-1', 25],
+    ])
+    expect(modelShares({ ...snapshot, usage: usage && { ...usage, spend: 5 } }).map(item => item.share)).toEqual([100, 71])
+    expect(modelShares({ ...snapshot, usage: usage && { ...usage, spend: 0 } })).toEqual([])
+    expect(modelShares({ ...snapshot, usage: null })).toEqual([])
+    expect(facts({ ...snapshot, usage: null }, NOW).some(row => row.label === 'Top models')).toBe(false)
   })
 
   test('modelsText shortens long lists and names the open case', async () => {
