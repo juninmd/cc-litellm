@@ -9,6 +9,9 @@
 - **Status line** carries an 8-cell gauge: `██░░░░░░ 25% of budget · $12.50 of $50.00 · resets in 6d 12h (30d)`.
 - **Internal:** the plugin is split by responsibility behind injected ports (`ports.ts`); `register.tsx` is the only file that touches `$`. No file is over 300 lines. The split changes no behavior.
 
+### Added
+- **MIT license** (`LICENSE`, and `license` in the plugin manifest).
+
 ### Fixed
 - A key at 99.6% was drawn as spent up (red, `✖`, "100%") although the proxy still answers; red and `✖` now mean exactly what the banner means, and that key is a warning (`▲`).
 - A cap of `$0` read "no cap" in the pane and `(null%)` in the details; it is used up everywhere, as the banner already said.

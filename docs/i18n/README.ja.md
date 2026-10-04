@@ -6,7 +6,8 @@
   <a href="#install"><img alt="Claude Code プラグイン" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=for-the-badge"></a>
   <img alt="LiteLLM v1.99.1 検証済み" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20tested-6366f1?style=for-the-badge">
   <img alt="Claude Code 2.1.289 検証済み" src="https://img.shields.io/badge/Claude%20Code-2.1.289%20tested-0ea5e9?style=for-the-badge">
-  <img alt="232 件のテストが成功" src="https://img.shields.io/badge/tests-232%20passing-22c55e?style=for-the-badge">
+  <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/juninmd/cc-litellm/ci.yml?branch=main&style=for-the-badge&label=CI">
+  <img alt="License: MIT" src="https://img.shields.io/github/license/juninmd/cc-litellm?style=for-the-badge&color=22c55e">
   <img alt="バージョン 0.3.0" src="https://img.shields.io/badge/version-0.3.0-f472b6?style=for-the-badge">
 </p>
 
@@ -297,6 +298,7 @@ claude plugin validate .                                # marketplace
 claude plugin validate plugins/litellm-key --strict     # plugin
 claude plugin test plugins/litellm-key                  # tests (they use Claude Code's engine)
 tsc -p plugins/litellm-key                              # types (.claude-plugin/types appears on first load)
+bash dev/check-file-size.sh                             # no source file over 300 lines
 ```
 
 プラグインの構成: `hooks/register.tsx` は Claude Code の `$` に触れる唯一のファイルで、注入されるポート(`hooks/ports.ts`)を組み立て、イベント、コマンド、タイマー、トーストを結び付けます。それ以外はすべてそのポートを受け取る単純な関数なので、エンジンを起動せずにテストで実行できます。`hooks/session.ts` は読み取りサイクル(設定、ティッカー、キューに積まれた強制更新)です。`hooks/credentials.ts` と `hooks/settings.ts` はキーとオプションを解決します。`hooks/litellm.ts` はプロキシを読み取り、`hooks/parsers.ts` と `hooks/json.ts` は応答を正規化し、`hooks/failures.ts` は何がうまくいかなかったかを名前で示します。`hooks/alerts.ts` はトーストを出すかどうかを決めます。`hooks/commands.ts` は `/litellm` のコマンドテーブルで、`hooks/admin*.ts` は管理者コマンドです(`admin.ts` がプロキシの読み取り、`admin-targets.ts` がキー、ユーザー、チームの検索、`admin-writes.ts` が書き込み、`admin-plan.ts` がプレビューとプラン、`admin-link.ts` が管理者キーとプロキシの紐付け、`admin-commands.ts` が処理フロー、`args.ts` が引数パーサー)。`hooks/exceeded.ts` と `hooks/band.tsx` は予算超過バナーです。`hooks/summary.ts` はテキストを、`hooks/view.tsx` と `hooks/parts.tsx` はペイン(ゲージ、セクションタイトル、ステータスチップ、メーター行)を組み立てます。`hooks/format.ts` は純粋なフォーマッタ群で、`types/index.d.ts` は状態のコントラクトです。
@@ -309,6 +311,10 @@ tsc -p plugins/litellm-key                              # types (.claude-plugin/
 - 予算超過バナーが描画されるのは、ターミナルとデスクトップのサーフェスです(Claude Code がバンドを提供するのはそこだけ)。それ以外では、ステータスラインとペインで知らせます。
 - ステータスラインの前の `⚠` は、プラグインのステータス項目すべてに対して Claude Code が描画するもので、キーに問題があることを意味しません(それを示すのはテキストです)。
 - Claude Code のプラグイン API はアーリーアクセスであり、バージョン間で変更される可能性があります。
+
+## ライセンス
+
+[MIT](../../LICENSE).
 
 ## 他の言語
 

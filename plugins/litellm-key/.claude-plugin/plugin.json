@@ -5,6 +5,7 @@
   "author": { "name": "juninmd" },
   "homepage": "https://github.com/juninmd/cc-litellm",
   "repository": "https://github.com/juninmd/cc-litellm",
+  "license": "MIT",
   "keywords": ["litellm", "virtual-key", "budget", "spend", "status-line", "key-management"],
   "types": "./types/index.d.ts",
   "userConfig": {
