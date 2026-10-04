@@ -1,7 +1,10 @@
-# A real LiteLLM proxy (with Postgres, so virtual keys, budgets and spend work) on 127.0.0.1:4000.
+# A real LiteLLM proxy (with Postgres, so virtual keys, budgets and spend work) on 127.0.0.1:${LITELLM_PORT:-4000}.
 #
 #   docker compose -f dev/litellm/docker-compose.yml up -d
 #   LITELLM_CONFIG=config.cluster.yaml docker compose -f dev/litellm/docker-compose.yml up -d
+#   LITELLM_PORT=4001 docker compose -p other -f dev/litellm/docker-compose.yml up -d   # side by side
+#
+# Tested against litellm-database v1.104.0 + postgres 18; bump both only after dev/litellm/smoke.ts passes.
 #
 # Default config is config.mock.yaml: no provider keys, answers are canned. See dev/litellm/README.md.
 name: cc-litellm-dev
@@ -14,7 +17,8 @@ services:
       POSTGRES_PASSWORD: litellm-local
       POSTGRES_DB: litellm
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # Postgres 18+ keeps PGDATA in a versioned subdirectory and refuses to start on a /data mount.
+      - pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U litellm -d litellm"]
       interval: 3s
@@ -27,7 +31,7 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "127.0.0.1:4000:4000"
+      - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
     env_file:
       - path: .env
         required: false

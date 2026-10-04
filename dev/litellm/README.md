@@ -1,8 +1,8 @@
 # dev/litellm: a real LiteLLM on your laptop
 
-LiteLLM **v1.99.1** + Postgres in Docker, on `127.0.0.1:4000`. Virtual keys, budgets, teams, spend and the router
+LiteLLM **v1.104.0** + Postgres 18 in Docker, on `127.0.0.1:4000`. Virtual keys, budgets, teams, spend and the router
 fallbacks are the real thing; only the model answers can be canned. Used to homologate `litellm-key` and to take the
-screenshots in the root README.
+screenshots in the root README. The smoke test passes against v1.104.0 (CI runs it on every change).
 
 ```bash
 docker compose -f dev/litellm/docker-compose.yml up -d      # config.mock.yaml: zero provider keys
@@ -11,6 +11,12 @@ bun dev/litellm/smoke.ts                                     # live homologation
 docker compose -f dev/litellm/docker-compose.yml down -v     # stop and wipe the database
 ```
 
+A second lab next to a running one: `LITELLM_PORT=4001 docker compose -p other -f dev/litellm/docker-compose.yml up -d`,
+then `LITELLM_URL=http://127.0.0.1:4001 bun dev/litellm/smoke.ts`.
+
+**Upgrading from the v1.99.1 lab (Postgres 16):** run `docker compose -f dev/litellm/docker-compose.yml down -v` once.
+Postgres 18 refuses to start on a volume that Postgres 16 initialised; the lab data is disposable.
+
 Admin UI: <http://127.0.0.1:4000/ui/> (user `admin`, password = the master key). The local master key is
 `sk-local-master-key`: a throwaway for this lab, never a real credential.
 
@@ -18,7 +24,7 @@ Admin UI: <http://127.0.0.1:4000/ui/> (user `admin`, password = the master key).
 
 | File | What |
 | --- | --- |
-| `docker-compose.yml` | Postgres 16 + `litellm-database:v1.99.1`. `LITELLM_CONFIG` picks the config (default `config.mock.yaml`). |
+| `docker-compose.yml` | Postgres 18 + `litellm-database:v1.104.0`. `LITELLM_CONFIG` picks the config (default `config.mock.yaml`), `LITELLM_PORT` the host port (default 4000). |
 | `config.mock.yaml` | **Committed.** Mirrors a real "auto" setup: a weighted `cloud/auto` group, fallback and context-window chains, and `demo/always-429`, a model that always fails so the router visibly falls back. Demo prices ($1 per 1k tokens) make a few requests move a budget. |
 | `from-cluster.py` | Builds `config.cluster.yaml` + `.env` from the proxy running in your Kubernetes cluster (read-only `kubectl`). Copies **only** the provider variables the `model_list` references. Never prints a secret. |
 | `config.cluster.yaml`, `.env` | **Git-ignored, generated.** Your cluster's routing and provider keys. This repository is public: never commit them. |
