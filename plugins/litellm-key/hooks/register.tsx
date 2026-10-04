@@ -50,6 +50,7 @@ const configOf = (options: PluginOptions) => ({
   isStatusShown: options.show_status_line !== false,
   isRelatedShown: options.show_related !== false,
   isUsageShown: options.show_usage !== false,
+  isCompact: options.compact_pane === true,
 })
 
 type Config = ReturnType<typeof configOf>
@@ -288,7 +289,7 @@ const debugText = async ($: EngineInterface): Promise<string> => {
   const { snapshot, failure } = latest
   const surfaces = await $.session.surfaces()
   const lines = [
-    `Refresh every ${config.refreshSeconds}s · status line ${config.isStatusShown ? 'on' : 'off'} · related ${config.isRelatedShown ? 'on' : 'off'} · usage ${config.isUsageShown ? 'on' : 'off'}`,
+    `Refresh every ${config.refreshSeconds}s · status line ${config.isStatusShown ? 'on' : 'off'} · related ${config.isRelatedShown ? 'on' : 'off'} · usage ${config.isUsageShown ? 'on' : 'off'} · compact pane ${config.isCompact ? 'on' : 'off'}`,
     diagnostics
       ? `Proxy    ${diagnostics.host} (tries ${diagnostics.roots.join(', ')}${pinnedRoot ? `; using ${pinnedRoot}` : ''})`
       : 'Proxy    not resolved',
@@ -420,6 +421,7 @@ export const register: Register = (on, options) => {
       now,
       columns: e.props.bodyColumns,
       placement: e.props.placement,
+      isCompact: config.isCompact,
       warnPercent: config.warnPercent,
       refreshSeconds: config.refreshSeconds,
       onRefresh: () => {

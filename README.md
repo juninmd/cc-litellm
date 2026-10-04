@@ -71,6 +71,7 @@ Todas as opções são opcionais (o Claude Code avisa na instalação que elas "
 | `show_status_line` | sim | Linha fixa sob o prompt. |
 | `show_related` | sim | Lê `/user/info` e `/team/info`: esses orçamentos também bloqueiam requisições. |
 | `show_usage` | sim | Lê `/user/daily/activity` (endpoint beta do LiteLLM) para os 7 dias de uso. |
+| `compact_pane` | não | Painel compacto acima do prompt em terminais estreitos (de 74 a 121 colunas): um medidor por linha, fatos lado a lado, só a altura necessária. Desligado, mantém o layout empilhado, mais folgado. |
 
 ## Comandos
 
@@ -85,7 +86,7 @@ Todas as opções são opcionais (o Claude Code avisa na instalação que elas "
 
 No painel, com o foco nele (clique, ou `ctrl+x` `tab`): `r` atualiza, `c` copia o resumo, `q` fecha e as setas rolam. `Esc` também fecha (no prompt vazio).
 
-O painel se adapta ao espaço: ao lado da conversa (tela cheia, a partir de 110 colunas) cada medidor ocupa duas linhas; acima do prompt, com 122 colunas ou mais, os medidores viram uma tabela; acima do prompt em terminais mais estreitos ele fica **compacto**: um medidor por linha, os fatos lado a lado e o painel abre só com a altura que o conteúdo precisa, com os botões sempre à vista.
+O painel se adapta ao espaço: ao lado da conversa (tela cheia, a partir de 110 colunas) cada medidor ocupa duas linhas; acima do prompt, com 122 colunas ou mais, os medidores viram uma tabela; acima do prompt em terminais mais estreitos ele segue com duas linhas por medidor, ou fica **compacto** se você ligar `compact_pane`: um medidor por linha, os fatos lado a lado e só a altura que o conteúdo precisa, com os botões sempre à vista.
 
 ## De onde vêm os dados
 

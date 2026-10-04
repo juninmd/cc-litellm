@@ -1,6 +1,6 @@
 {
   "name": "litellm-key",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "See your LiteLLM virtual key inside Claude Code: budget, spend, limits, expiry, models and recent usage.",
   "author": { "name": "juninmd" },
   "homepage": "https://github.com/juninmd/cc-litellm",
@@ -52,6 +52,12 @@
       "title": "Usage history",
       "description": "Also read /user/daily/activity for the last 7 days of spend and tokens (beta endpoint).",
       "default": true
+    },
+    "compact_pane": {
+      "type": "boolean",
+      "title": "Compact pane",
+      "description": "In a terminal too narrow for the table, draw the pane above the prompt compact: one line per meter, the facts side by side, as short as it can be. Off keeps the roomier layout.",
+      "default": false
     }
   }
 }

@@ -211,6 +211,22 @@ describe('/litellm', () => {
     expect(text).not.toContain(KEY)
   })
 
+  test('debug says whether the compact pane is on', async ($, on) => {
+    const { clock } = boot(on)
+
+    await start($, clock)
+
+    expect((await run($, 'debug')).text).toContain('compact pane off')
+  })
+
+  test('debug says the compact pane is on when the option asks for it', { options: { compact_pane: true } }, async ($, on) => {
+    const { clock } = boot(on)
+
+    await start($, clock)
+
+    expect((await run($, 'debug')).text).toContain('compact pane on')
+  })
+
   test('close and help and a typo', async ($, on) => {
     const { log, clock } = boot(on)
 
@@ -501,6 +517,7 @@ describe('failures', () => {
 })
 
 describe('the pane', () => {
+  const COMPACT = { compact_pane: true }
   const PANE = {
     title: 'LiteLLM key',
     isFocused: false,
@@ -568,7 +585,7 @@ describe('the pane', () => {
     }
   })
 
-  test('keeps the roomy stacked layout in the dock', async ($, on) => {
+  test('keeps the roomy stacked layout in the dock, even with compact_pane on', { options: COMPACT }, async ($, on) => {
     const { clock } = boot(on)
 
     await start($, clock)
@@ -578,7 +595,27 @@ describe('the pane', () => {
     expect(await ui.find({ type: 'Text', text: /via ANTHROPIC_AUTH_TOKEN/ })).toBeDefined()
   })
 
-  test('packs each meter into one line and the facts into a few when it sits inline and narrow', async ($, on) => {
+  test('keeps the stacked layout inline and narrow while compact_pane is off', async ($, on) => {
+    const { clock } = boot(on)
+
+    await start($, clock)
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({
+        plugin: 'litellm-key',
+        surface,
+        component: 'Pane',
+        requestId: 'litellm-key',
+        props: { ...PANE, placement: 'inline', bodyColumns: 80 },
+      })
+
+      expect(await ui.find({ type: 'Text', text: /\$12\.50 \/ \$50\.00 \(25%\) · \$37\.50 left/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /via ANTHROPIC_AUTH_TOKEN/ })).toBeDefined()
+      expect(await ui.findAll({ type: 'Button' })).toHaveLength(3)
+      await ui.unmount()
+    }
+  })
+
+  test('packs each meter into one line and the facts into a few when it sits inline and narrow', { options: COMPACT }, async ($, on) => {
     const { clock } = boot(on)
 
     await start($, clock)
@@ -602,7 +639,7 @@ describe('the pane', () => {
     }
   })
 
-  test('falls back to the stacked layout when it sits inline but is too narrow for one-line meters', async ($, on) => {
+  test('falls back to the stacked layout when it sits inline but is too narrow for one-line meters', { options: COMPACT }, async ($, on) => {
     const { clock } = boot(on)
 
     await start($, clock)
@@ -618,7 +655,7 @@ describe('the pane', () => {
     expect(await ui.find({ type: 'Text', text: /via ANTHROPIC_AUTH_TOKEN/ })).toBeDefined()
   })
 
-  test('keeps the table, with the full text, when it sits inline and wide', async ($, on) => {
+  test('keeps the table, with the full text, when it sits inline and wide', { options: COMPACT }, async ($, on) => {
     const { clock } = boot(on)
 
     await start($, clock)

@@ -16,6 +16,8 @@ export type DashboardProps = {
   now: number
   columns: number
   placement: Placement
+  /** The person asked for the compact layout (the `compact_pane` option); off, the pane keeps the stacked one. */
+  isCompact: boolean
   warnPercent: number
   refreshSeconds: number
   onRefresh: () => void
@@ -44,10 +46,10 @@ const SETUP = [
   '  ANTHROPIC_AUTH_TOKEN  <your virtual key>',
 ]
 
-// Rows are scarce inline above the prompt (the pane shrinks to its content, never past what the layout spares) and the
-// table has no room below WIDE: there the pane is compact. Narrower than COMPACT_MIN a meter's text would not fit
-// beside its bar, so the stacked layout, with the text on a line of its own, serves better.
-const isCompact = (placement: Placement, columns: number): boolean =>
+// Where the compact layout can serve: inline above the prompt, where rows are scarce (the pane shrinks to its content,
+// never past what the layout spares) and the table has no room, below WIDE. Narrower than COMPACT_MIN a meter's text
+// would not fit beside its bar, so the stacked layout, with the text on a line of its own, serves better there.
+const fitsCompact = (placement: Placement, columns: number): boolean =>
   placement === 'inline' && columns >= COMPACT_MIN && columns < WIDE
 
 const sizeOf = (row: Row): number => row.label.length + 1 + row.text.length
@@ -79,7 +81,7 @@ export const packFacts = (rows: readonly Row[], width: number): Row[][] => {
 export const dashboard = ({ Box, Text, Button }: Ui, props: DashboardProps): RenderElement => {
   const { snapshot, failure, isLoading, now } = props
   const isWide = props.columns >= WIDE
-  const compact = isCompact(props.placement, props.columns)
+  const compact = props.isCompact && fitsCompact(props.placement, props.columns)
   const gap = compact ? 0 : 1
   const buttons = (
     <Box gap={1}>
