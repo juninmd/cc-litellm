@@ -12,7 +12,7 @@
 - [ ] `tsc -p plugins/litellm-key/.claude-plugin/types/tsconfig.json --noEmit`
 - [ ] `bash dev/check-file-size.sh` (no file over 300 lines)
 - [ ] A behavior change comes with a test that fails without it
-- [ ] README, its translations and the CHANGELOG say the same thing as the code
+- [ ] README and its translations say the same thing as the code (the CHANGELOG is written by the release PR)
 - [ ] A UI change comes with a screenshot from the evidence harness (`dev/evidence`)
 - [ ] No key, token or real hostname in the diff, the tests or the screenshots
 
