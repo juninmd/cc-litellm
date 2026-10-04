@@ -568,6 +568,72 @@ describe('the pane', () => {
     }
   })
 
+  test('keeps the roomy stacked layout in the dock', async ($, on) => {
+    const { clock } = boot(on)
+
+    await start($, clock)
+    const ui = await mount($, 'terminal')
+
+    expect(await ui.find({ type: 'Text', text: /\$12\.50 \/ \$50\.00 \(25%\) · \$37\.50 left/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /via ANTHROPIC_AUTH_TOKEN/ })).toBeDefined()
+  })
+
+  test('packs each meter into one line and the facts into a few when it sits inline and narrow', async ($, on) => {
+    const { clock } = boot(on)
+
+    await start($, clock)
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({
+        plugin: 'litellm-key',
+        surface,
+        component: 'Pane',
+        requestId: 'litellm-key',
+        props: { ...PANE, placement: 'inline', bodyColumns: 80 },
+      })
+
+      expect(await ui.find({ type: 'Text', text: /█+░+ 25%/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /^\$12\.50 \/ \$50\.00 · resets in 6d 12h$/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /\(25%\)/ })).toBeUndefined()
+      expect(await ui.find({ type: 'Text', text: /via ANTHROPIC_AUTH_TOKEN/ })).toBeUndefined()
+      expect(await ui.find({ type: 'Text', text: /60 rpm · 100k tpm · 5 parallel/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /Updated/ })).toBeDefined()
+      expect(await ui.findAll({ type: 'Button' })).toHaveLength(3)
+      await ui.unmount()
+    }
+  })
+
+  test('falls back to the stacked layout when it sits inline but is too narrow for one-line meters', async ($, on) => {
+    const { clock } = boot(on)
+
+    await start($, clock)
+    const ui = await $.ui.mount({
+      plugin: 'litellm-key',
+      surface: 'terminal',
+      component: 'Pane',
+      requestId: 'litellm-key',
+      props: { ...PANE, placement: 'inline', bodyColumns: 60 },
+    })
+
+    expect(await ui.find({ type: 'Text', text: /\$12\.50 \/ \$50\.00 \(25%\) · \$37\.50 left/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /via ANTHROPIC_AUTH_TOKEN/ })).toBeDefined()
+  })
+
+  test('keeps the table, with the full text, when it sits inline and wide', async ($, on) => {
+    const { clock } = boot(on)
+
+    await start($, clock)
+    const ui = await $.ui.mount({
+      plugin: 'litellm-key',
+      surface: 'terminal',
+      component: 'Pane',
+      requestId: 'litellm-key',
+      props: { ...PANE, placement: 'inline', bodyColumns: 124 },
+    })
+
+    expect(await ui.find({ type: 'Text', text: /\$12\.50 \/ \$50\.00 \(25%\) · \$37\.50 left/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /via ANTHROPIC_AUTH_TOKEN/ })).toBeDefined()
+  })
+
   test('shows the setup steps when nothing is configured', async ($, on) => {
     const { clock } = boot(on, { env: {} })
 

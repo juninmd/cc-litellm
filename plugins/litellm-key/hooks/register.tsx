@@ -419,6 +419,7 @@ export const register: Register = (on, options) => {
       isLoading,
       now,
       columns: e.props.bodyColumns,
+      placement: e.props.placement,
       warnPercent: config.warnPercent,
       refreshSeconds: config.refreshSeconds,
       onRefresh: () => {

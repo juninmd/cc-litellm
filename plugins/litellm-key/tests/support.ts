@@ -1,3 +1,5 @@
+import type { Snapshot } from '../types'
+import { fetchSnapshot } from '../hooks/litellm'
 import type { Http, Reply } from '../hooks/litellm'
 
 export const NOW = Date.parse('2026-10-03T12:00:00Z')
@@ -110,3 +112,31 @@ export const router = (routes: Record<string, Route>) => {
 
   return { http, calls }
 }
+
+export const snapshotOf = async (routes: Record<string, Route> = standardRoutes()): Promise<Snapshot> => {
+  const { http } = router(routes)
+  const result = await fetchSnapshot({
+    credentials: {
+      roots: [BASE],
+      host: 'litellm.test',
+      key: KEY,
+      keySource: 'ANTHROPIC_AUTH_TOKEN',
+      headers: { authorization: `Bearer ${KEY}` },
+    },
+    http,
+    now: NOW,
+    pinnedRoot: null,
+    wantRelated: true,
+    wantUsage: true,
+    refreshSlow: true,
+    previous: null,
+  })
+
+  if (!result.ok) {
+    throw new Error(result.failure.message)
+  }
+
+  return result.snapshot
+}
+
+export const withKey = (info: Record<string, unknown>) => ({ ...standardRoutes(), '/key/info': reply(200, keyBody(info)) })

@@ -85,6 +85,8 @@ Todas as opções são opcionais (o Claude Code avisa na instalação que elas "
 
 No painel, com o foco nele (clique, ou `ctrl+x` `tab`): `r` atualiza, `c` copia o resumo, `q` fecha e as setas rolam. `Esc` também fecha (no prompt vazio).
 
+O painel se adapta ao espaço: ao lado da conversa (tela cheia, a partir de 110 colunas) cada medidor ocupa duas linhas; acima do prompt, com 122 colunas ou mais, os medidores viram uma tabela; acima do prompt em terminais mais estreitos ele fica **compacto**: um medidor por linha, os fatos lado a lado e o painel abre só com a altura que o conteúdo precisa, com os botões sempre à vista.
+
 ## De onde vêm os dados
 
 Só leituras (`GET`), sempre com a sua própria chave:

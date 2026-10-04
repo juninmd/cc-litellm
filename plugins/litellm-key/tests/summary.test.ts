@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import type { Failure, Snapshot } from '../types'
-import { fetchSnapshot } from '../hooks/litellm'
+import type { Failure } from '../types'
 import {
+  budgetBrief,
   budgetText,
   failureText,
   facts,
@@ -12,38 +12,9 @@ import {
   statusText,
   summaryText,
 } from '../hooks/summary'
-import { KEY, NOW, keyBody, reply, router, standardRoutes } from './support'
-import type { Route } from './support'
+import { KEY, NOW, reply, snapshotOf, standardRoutes, withKey } from './support'
 
 const DAY = 86_400_000
-
-const snapshotOf = async (routes: Record<string, Route> = standardRoutes()): Promise<Snapshot> => {
-  const { http } = router(routes)
-  const result = await fetchSnapshot({
-    credentials: {
-      roots: ['https://litellm.test'],
-      host: 'litellm.test',
-      key: KEY,
-      keySource: 'ANTHROPIC_AUTH_TOKEN',
-      headers: { authorization: `Bearer ${KEY}` },
-    },
-    http,
-    now: NOW,
-    pinnedRoot: null,
-    wantRelated: true,
-    wantUsage: true,
-    refreshSlow: true,
-    previous: null,
-  })
-
-  if (!result.ok) {
-    throw new Error(result.failure.message)
-  }
-
-  return result.snapshot
-}
-
-const withKey = (info: Record<string, unknown>) => ({ ...standardRoutes(), '/key/info': reply(200, keyBody(info)) })
 
 const failure = (kind: Failure['kind'], status: number | null = null): Failure => ({
   kind,
@@ -70,6 +41,24 @@ describe('budgetText', () => {
 
   test('says when a reset is overdue', () => {
     expect(budgetText({ ...budget, resetAt: NOW - 1000 }, NOW)).toContain('reset pending')
+  })
+})
+
+describe('budgetBrief', () => {
+  const budget = { spend: 12.5, limit: 50, softLimit: null, duration: '30d', resetAt: NOW + 6 * DAY }
+
+  test('keeps the amounts and the reset, and drops the percentage, the rest and the period', () => {
+    expect(budgetBrief(budget, NOW)).toBe('$12.50 / $50.00 · resets in 6d')
+  })
+
+  test('leaves out how far over the cap it is: the amounts and the bar say it', () => {
+    expect(budgetBrief({ ...budget, spend: 55 }, NOW)).toBe('$55.00 / $50.00 · resets in 6d')
+  })
+
+  test('says spent without a cap, and keeps an overdue or periodic reset', () => {
+    expect(budgetBrief({ ...budget, limit: null }, NOW)).toBe('$12.50 spent · resets in 6d')
+    expect(budgetBrief({ ...budget, resetAt: NOW - 1000 }, NOW)).toBe('$12.50 / $50.00 · reset pending')
+    expect(budgetBrief({ ...budget, resetAt: null }, NOW)).toBe('$12.50 / $50.00 · resets every 30d')
   })
 })
 
@@ -156,6 +145,24 @@ describe('meters and facts', () => {
     ])
     expect(list[1]?.tone).toBe('warn')
     expect(list[2]?.text).toBe('$1.50 / $5.00 per 1d')
+  })
+
+  test('gives every meter a brief line, shorter than its text only where there is more to cut', async () => {
+    const snapshot = await snapshotOf(
+      withKey({
+        budget_limits: [{ budget_duration: '1h', max_budget: 1, reset_at: new Date(NOW + 1800_000).toISOString() }],
+        budget_limits_usage: { '1h': { current_spend: 0.9 } },
+      }),
+    )
+    const [budget, window, team, user] = meters(snapshot, NOW, 80)
+
+    expect(budget?.brief).toBe('$12.50 / $50.00 · resets in 6d 12h')
+    expect(window?.brief).toBe(window?.text)
+    expect(team?.brief).toBe('$412.00 / $1,000.00 · resets in 11d')
+    expect(user?.brief).toBe('$26.10 / $100.00 · resets in 28d')
+    for (const meter of meters(snapshot, NOW, 80)) {
+      expect(meter.brief.length).toBeLessThanOrEqual(meter.text.length)
+    }
   })
 
   test('flags an expired key and an expiry that is near', async () => {

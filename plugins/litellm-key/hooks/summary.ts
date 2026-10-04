@@ -2,7 +2,15 @@ import type { Budget, Failure, Snapshot } from '../types'
 import { clock, compact, money, percent, plural, sparkline, truncate, until } from './format'
 
 export type Tone = 'ok' | 'warn' | 'error'
-export type Meter = { label: string; used: number; limit: number | null; text: string; tone: Tone }
+export type Meter = {
+  label: string
+  used: number
+  limit: number | null
+  text: string
+  /** The same reading cut to one short line: the amounts and the reset, no percentage, no "left" or "over", no period. */
+  brief: string
+  tone: Tone
+}
 export type Row = { label: string; text: string; tone: Tone }
 
 const SOON_MS = 3 * 86_400_000
@@ -10,7 +18,7 @@ const SOON_MS = 3 * 86_400_000
 const toneOf = (pct: number | null, warnPercent: number): Tone =>
   pct === null ? 'ok' : pct >= 100 ? 'error' : pct >= warnPercent ? 'warn' : 'ok'
 
-const resetText = (budget: Budget, now: number): string | null => {
+const resetText = (budget: Budget, now: number, hasPeriod = true): string | null => {
   if (budget.resetAt === null) {
     return budget.duration ? `resets every ${budget.duration}` : null
   }
@@ -18,7 +26,7 @@ const resetText = (budget: Budget, now: number): string | null => {
     return 'reset pending'
   }
 
-  return `resets ${until(budget.resetAt, now)}${budget.duration ? ` (${budget.duration})` : ''}`
+  return `resets ${until(budget.resetAt, now)}${hasPeriod && budget.duration ? ` (${budget.duration})` : ''}`
 }
 
 export const budgetText = (budget: Budget, now: number): string => {
@@ -39,6 +47,14 @@ export const budgetText = (budget: Budget, now: number): string => {
     .join(' · ')
 }
 
+export const budgetBrief = (budget: Budget, now: number): string =>
+  [
+    budget.limit === null ? `${money(budget.spend)} spent` : `${money(budget.spend)} / ${money(budget.limit)}`,
+    resetText(budget, now, false),
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
 export const meters = (snapshot: Snapshot, now: number, warnPercent: number): Meter[] => {
   const { key, team, user } = snapshot
   const list: Meter[] = [
@@ -47,6 +63,7 @@ export const meters = (snapshot: Snapshot, now: number, warnPercent: number): Me
       used: key.budget.spend,
       limit: key.budget.limit,
       text: budgetText(key.budget, now),
+      brief: budgetBrief(key.budget, now),
       tone: toneOf(percent(key.budget.spend, key.budget.limit), warnPercent),
     },
   ]
@@ -54,27 +71,29 @@ export const meters = (snapshot: Snapshot, now: number, warnPercent: number): Me
   for (const window of key.windows) {
     const spend = window.spend ?? 0
     const reset = window.resetAt === null ? null : until(window.resetAt, now)
+    const text = [`${window.spend === null ? '?' : money(spend)} / ${money(window.limit)}`, reset ? `resets ${reset}` : null]
+      .filter(Boolean)
+      .join(' · ')
 
     list.push({
       label: `Window ${window.duration}`,
       used: spend,
       limit: window.limit,
-      text: [
-        `${window.spend === null ? '?' : money(spend)} / ${money(window.limit)}`,
-        reset ? `resets ${reset}` : null,
-      ]
-        .filter(Boolean)
-        .join(' · '),
+      text,
+      brief: text,
       tone: toneOf(percent(spend, window.limit), warnPercent),
     })
   }
   for (const item of key.modelBudgets) {
     if (item.limit !== null) {
+      const text = `${money(item.spend)} / ${money(item.limit)}${item.period ? ` per ${item.period}` : ''}`
+
       list.push({
         label: `Model ${item.model}`,
         used: item.spend,
         limit: item.limit,
-        text: `${money(item.spend)} / ${money(item.limit)}${item.period ? ` per ${item.period}` : ''}`,
+        text,
+        brief: text,
         tone: toneOf(percent(item.spend, item.limit), warnPercent),
       })
     }
@@ -86,6 +105,7 @@ export const meters = (snapshot: Snapshot, now: number, warnPercent: number): Me
         used: related.budget.spend,
         limit: related.budget.limit,
         text: budgetText(related.budget, now),
+        brief: budgetBrief(related.budget, now),
         tone: toneOf(percent(related.budget.spend, related.budget.limit), warnPercent),
       })
     }
