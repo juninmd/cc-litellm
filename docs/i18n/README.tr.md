@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="#install"><img alt="Claude Code eklentisi" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=for-the-badge"></a>
-  <img alt="LiteLLM v1.99.1" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20tested-6366f1?style=for-the-badge">
+  <img alt="LiteLLM v1.99.1 ve v1.104.0" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20%C2%B7%20v1.104.0%20tested-6366f1?style=for-the-badge">
   <img alt="Claude Code 2.1.289" src="https://img.shields.io/badge/Claude%20Code-2.1.289%20tested-0ea5e9?style=for-the-badge">
   <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/juninmd/cc-litellm/ci.yml?branch=main&style=for-the-badge&label=CI">
   <img alt="License: MIT" src="https://img.shields.io/github/license/juninmd/cc-litellm?style=for-the-badge&color=22c55e">
@@ -29,7 +29,7 @@
 
 # cc-litellm
 
-Modellerine bir **[LiteLLM](https://docs.litellm.ai) proxy'si** üzerinden erişenler için bir [Claude Code](https://code.claude.com) eklentisi. Claude Code'un kullandığı **sanal anahtar** hakkında proxy'nin bildiklerini (bütçe, harcama, limitler, son kullanma tarihi, modeller, 7 günlük kullanım) gösterir. Adminler için ise terminalden çıkmadan **anahtar oluşturma, birine ek bütçe verme, bir anahtarı engelleme ve router'ın fallback zincirlerini okuma** imkânı sunar.
+Modellerine bir **[LiteLLM](https://docs.litellm.ai) proxy'si** üzerinden erişenler için bir [Claude Code](https://code.claude.com) eklentisi. Claude Code'un kullandığı **sanal anahtar** hakkında proxy'nin bildiklerini (bütçe, harcama, limitler, son kullanma tarihi, modeller, 7 günlük kullanım) gösterir. Adminler için ise terminalden çıkmadan **anahtar oluşturma ve düzenleme, birine ek bütçe verme, bir anahtarı engelleme ve router'ın fallback zincirlerini okuma** imkânı sunar.
 
 Bu depo, tek eklentili bir eklenti marketplace'idir (`cc-litellm`): [`litellm-key`](../../plugins/litellm-key).
 
@@ -42,12 +42,14 @@ Bu depo, tek eklentili bir eklenti marketplace'idir (`cc-litellm`): [`litellm-ke
 | | | |
 | --- | --- | --- |
 | 👀 **İzleyin** | **Durum satırı** prompt'un altında, her zaman görünür | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
-| | **`/litellm` paneli** | anahtar, takım ve kullanıcı bütçeleri için göstergeler, kullanıcının **rolü**, limitler, son kullanma, modeller, 7 günlük sparkline, haftanın **en çok harcayan modelleri** ve **runway** tahmini; kendini yeniler |
+| | **`/litellm` paneli** | anahtar, takım, kullanıcı ve **takım üyesi** bütçeleri için göstergeler, kullanıcının **rolü**, limitler, son kullanma, modeller, 7 günlük sparkline, haftanın **en çok harcayan modelleri** ve **runway** tahmini; kendini yeniler |
 | | **Toast bildirimleri** | %80'de (yapılandırılabilir), %95'te, %100'de; anahtarın süresi dolmak üzere; anahtar engellenmiş veya süresi dolmuş. Bütçe penceresi başına bir kez, oturumlar arasında bile |
 | | **Bütçe aşımı banner'ı** | prompt'un üzerinde, **bir bütçe tükendiği sürece ekranda kalan** (anahtar, kullanıcı, takım, pencere veya model) ve yalnızca değerler yeniden normale döndüğünde kalkan kırmızı bir bant |
 | 🛠️ **Yönetin** *(admin)* | **`/litellm key new`** | sanal anahtar oluşturur; secret **panonuza gider, transkripte asla** |
-| | **`/litellm grant`** | bir anahtar, kullanıcı veya takım için ek bütçe; önizleme ve onay ile |
+| | **`/litellm grant`** | bir anahtar, kullanıcı, takım veya organizasyon için ek bütçe; önizleme ve onay ile |
+| | **`/litellm key set`** / `reset-spend` | bir anahtarın modellerini, limitlerini, son kullanma tarihini veya alias'ını değiştirir; harcama sayacını sıfırlar |
 | | **`/litellm key block`** / `unblock` | bir anahtarı tek satırda durdurur (veya geri açar) |
+| | **`/litellm org`** | bir organizasyonun bütçesi; sanal anahtar bunu okuyamaz |
 | | **`/litellm keys`** | anahtarları listeler: sizinkiler, bir kullanıcının, bir takımın veya tümü |
 | | **`/litellm fallbacks`** | router'ın fallback zincirleri (`cloud/auto → cloud/auto-long → …`) ve ayrıca context-window fallback'leri |
 
@@ -115,10 +117,26 @@ Eklenti, genel bir *401* yerine engellenmiş anahtarı, süresi dolmuş anahtar�
   </tr>
 </table>
 
+### Takım her üyeye üst sınır koyduğunda
+
+Bir takım, her üyenin harcayabileceği tutara üst sınır koyabilir (`team_member_budget`). Anahtarın kendi bütçesi yerindeyken bile proxy isteği reddeder; bu yüzden eklenti bu üst sınırı okuyup `Member` göstergesi olarak gösterir ve bütçe aşımı banner'ı da onu adıyla anar:
+
+<p align="center">
+  <img src="../evidence/member-cap.png" alt="Üst sınırı aşan bir Member göstergesi, prompt'un üzerindeki banner ve adı gösterilen anahtarın organizasyonu ile panel" width="92%">
+</p>
+
+<sub>`dev/mock-litellm.py --scenario member` üzerinde çekildi. Proxy, sanal anahtara üyenin toplamını bildirmez; bu yüzden gösterge <b>bu anahtarın harcamasını</b> sayar ve bunu açıkça belirtir. Düşük okunabilir; sıfırlanan bir üst sınır söz konusuysa yüksek de okunabilir (sıfırlama üyenin harcamasını sıfırlar, anahtarınkini değil), bu yüzden banner yalnızca hiç sıfırlanmayan bir üst sınır için gösterilir. Anahtarın organizasyonunun da adı gösterilir; bütçesi yalnızca admin içindir, onu <code>/litellm org</code> okur.</sub>
+
 ### Fallback zincirlerini okuyun
 
 <p align="center">
   <img src="../evidence/fallbacks-filtered.png" alt="/litellm fallbacks cloud/auto" width="92%">
+</p>
+
+### Bir modelin maliyetini öğrenin
+
+<p align="center">
+  <img src="../evidence/models-prices.png" alt="Milyon token başına giriş ve çıkış fiyatını ve context window'u gösteren /litellm models" width="92%">
 </p>
 
 ### Ve proxy de aynı fikirde
@@ -143,13 +161,16 @@ Yukarıdakilerin hepsi, eklentinin yaptıklarını yansıtan gerçek LiteLLM v1.
 | `/litellm` | Paneli açar (ve tek satırlık bir özetle yanıt verir). Ekran yoksa özeti yazdırır. |
 | `/litellm refresh` | Şimdi yeniden okur. |
 | `/litellm info` | Tam özeti transkripte yazdırır. |
-| `/litellm models` | Bu anahtarın çağırabileceği modelleri listeler. |
+| `/litellm models` | Bu anahtarın çağırabileceği modelleri, milyon token başına fiyatları ve context window ile birlikte listeler. |
 | `/litellm debug` | URL'nin ve anahtarların nereden geldiğini (her zaman maskeli), nelerin denendiğini ve sonucu gösterir. |
 | `/litellm close` | Paneli kapatır. |
 | `/litellm keys [--user ID \| --team ID \| --all]` | Anahtarları listeler. Varsayılan: kendi kullanıcınızın anahtarları. 🔐 |
 | `/litellm key new <alias> [flags]` | Anahtar oluşturur. 🔐 |
 | `/litellm key block <alias\|hash>` / `unblock` | Bir anahtarı engeller veya geri açar. 🔐 |
-| `/litellm grant <amount> [--key \| --user \| --team] [--set]` | Bütçe ekler. 🔐 |
+| `/litellm key set <alias\|hash> [flags]` | Bir anahtarın modellerini, limitlerini, son kullanma tarihini veya alias'ını değiştirir. 🔐 |
+| `/litellm key reset-spend <alias\|hash>` | Bir anahtarın harcama sayacını sıfıra döndürür. 🔐 |
+| `/litellm grant <amount> [--key \| --user \| --team \| --org] [--set]` | Bütçe ekler. 🔐 |
+| `/litellm org [id\|alias]` | Bir organizasyonun bütçesi; ad verilmezse: anahtarın kendi organizasyonu, yoksa liste. 🔐 |
 | `/litellm fallbacks [model]` | Router fallback zincirleri; isteğe bağlı olarak adı eşleşen modeller için. 🔐 |
 
 🔐 = yönetici komutu, aşağıya bakın. Panelde (tıklayarak veya `ctrl+x` `tab` ile odaklanın): `r` yeniler, `c` özeti kopyalar, `q` kapatır, ok tuşları kaydırır; her düğme kendi tuşunu belirtir (`Refresh (r)`, `Copy (c)`, `Close (q)`). `Esc` de boş bir prompt'ta paneli kapatır.
@@ -179,6 +200,10 @@ Anahtarları okumak ve değiştirmek için proxy admin yetkisi gerekir. **`litel
 /litellm key new batch --budget 20 --models cloud/auto,cloud/auto-long --expires 30d --team platform-eng
 /litellm grant 10 --key claude-code-ana          # +$10 on top of the current budget
 /litellm grant 200 --team platform-eng --set     # cap the team at exactly $200
+/litellm grant 25 --org acme                     # +$25 on the organization (LiteLLM before 1.102, or enterprise)
+/litellm key set ci-runner --models cloud/auto --rpm 30 --expires 14d
+/litellm key set ci-runner --rpm none --expires never   # none removes a limit; --models all clears the list
+/litellm key reset-spend ci-runner               # the budget counter back to $0
 /litellm key block old-contractor
 /litellm fallbacks cloud/auto
 ```
@@ -193,6 +218,15 @@ Anahtarları okumak ve değiştirmek için proxy admin yetkisi gerekir. **`litel
 | `--expires 30d` | Anahtar bu süre sonunda çalışmayı bırakır. |
 | `--user ID` / `--team ID` | Sahibi kim (ve kimin bütçesi de geçerli olur). |
 
+| `key set` bayrağı | Anlamı |
+| --- | --- |
+| `--models a,b` / `--models all` | Anahtarın çağırabileceği modelleri değiştirir (`all`: tüm modeller). |
+| `--rpm N` / `--tpm N` / `--parallel N` | Bir limit belirler; `none` limiti kaldırır. |
+| `--expires 30d` / `--expires never` | Şu andan itibaren bu süre sonra sona erer ya da hiç sona ermez. |
+| `--alias NEW` | Anahtarı yeniden adlandırır. |
+
+Belirtmediğiniz bir alan olduğu gibi kalır. Önizleme her alan için `before → after` değerini gösterir ve anahtar Claude Code'un kullandığı anahtarsa uyarır.
+
 Her yönetici komutunda geçerli güvenlik önlemleri:
 
 - **Önce önizleme.** `--dry-run` burada durur; `--yes` onayı atlar; aksi hâlde Claude Code'un yerel iletişim kutusu sorar (**Apply** / **Cancel**).
@@ -202,19 +236,21 @@ Her yönetici komutunda geçerli güvenlik önlemleri:
 - **Dürüst rakamlar.** `grant`; harcama yeni bütçeyi zaten aştığında, üzerine eklenecek bir üst sınır olmadığında (`--set` kullanın), hiçbir şeyin değişmeyeceği durumda ve `--user` proxy'nin hiç görmediği bir kullanıcı oluşturacağında bunu söyler.
 - **Admin anahtarı** yalnızca oturumunuzun kendi anahtarını zaten kabul etmiş proxy'ye gönderilir ve asla yazdırılmaz (hatalar maskelenir).
 
-LiteLLM v1.99.1'de bugün ek bütçe olarak *verilebilenler*: bir **anahtar** bütçesini, bir **kullanıcı** bütçesini veya bir **takım** bütçesini (`--team`, proxy admin gerektirir) artış olarak ya da mutlak değer olarak (`--set`) yükseltmek. *Geçici* bütçe artışı (`temp_budget_increase`) ve model başına bütçeler proxy tarafında yalnızca enterprise sürümündedir ([Bütçeler](#budgets-what-litellm-can-and-cannot-do) bölümüne bakın); bu yüzden eklenti, varmış gibi davranmak yerine bunları sunmaz.
+LiteLLM v1.99.1 ve v1.104.0'da bugün ek bütçe olarak *verilebilenler*: bir **anahtar** bütçesini, bir **kullanıcı** bütçesini veya bir **takım** bütçesini (`--team`, proxy admin gerektirir) artış olarak ya da mutlak değer olarak (`--set`) yükseltmek. Bir **organizasyon** bütçesi (`--org`) v1.101'e kadar çalışır; v1.102'den itibaren proxy organizasyonları enterprise lisanslarına ayırır ve eklenti bunu söyler. *Geçici* bütçe artışı (`temp_budget_increase`) ve model başına bütçeler proxy tarafında yalnızca enterprise sürümündedir ([Bütçeler](#budgets-what-litellm-can-and-cannot-do) bölümüne bakın); bu yüzden eklenti, varmış gibi davranmak yerine bunları sunmaz.
 
 <a id="budgets-what-litellm-can-and-cannot-do"></a>
 
 ## Bütçeler: LiteLLM neleri yapabilir, neleri yapamaz
 
-LiteLLM v1.99.1'e karşı canlı olarak doğrulandı (açık kaynak proxy, lisanssız):
+LiteLLM v1.99.1'e karşı canlı olarak doğrulandı (açık kaynak proxy, lisanssız); üye üst sınırı ve organizasyonlar ayrıca v1.104.0 üzerinde de doğrulandı:
 
 | Bütçe | Çalışıyor mu? | Nasıl |
 | --- | --- | --- |
 | **Anahtar** başına (üst sınır + sıfırlama penceresi) | ✅ | `/litellm key new --budget 10 --every 30d`; `/litellm grant 5 --key NAME` ile artırın |
 | **Kullanıcı** başına | ✅ | `/litellm grant 5 --user ID` (kullanıcının sahip olduğu her anahtar için geçerlidir) |
 | **Takım** başına | ✅ | `/litellm grant 50 --team NAME` (proxy admin gerektirir) |
+| Takımın **üyesi** başına (`team_member_budget`) | 👀 salt okunur | kullanıcının o takımdaki isteklerini engeller (HTTP 429, v1.104'ten itibaren 422). Panel üst sınırı `Member…` olarak gösterir; LiteLLM arayüzünden veya API'sinden ayarlayın. Sanal anahtar üyenin toplamını okuyamaz, bu yüzden gösterge **bu anahtarın harcamasını** sayar ve bunu açıkça belirtir. Sıfırlama üyenin harcamasını sıfırlar ama anahtarınkini sıfırlamaz; bu yüzden bütçe aşımı banner'ı yalnızca hiç sıfırlanmayan bir üst sınır için gösterilir, sıfırlanan bir üst sınırda gösterge uyarır, engellendiğini iddia etmez |
+| **Organizasyon** başına | ✅ v1.101'e kadar · ⛔ v1.102'den itibaren enterprise | içindeki her anahtarı engeller (HTTP 429). Sanal anahtar bunu okuyamaz: panel organizasyonun adını gösterir, `/litellm org` bütçeyi gösterir (admin), `grant --org` artırır |
 | Bir anahtarda birden çok pencere (`budget_limits`, örn. saatte $5 + ayda $50) | salt okunur | proxy'de varsa `Window 1h` göstergeleri olarak gösterilir |
 | Bir anahtarda **model** başına (`model_max_budget`) | ⛔ enterprise | proxy, `/budget/new` için de *"You must have an enterprise license to set model_max_budget"* yanıtını verir. Proxy'nizde lisans varsa panel bu göstergeleri gösterir (`Model gpt-4o`) |
 | Geçici bütçe artışı (`temp_budget_increase`) | ⛔ enterprise | açık kaynak proxy alanı kabul eder ama hiçbir zaman uygulamaz |
@@ -239,7 +275,7 @@ Tüm seçenekler isteğe bağlıdır (Claude Code kurulumda bunların "ayarlanma
 | --- | --- | --- |
 | `litellm_url` | boş | Varsayılan olmayan bir yerdeki proxy (LiteLLM üzerinden Bedrock/Vertex, önek içeren URL). |
 | `litellm_key` | boş | Açıkça belirtilmiş bir anahtar. 🔒 kimlik bilgisi deposunda saklanır, `settings.json` içinde değil. |
-| `litellm_admin_key` | boş | `keys`, `key new/block/unblock`, `grant`, `fallbacks` için admin anahtarı. 🔒 aynı depolama. Asla yazdırılmaz. |
+| `litellm_admin_key` | boş | `keys`, `key new/set/reset-spend/block/unblock`, `grant`, `org`, `fallbacks` için admin anahtarı. 🔒 aynı depolama. Asla yazdırılmaz. |
 | `refresh_seconds` | 60 | Okuma aralığı (15 ila 3600). Her turdan sonra da okur, en fazla 20 sn'de bir. |
 | `warn_percent` | 80 | İlk bütçe uyarısı (%95 ve %100'de de uyarır). |
 | `show_status_line` | evet | Prompt'un altındaki satır. |
@@ -254,11 +290,12 @@ Tüm seçenekler isteğe bağlıdır (Claude Code kurulumda bunların "ayarlanma
 | Endpoint | Amaç |
 | --- | --- |
 | `/key/info` | Alias, harcama, bütçe ve pencereler, sıfırlama, limitler, son kullanma, durum, modeller, model başına bütçeler. Her okumada. |
-| `/user/info`, `/team/info` | Anahtarın kullanıcısının ve takımının bütçesi (üst sınır varsa). Her okumada. |
+| `/user/info`, `/team/info` | Anahtarın kullanıcısının ve takımının bütçesi ile takımın üye başına üst sınırı (üst sınır varsa). Her okumada. |
 | `/v1/models` | Gerçekte izin verilen modeller. 10 dakikada bir. |
+| `/model_group/info` | Bu modellerin token başına fiyatı ve context window'u (proxy tüm modelleri için yanıt verir, eklenti izin verilenleri tutar). 10 dakikada bir. |
 | `/user/daily/activity` | Son 7 günün harcaması, istek ve token sayıları, ayrıca model başına harcama. 10 dakikada bir. |
 
-**Yönetim** yalnızca bir yönetici komutu yazdığınızda gerçekleşir: `GET /key/list`, `/key/info`, `/user/info`, `/team/info`, `/v2/team/list`, `/router/settings` ve `POST /key/generate`, `/key/delete` (yalnızca rollback), `/key/block`, `/key/unblock`, `/key/update`, `/user/update`, `/team/update`.
+**Yönetim** yalnızca bir yönetici komutu yazdığınızda gerçekleşir: `GET /key/list`, `/key/info`, `/user/info`, `/team/info`, `/v2/team/list`, `/organization/info`, `/organization/list`, `/router/settings` ve `POST /key/generate`, `/key/delete` (yalnızca rollback), `/key/block`, `/key/unblock`, `/key/update`, `/key/{hash}/reset_spend`, `/user/update`, `/team/update`, `PATCH /organization/update`.
 
 Her istek en fazla 4 sn bekler (yönetici komutlarında 15 sn). Başarısız olan isteğe bağlı bir okuma (403, 404…) panelde sessiz bir nota dönüşür, asla hata olmaz. Proxy çökerse panel son başarılı okumayı eski (stale) olarak işaretleyerek korur. LiteLLM harcamayı veritabanına toplu olarak yazar; bu yüzden rakamlar gerçek harcamanın yaklaşık 10 saniye gerisinde kalır.
 
@@ -287,7 +324,7 @@ Her istek en fazla 4 sn bekler (yönetici komutlarında 15 sn). Başarısız ola
 
 ## Dizüstü bilgisayarınızda gerçek bir LiteLLM ile deneyin
 
-`dev/litellm` eksiksiz bir laboratuvardır: Docker'da Postgres ile LiteLLM v1.99.1; böylece sanal anahtarlar, bütçeler ve harcama gerçektir.
+`dev/litellm` eksiksiz bir laboratuvardır: Docker'da Postgres 18 ile LiteLLM v1.104.0; böylece sanal anahtarlar, bütçeler ve harcama gerçektir. CI, her değişiklikte bunu başlatır ve smoke testini çalıştırır.
 
 ```bash
 docker compose -f dev/litellm/docker-compose.yml up -d          # zero provider keys: canned answers
@@ -315,7 +352,10 @@ Eklentinin yapısı: `hooks/register.tsx`, Claude Code'un `$` nesnesine dokunan 
 
 - `apiKeyHelper` okunmaz (kullanıcı komutu çalıştırmak kapsam dışıdır). `litellm_key` kullanın.
 - `/user/daily/activity` LiteLLM'de betadır ve değişebilir.
-- Model başına bütçeler (`model_max_budget`), geçici bütçe artışları ve anahtar yeniden üretimi proxy tarafında yalnızca enterprise sürümündedir; bu yüzden sunulmaz ([Bütçeler](#budgets-what-litellm-can-and-cannot-do) bölümüne bakın).
+- Model başına bütçeler (`model_max_budget`), geçici bütçe artışları ve anahtar yeniden üretimi proxy tarafında yalnızca enterprise sürümündedir; bu yüzden sunulmaz ([Bütçeler](#budgets-what-litellm-can-and-cannot-do) bölümüne bakın). Fallback zincirlerini düzenlemek proxy'de `STORE_MODEL_IN_DB=True` gerektirir; bu yüzden `/litellm fallbacks` salt okunur kalır.
+- Bir **organizasyonun** bütçesi anahtarın kendi yanıtında yoktur ve sanal anahtar onu okuyamayabilir; bu yüzden panel yalnızca organizasyonun adını gösterir, `/litellm org` onu admin anahtarıyla okur. Admin anahtarı yine yalnızca bir yönetici komutu yazdığınızda gönderilir, yenileme zamanlayıcısında asla.
+- Bir takım **üyesinin** toplamı sanal anahtara bildirilmez: `Member` göstergesi yalnızca bu anahtarın harcamasını sayar, bu yüzden düşük okunabilir: kullanıcının takımda birden çok anahtarı varsa proxy, göstergenin söylediğinden daha erken engelleyebilir. Sıfırlanan bir üst sınırda yüksek de okunabilir (sıfırlama üyenin harcamasını sıfırlar, anahtarınkini değil); orada gösterge uyarır, banner ise sessiz kalır.
+- 7 günlük geçmiş, proxy'nin etkinlik satırlarından yalnızca bir sayfayı okur; daha fazlası varsa panel bunun kısmi olduğunu söyler.
 - Bütçe aşımı banner'ı terminal ve masaüstü yüzeylerinde çizilir (Claude Code bandı yalnızca orada sunar); diğerlerinde bunu durum satırı ve panel söyler.
 - Durum satırından önceki `⚠`, her eklenti durum girdisi için Claude Code tarafından çizilir; anahtarın sorunlu olduğu anlamına gelmez (bunu metin söyler).
 - Claude Code'un eklenti API'si erken erişimdedir ve sürümler arasında değişebilir.

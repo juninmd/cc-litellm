@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="#install"><img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=for-the-badge"></a>
-  <img alt="LiteLLM v1.99.1" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20tested-6366f1?style=for-the-badge">
+  <img alt="LiteLLM v1.99.1 और v1.104.0" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20%C2%B7%20v1.104.0%20tested-6366f1?style=for-the-badge">
   <img alt="Claude Code 2.1.289" src="https://img.shields.io/badge/Claude%20Code-2.1.289%20tested-0ea5e9?style=for-the-badge">
   <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/juninmd/cc-litellm/ci.yml?branch=main&style=for-the-badge&label=CI">
   <img alt="License: MIT" src="https://img.shields.io/github/license/juninmd/cc-litellm?style=for-the-badge&color=22c55e">
@@ -29,7 +29,7 @@
 
 # cc-litellm
 
-यह उन लोगों के लिए एक [Claude Code](https://code.claude.com) plugin है जो अपने models तक **[LiteLLM](https://docs.litellm.ai) proxy** के ज़रिए पहुँचते हैं। यह दिखाता है कि Claude Code जिस **virtual key** का इस्तेमाल कर रहा है, उसके बारे में proxy क्या जानता है (budget, spend, limits, expiry, models, 7-day usage), और admins को terminal छोड़े बिना **keys बनाने, किसी को extra budget देने, किसी key को block करने और router की fallback chains पढ़ने** की सुविधा देता है।
+यह उन लोगों के लिए एक [Claude Code](https://code.claude.com) plugin है जो अपने models तक **[LiteLLM](https://docs.litellm.ai) proxy** के ज़रिए पहुँचते हैं। यह दिखाता है कि Claude Code जिस **virtual key** का इस्तेमाल कर रहा है, उसके बारे में proxy क्या जानता है (budget, spend, limits, expiry, models, 7-day usage), और admins को terminal छोड़े बिना **keys बनाने और edit करने, किसी को extra budget देने, किसी key को block करने और router की fallback chains पढ़ने** की सुविधा देता है।
 
 यह repository एक plugin marketplace (`cc-litellm`) है, जिसमें एक ही plugin है: [`litellm-key`](../../plugins/litellm-key)।
 
@@ -42,12 +42,14 @@
 | | | |
 | --- | --- | --- |
 | 👀 **निगरानी** | **Status line** prompt के नीचे, हमेशा दिखती है | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
-| | **`/litellm` pane** | key, team और user budgets के meters, user का **role**, limits, expiry, models, 7-day sparkline, हफ़्ते के **top models** और **runway** forecast; अपने आप refresh होता है |
+| | **`/litellm` pane** | key, team, user और **team-member** budgets के meters, user का **role**, limits, expiry, models, 7-day sparkline, हफ़्ते के **top models** और **runway** forecast; अपने आप refresh होता है |
 | | **Toasts** | 80% (configurable), 95% और 100% पर; key की expiry नज़दीक होने पर; key के blocked या expired होने पर। हर budget window में सिर्फ़ एक बार, अलग-अलग sessions में भी |
 | | **Over-budget banner** | prompt के ऊपर एक लाल band जो **जब तक कोई budget पूरी तरह खर्च हो चुका है तब तक बना रहता है** (key, user, team, window या model) और numbers सामान्य होने पर ही हटता है |
 | 🛠️ **प्रबंधन** *(admin)* | **`/litellm key new`** | virtual key बनाएँ; secret आपके **clipboard** में जाता है, **transcript में कभी नहीं** |
-| | **`/litellm grant`** | किसी key, user या team के लिए extra budget, preview और confirmation के साथ |
+| | **`/litellm grant`** | किसी key, user, team या organization के लिए extra budget, preview और confirmation के साथ |
+| | **`/litellm key set`** / `reset-spend` | key के models, limits, expiry या alias बदलें; उसका spend counter शून्य करें |
 | | **`/litellm key block`** / `unblock` | एक ही line में key को रोकें (या वापस चालू करें) |
+| | **`/litellm org`** | किसी organization का budget, जिसे virtual key नहीं पढ़ सकती |
 | | **`/litellm keys`** | keys की list: आपकी अपनी, किसी user की, किसी team की, या सभी |
 | | **`/litellm fallbacks`** | router की fallback chains (`cloud/auto → cloud/auto-long → …`), साथ में context-window fallbacks |
 
@@ -115,10 +117,26 @@ Plugin एक सामान्य *401* दिखाने की बजाय
   </tr>
 </table>
 
+### जब team हर member पर cap लगाती है
+
+Team हर member के खर्च पर cap लगा सकती है (`team_member_budget`)। Key का अपना budget ठीक होने पर भी proxy request को मना कर देता है, इसलिए plugin इस cap को पढ़कर `Member` meter के रूप में दिखाता है, और over-budget banner उसका नाम लेता है:
+
+<p align="center">
+  <img src="../evidence/member-cap.png" alt="Cap पार कर चुके Member meter वाला pane, prompt के ऊपर banner, और key की organization का नाम" width="92%">
+</p>
+
+<sub>यह screenshot `dev/mock-litellm.py --scenario member` पर लिया गया है। Proxy virtual key को member का total नहीं बताता, इसलिए meter <b>इस key का spend</b> गिनता है और यह साफ़ बताता भी है। वह कम दिख सकता है, और जिस cap का reset होता है उसके सामने ज़्यादा भी दिख सकता है (reset member का spend शून्य करता है, key का नहीं), इसलिए banner सिर्फ़ उसी cap के लिए दिखता है जो कभी reset नहीं होता। Key की organization का नाम भी दिखता है; उसका budget सिर्फ़ admin के लिए है, <code>/litellm org</code> उसे पढ़ता है।</sub>
+
 ### Fallback chains पढ़ें
 
 <p align="center">
   <img src="../evidence/fallbacks-filtered.png" alt="/litellm fallbacks cloud/auto" width="92%">
+</p>
+
+### Model की कीमत जानें
+
+<p align="center">
+  <img src="../evidence/models-prices.png" alt="प्रति million tokens input और output की कीमत और context window के साथ /litellm models" width="92%">
 </p>
 
 ### और proxy भी यही कहता है
@@ -143,13 +161,16 @@ Plugin एक सामान्य *401* दिखाने की बजाय
 | `/litellm` | Pane खोलता है (और एक line का summary देता है)। Screen न हो तो: summary print करता है। |
 | `/litellm refresh` | अभी दोबारा पढ़ता है। |
 | `/litellm info` | पूरा summary transcript में print करता है। |
-| `/litellm models` | इस key से call हो सकने वाले models की list। |
+| `/litellm models` | इस key से call हो सकने वाले models की list, हर model की प्रति million tokens कीमत और context window के साथ। |
 | `/litellm debug` | दिखाता है कि URL और keys कहाँ से आ रही हैं (हमेशा masked), क्या-क्या आज़माया गया और नतीजा क्या रहा। |
 | `/litellm close` | Pane बंद करता है। |
 | `/litellm keys [--user ID \| --team ID \| --all]` | Keys की list। Default: आपके अपने user की keys। 🔐 |
 | `/litellm key new <alias> [flags]` | Key बनाता है। 🔐 |
 | `/litellm key block <alias\|hash>` / `unblock` | Key को block करता है या वापस चालू करता है। 🔐 |
-| `/litellm grant <amount> [--key \| --user \| --team] [--set]` | Budget जोड़ता है। 🔐 |
+| `/litellm key set <alias\|hash> [flags]` | Key के models, limits, expiry या alias बदलता है। 🔐 |
+| `/litellm key reset-spend <alias\|hash>` | Key के spend counter को वापस शून्य पर set करता है। 🔐 |
+| `/litellm grant <amount> [--key \| --user \| --team \| --org] [--set]` | Budget जोड़ता है। 🔐 |
+| `/litellm org [id\|alias]` | किसी organization का budget; नाम न दें तो: key की अपनी organization, वरना list। 🔐 |
 | `/litellm fallbacks [model]` | Router की fallback chains, चाहें तो नाम से मेल खाने वाले models के लिए। 🔐 |
 
 🔐 = admin command, नीचे देखें। Pane में (click से या `ctrl+x` `tab` से focus करें): `r` refresh करता है, `c` summary copy करता है, `q` बंद करता है, arrow keys से scroll होता है; हर button अपनी key का नाम बताता है (`Refresh (r)`, `Copy (c)`, `Close (q)`)। खाली prompt पर `Esc` भी इसे बंद कर देता है।
@@ -179,6 +200,10 @@ Keys को पढ़ने और बदलने के लिए proxy admin 
 /litellm key new batch --budget 20 --models cloud/auto,cloud/auto-long --expires 30d --team platform-eng
 /litellm grant 10 --key claude-code-ana          # +$10 on top of the current budget
 /litellm grant 200 --team platform-eng --set     # cap the team at exactly $200
+/litellm grant 25 --org acme                     # +$25 on the organization (LiteLLM before 1.102, or enterprise)
+/litellm key set ci-runner --models cloud/auto --rpm 30 --expires 14d
+/litellm key set ci-runner --rpm none --expires never   # none removes a limit; --models all clears the list
+/litellm key reset-spend ci-runner               # the budget counter back to $0
 /litellm key block old-contractor
 /litellm fallbacks cloud/auto
 ```
@@ -193,6 +218,15 @@ Keys को पढ़ने और बदलने के लिए proxy admin 
 | `--expires 30d` | इतने समय बाद key काम करना बंद कर देती है। |
 | `--user ID` / `--team ID` | Key का मालिक कौन है (और किसका budget भी लागू होता है)। |
 
+| `key set` flag | मतलब |
+| --- | --- |
+| `--models a,b` / `--models all` | Key जिन models को call कर सकती है उन्हें बदलता है (`all`: सभी models)। |
+| `--rpm N` / `--tpm N` / `--parallel N` | कोई limit set करता है; `none` उसे हटा देता है। |
+| `--expires 30d` / `--expires never` | अभी से इतने समय बाद expire हो जाती है, या कभी नहीं। |
+| `--alias NEW` | Key का नाम बदलता है। |
+
+जो field आप छोड़ देते हैं, वह जैसा है वैसा ही रहता है। Preview हर field के लिए `before → after` दिखाता है, और चेतावनी देता है जब वह key वही हो जिसे Claude Code इस्तेमाल कर रहा है।
+
 हर admin command पर लागू सुरक्षा नियम:
 
 - **पहले preview।** `--dry-run` वहीं रुक जाता है; `--yes` confirmation छोड़ देता है; वरना Claude Code का native dialog पूछता है (**Apply** / **Cancel**)।
@@ -202,19 +236,21 @@ Keys को पढ़ने और बदलने के लिए proxy admin 
 - **सही आँकड़े।** `grant` बताता है जब spend पहले से नए budget से ज़्यादा हो, जब जोड़ने के लिए कोई cap ही न हो (`--set` इस्तेमाल करें), जब कुछ बदलेगा ही नहीं, और जब `--user` ऐसा user बना देगा जिसे proxy ने पहले कभी देखा ही नहीं।
 - **Admin key** सिर्फ़ उसी proxy को भेजी जाती है जो आपके session की अपनी key पहले ही accept कर चुका हो, और कभी print नहीं होती (errors में redact की जाती है)।
 
-आज LiteLLM v1.99.1 पर extra budget के रूप में *क्या* दिया जा सकता है: **key** का budget, **user** का budget, या **team** का budget (`--team`, जिसके लिए proxy admin चाहिए) बढ़ाना, increment के रूप में या absolute value (`--set`) के रूप में। *अस्थायी* budget बढ़ोतरी (`temp_budget_increase`) और per-model budgets proxy की तरफ़ से सिर्फ़ enterprise में हैं ([Budgets](#budgets-what-litellm-can-and-cannot-do) देखें), इसलिए plugin इन्हें दिखावा करने की बजाय offer ही नहीं करता।
+आज LiteLLM v1.99.1 और v1.104.0 पर extra budget के रूप में *क्या* दिया जा सकता है: **key** का budget, **user** का budget, या **team** का budget (`--team`, जिसके लिए proxy admin चाहिए) बढ़ाना, increment के रूप में या absolute value (`--set`) के रूप में। **Organization** budget (`--org`) v1.101 तक काम करता है; v1.102 से proxy organizations को enterprise licenses के लिए रखता है और plugin यह बता देता है। *अस्थायी* budget बढ़ोतरी (`temp_budget_increase`) और per-model budgets proxy की तरफ़ से सिर्फ़ enterprise में हैं ([Budgets](#budgets-what-litellm-can-and-cannot-do) देखें), इसलिए plugin इन्हें दिखावा करने की बजाय offer ही नहीं करता।
 
 <a id="budgets-what-litellm-can-and-cannot-do"></a>
 
 ## Budgets: LiteLLM क्या कर सकता है और क्या नहीं
 
-LiteLLM v1.99.1 (open-source proxy, बिना license) पर live जाँचा गया:
+LiteLLM v1.99.1 (open-source proxy, बिना license) पर live जाँचा गया; member cap और organizations को v1.104.0 पर भी जाँचा गया:
 
 | Budget | काम करता है? | कैसे |
 | --- | --- | --- |
 | **Key** के हिसाब से (cap + reset window) | ✅ | `/litellm key new --budget 10 --every 30d`; बढ़ाने के लिए `/litellm grant 5 --key NAME` |
 | **User** के हिसाब से | ✅ | `/litellm grant 5 --user ID` (user की हर key पर लागू होता है) |
 | **Team** के हिसाब से | ✅ | `/litellm grant 50 --team NAME` (proxy admin चाहिए) |
+| Team के **member** के हिसाब से (`team_member_budget`) | 👀 सिर्फ़ पढ़ने के लिए | उस team में user की requests को block करता है (HTTP 429, v1.104 से 422)। Pane cap को `Member…` के रूप में दिखाता है; इसे LiteLLM UI या API में set करें। Virtual key member का total नहीं पढ़ सकती, इसलिए meter **इस key का spend** गिनता है और यह साफ़ बताता भी है। Reset member का spend शून्य करता है, key का नहीं, इसलिए over-budget banner सिर्फ़ उसी cap के लिए दिखता है जो कभी reset नहीं होता; जिस cap का reset होता है उसके सामने meter चेतावनी देता है, block होने का दावा नहीं करता |
+| **Organization** के हिसाब से | ✅ v1.101 तक · ⛔ v1.102 से enterprise | उसकी हर key को block करता है (HTTP 429)। Virtual key इसे नहीं पढ़ सकती: pane organization का नाम बताता है, `/litellm org` budget दिखाता है (admin), `grant --org` उसे बढ़ाता है |
 | एक key पर कई windows (`budget_limits`, जैसे $5/hour + $50/month) | सिर्फ़ पढ़ने के लिए | proxy में हों तो `Window 1h` meters के रूप में दिखते हैं |
 | Key पर **model** के हिसाब से (`model_max_budget`) | ⛔ enterprise | proxy जवाब देता है *"You must have an enterprise license to set model_max_budget"*, `/budget/new` के लिए भी। अगर आपके proxy में license है, तो pane वे meters दिखाता है (`Model gpt-4o`) |
 | Temporary budget increase (`temp_budget_increase`) | ⛔ enterprise | open-source proxy यह field accept कर लेता है और उसे कभी लागू (enforce) नहीं करता |
@@ -239,7 +275,7 @@ Plugin वही URL और key पढ़ता है जो Claude Code इस
 | --- | --- | --- |
 | `litellm_url` | खाली | Default जगह पर न होने वाला proxy (LiteLLM के ज़रिए Bedrock/Vertex, prefix वाला URL)। |
 | `litellm_key` | खाली | कोई explicit key। 🔒 credential store में रखी जाती है, `settings.json` में नहीं। |
-| `litellm_admin_key` | खाली | `keys`, `key new/block/unblock`, `grant`, `fallbacks` के लिए admin key। 🔒 वही storage। कभी print नहीं होती। |
+| `litellm_admin_key` | खाली | `keys`, `key new/set/reset-spend/block/unblock`, `grant`, `org`, `fallbacks` के लिए admin key। 🔒 वही storage। कभी print नहीं होती। |
 | `refresh_seconds` | 60 | पढ़ने का interval (15 से 3600)। हर turn के बाद भी पढ़ता है, ज़्यादा से ज़्यादा हर 20 s में। |
 | `warn_percent` | 80 | पहली budget warning (95% और 100% पर भी warn करता है)। |
 | `show_status_line` | yes | Prompt के नीचे की line। |
@@ -254,11 +290,12 @@ Plugin वही URL और key पढ़ता है जो Claude Code इस
 | Endpoint | किसलिए |
 | --- | --- |
 | `/key/info` | Alias, spend, budget और windows, reset, limits, expiry, status, models, per-model budgets। हर read पर। |
-| `/user/info`, `/team/info` | Key के user और team का budget, जब cap लगा हो। हर read पर। |
+| `/user/info`, `/team/info` | Key के user और team का budget, और team की per-member cap, जब cap लगा हो। हर read पर। |
 | `/v1/models` | वे models जो वाकई allowed हैं। हर 10 मिनट में। |
+| `/model_group/info` | उन models की प्रति token कीमत और context window (proxy अपने सभी models के लिए जवाब देता है; plugin सिर्फ़ allowed वाले रखता है)। हर 10 मिनट में। |
 | `/user/daily/activity` | पिछले 7 दिनों का spend, requests और tokens, और model के हिसाब से spend। हर 10 मिनट में। |
 
-**Managing** तभी होता है जब आप कोई admin command टाइप करते हैं: `GET /key/list`, `/key/info`, `/user/info`, `/team/info`, `/v2/team/list`, `/router/settings`, और `POST /key/generate`, `/key/delete` (सिर्फ़ rollback के लिए), `/key/block`, `/key/unblock`, `/key/update`, `/user/update`, `/team/update`।
+**Managing** तभी होता है जब आप कोई admin command टाइप करते हैं: `GET /key/list`, `/key/info`, `/user/info`, `/team/info`, `/v2/team/list`, `/organization/info`, `/organization/list`, `/router/settings`, और `POST /key/generate`, `/key/delete` (सिर्फ़ rollback के लिए), `/key/block`, `/key/unblock`, `/key/update`, `/key/{hash}/reset_spend`, `/user/update`, `/team/update`, `PATCH /organization/update`।
 
 हर request ज़्यादा से ज़्यादा 4 s इंतज़ार करती है (admin commands के लिए 15 s)। कोई optional read fail हो जाए (403, 404…) तो वह pane में एक शांत note बन जाता है, error नहीं। अगर proxy down हो जाए, तो pane आख़िरी सही reading रखता है, उस पर stale का निशान लगाकर। LiteLLM spend को batches में अपने database में लिखता है, इसलिए numbers एक request से लगभग 10 seconds पीछे रहते हैं।
 
@@ -287,7 +324,7 @@ Plugin वही URL और key पढ़ता है जो Claude Code इस
 
 ## अपने laptop पर असली LiteLLM के साथ आज़माएँ
 
-`dev/litellm` एक पूरा lab है: Docker में Postgres के साथ LiteLLM v1.99.1, इसलिए virtual keys, budgets और spend असली हैं।
+`dev/litellm` एक पूरा lab है: Docker में Postgres 18 के साथ LiteLLM v1.104.0, इसलिए virtual keys, budgets और spend असली हैं। CI हर बदलाव पर इसे शुरू करता है और smoke test चलाता है।
 
 ```bash
 docker compose -f dev/litellm/docker-compose.yml up -d          # zero provider keys: canned answers
@@ -315,7 +352,10 @@ Plugin का layout: `hooks/register.tsx` अकेली ऐसी file है
 
 - `apiKeyHelper` नहीं पढ़ा जाता (user का command चलाना scope से बाहर है)। `litellm_key` इस्तेमाल करें।
 - `/user/daily/activity` LiteLLM में beta है और बदल सकता है।
-- Per-model budgets (`model_max_budget`), temporary budget increases और key regeneration proxy की तरफ़ से सिर्फ़ enterprise में हैं, इसलिए इन्हें offer नहीं किया जाता ([Budgets](#budgets-what-litellm-can-and-cannot-do) देखें)।
+- Per-model budgets (`model_max_budget`), temporary budget increases और key regeneration proxy की तरफ़ से सिर्फ़ enterprise में हैं, इसलिए इन्हें offer नहीं किया जाता ([Budgets](#budgets-what-litellm-can-and-cannot-do) देखें)। Fallback chains को edit करने के लिए proxy पर `STORE_MODEL_IN_DB=True` चाहिए, इसलिए `/litellm fallbacks` read-only ही रहता है।
+- किसी **organization** का budget key के अपने जवाब में नहीं होता और virtual key उसे पढ़ ही न पाए, ऐसा हो सकता है, इसलिए pane सिर्फ़ organization का नाम बताता है; `/litellm org` उसे admin key से पढ़ता है। Admin key अब भी सिर्फ़ तब भेजी जाती है जब आप admin command टाइप करें, refresh timer पर कभी नहीं।
+- किसी team **member** का total virtual key को नहीं बताया जाता: `Member` meter सिर्फ़ इस key का spend गिनता है, इसलिए वह कम दिख सकता है: अगर user की team में कई keys हैं, तो proxy meter के बताने से पहले भी block कर सकता है। जिस cap का reset होता है उसके सामने वह ज़्यादा भी दिख सकता है (reset member का spend शून्य करता है, key का नहीं), इसलिए वहाँ वह चेतावनी देता है और banner शांत रहता है।
+- 7-day history proxy की activity rows का एक ही page पढ़ती है; ज़्यादा होने पर pane बताता है कि यह अधूरी है।
 - Over-budget banner terminal और desktop surfaces पर बनता है (Claude Code band सिर्फ़ वहीं देता है); बाक़ी जगह status line और pane यही बात बताते हैं।
 - Status line से पहले का `⚠` Claude Code हर plugin status entry के लिए ख़ुद बनाता है; इसका मतलब यह नहीं कि key मुसीबत में है (यह बात text बताता है)।
 - Claude Code का plugin API early-access है और versions के बीच बदल सकता है।

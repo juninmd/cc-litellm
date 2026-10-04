@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="#install"><img alt="Plugin de Claude Code" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=for-the-badge"></a>
-  <img alt="LiteLLM v1.99.1" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20tested-6366f1?style=for-the-badge">
+  <img alt="LiteLLM v1.99.1 y v1.104.0" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20%C2%B7%20v1.104.0%20tested-6366f1?style=for-the-badge">
   <img alt="Claude Code 2.1.289" src="https://img.shields.io/badge/Claude%20Code-2.1.289%20tested-0ea5e9?style=for-the-badge">
   <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/juninmd/cc-litellm/ci.yml?branch=main&style=for-the-badge&label=CI">
   <img alt="License: MIT" src="https://img.shields.io/github/license/juninmd/cc-litellm?style=for-the-badge&color=22c55e">
@@ -29,7 +29,7 @@
 
 # cc-litellm
 
-Un plugin de [Claude Code](https://code.claude.com) para quienes acceden a sus modelos a través de un **proxy [LiteLLM](https://docs.litellm.ai)**. Muestra lo que el proxy sabe de la **clave virtual** que usa Claude Code (presupuesto, gasto, límites, vencimiento, modelos, uso de los últimos 7 días) y, para administradores, permite **crear claves, dar presupuesto extra a alguien, bloquear una clave y leer las cadenas de fallback del router** sin salir de la terminal.
+Un plugin de [Claude Code](https://code.claude.com) para quienes acceden a sus modelos a través de un **proxy [LiteLLM](https://docs.litellm.ai)**. Muestra lo que el proxy sabe de la **clave virtual** que usa Claude Code (presupuesto, gasto, límites, vencimiento, modelos, uso de los últimos 7 días) y, para administradores, permite **crear y editar claves, dar presupuesto extra a alguien, bloquear una clave y leer las cadenas de fallback del router** sin salir de la terminal.
 
 Este repositorio es un marketplace de plugins (`cc-litellm`) con un único plugin: [`litellm-key`](../../plugins/litellm-key).
 
@@ -42,12 +42,14 @@ Este repositorio es un marketplace de plugins (`cc-litellm`) con un único plugi
 | | | |
 | --- | --- | --- |
 | 👀 **Supervisar** | **Línea de estado** bajo el prompt, siempre visible | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
-| | **Panel `/litellm`** | medidores de los presupuestos de la clave, el equipo y el usuario, el **rol** del usuario, límites, vencimiento, modelos, sparkline de 7 días, los **modelos con más gasto** de la semana y un pronóstico de **runway**; se actualiza solo |
+| | **Panel `/litellm`** | medidores de los presupuestos de la clave, el equipo, el usuario y el **miembro del equipo**, el **rol** del usuario, límites, vencimiento, modelos, sparkline de 7 días, los **modelos con más gasto** de la semana y un pronóstico de **runway**; se actualiza solo |
 | | **Notificaciones (toasts)** | al 80% (configurable), 95% y 100%; clave a punto de vencer; clave bloqueada o vencida. Una vez por ventana de presupuesto, incluso entre sesiones |
 | | **Banner de presupuesto excedido** | una banda roja sobre el prompt que **permanece mientras algún presupuesto esté agotado** (clave, usuario, equipo, ventana o modelo) y desaparece solo cuando las cifras vuelven a la normalidad |
 | 🛠️ **Gestionar** *(admin)* | **`/litellm key new`** | crea una clave virtual; el secreto va a tu **portapapeles, nunca a la transcripción** |
-| | **`/litellm grant`** | presupuesto extra para una clave, un usuario o un equipo, con vista previa y confirmación |
+| | **`/litellm grant`** | presupuesto extra para una clave, un usuario, un equipo o una organización, con vista previa y confirmación |
+| | **`/litellm key set`** / `reset-spend` | cambia los modelos, límites, vencimiento o alias de una clave; pone a cero su contador de gasto |
 | | **`/litellm key block`** / `unblock` | detiene (o restablece) una clave en una sola línea |
+| | **`/litellm org`** | el presupuesto de una organización, que una clave virtual no puede leer |
 | | **`/litellm keys`** | lista claves: las tuyas, las de un usuario, las de un equipo o todas |
 | | **`/litellm fallbacks`** | las cadenas de fallback del router (`cloud/auto → cloud/auto-long → …`), más los fallbacks por ventana de contexto |
 
@@ -115,10 +117,26 @@ El plugin distingue una clave bloqueada de una vencida y de una incorrecta, en l
   </tr>
 </table>
 
+### Cuando el equipo limita a cada miembro
+
+Un equipo puede limitar lo que gasta cada miembro (`team_member_budget`). El proxy rechaza la petición con el presupuesto propio de la clave en orden, así que el plugin lee el tope y lo muestra como un medidor `Member`, y el banner de presupuesto excedido lo nombra:
+
+<p align="center">
+  <img src="../evidence/member-cap.png" alt="El panel con un medidor Member por encima de su tope, el banner sobre el prompt y la organización de la clave con nombre" width="92%">
+</p>
+
+<sub>Captura contra `dev/mock-litellm.py --scenario member`. El proxy no informa a una clave virtual del total de un miembro, así que el medidor cuenta <b>el gasto de esta clave</b> y lo dice. Puede marcar de menos y, frente a un tope que se reinicia, puede marcar de más (un reinicio pone a cero el gasto del miembro, no el de la clave), así que el banner solo se activa para un tope que nunca se reinicia. También se nombra la organización de la clave; su presupuesto es solo de admin, <code>/litellm org</code> lo lee.</sub>
+
 ### Lee las cadenas de fallback
 
 <p align="center">
   <img src="../evidence/fallbacks-filtered.png" alt="/litellm fallbacks cloud/auto" width="92%">
+</p>
+
+### Conoce lo que cuesta un modelo
+
+<p align="center">
+  <img src="../evidence/models-prices.png" alt="/litellm models con el precio por millón de tokens de entrada y de salida y la ventana de contexto" width="92%">
 </p>
 
 ### Y el proxy coincide
@@ -143,13 +161,16 @@ Todo lo anterior es la interfaz de administración real de LiteLLM v1.99.1 refle
 | `/litellm` | Abre el panel (y responde con un resumen de una línea). Sin pantalla: imprime el resumen. |
 | `/litellm refresh` | Vuelve a leer ahora. |
 | `/litellm info` | Imprime el resumen completo en la transcripción. |
-| `/litellm models` | Lista los modelos que esta clave puede invocar. |
+| `/litellm models` | Lista los modelos que esta clave puede invocar, con su precio por millón de tokens y su ventana de contexto. |
 | `/litellm debug` | Muestra de dónde salen la URL y las claves (siempre enmascaradas), qué se intentó y el resultado. |
 | `/litellm close` | Cierra el panel. |
 | `/litellm keys [--user ID \| --team ID \| --all]` | Lista claves. Por defecto: las claves de tu propio usuario. 🔐 |
 | `/litellm key new <alias> [flags]` | Crea una clave. 🔐 |
 | `/litellm key block <alias\|hash>` / `unblock` | Bloquea o restablece una clave. 🔐 |
-| `/litellm grant <amount> [--key \| --user \| --team] [--set]` | Suma presupuesto. 🔐 |
+| `/litellm key set <alias\|hash> [flags]` | Cambia los modelos, límites, vencimiento o alias de una clave. 🔐 |
+| `/litellm key reset-spend <alias\|hash>` | Devuelve a cero el contador de gasto de una clave. 🔐 |
+| `/litellm grant <amount> [--key \| --user \| --team \| --org] [--set]` | Suma presupuesto. 🔐 |
+| `/litellm org [id\|alias]` | El presupuesto de una organización; sin nombre: la organización de la propia clave y, si no, la lista. 🔐 |
 | `/litellm fallbacks [model]` | Cadenas de fallback del router, opcionalmente solo para los modelos que coincidan con un nombre. 🔐 |
 
 🔐 = comando de administración, ver más abajo. En el panel (dale el foco con un clic o con `ctrl+x` `tab`): `r` actualiza, `c` copia el resumen, `q` cierra y las flechas desplazan; cada botón indica su tecla (`Refresh (r)`, `Copy (c)`, `Close (q)`). `Esc` también lo cierra cuando el prompt está vacío.
@@ -179,6 +200,10 @@ Leer y modificar claves requiere ser administrador del proxy. Define la opción 
 /litellm key new batch --budget 20 --models cloud/auto,cloud/auto-long --expires 30d --team platform-eng
 /litellm grant 10 --key claude-code-ana          # +$10 on top of the current budget
 /litellm grant 200 --team platform-eng --set     # cap the team at exactly $200
+/litellm grant 25 --org acme                     # +$25 on the organization (LiteLLM before 1.102, or enterprise)
+/litellm key set ci-runner --models cloud/auto --rpm 30 --expires 14d
+/litellm key set ci-runner --rpm none --expires never   # none removes a limit; --models all clears the list
+/litellm key reset-spend ci-runner               # the budget counter back to $0
 /litellm key block old-contractor
 /litellm fallbacks cloud/auto
 ```
@@ -193,6 +218,15 @@ Leer y modificar claves requiere ser administrador del proxy. Define la opción 
 | `--expires 30d` | La clave deja de funcionar pasado este tiempo. |
 | `--user ID` / `--team ID` | Quién la posee (y cuyo presupuesto también se aplica). |
 
+| Flag de `key set` | Significado |
+| --- | --- |
+| `--models a,b` / `--models all` | Sustituye los modelos que la clave puede invocar (`all`: todos los modelos). |
+| `--rpm N` / `--tpm N` / `--parallel N` | Fija un límite; `none` lo elimina. |
+| `--expires 30d` / `--expires never` | Vence pasado este tiempo desde ahora, o nunca. |
+| `--alias NEW` | Renombra la clave. |
+
+Un campo que omites se queda como está. La vista previa muestra `before → after` para cada campo y avisa cuando la clave es la que usa Claude Code.
+
 Salvaguardas en cada comando de administración:
 
 - **Primero, la vista previa.** `--dry-run` se detiene ahí; `--yes` omite la confirmación; de lo contrario, el diálogo nativo de Claude Code pregunta (**Apply** / **Cancel**).
@@ -202,19 +236,21 @@ Salvaguardas en cada comando de administración:
 - **Cifras honestas.** `grant` avisa cuando el gasto ya supera el nuevo presupuesto, cuando no hay un tope al que sumar (usa `--set`), cuando no cambiaría nada y cuando `--user` crearía un usuario que el proxy nunca ha visto.
 - **La clave de administración** se envía solo al proxy que ya aceptó la propia clave de tu sesión, y nunca se imprime (los errores se enmascaran).
 
-Lo que *sí* se puede dar hoy como presupuesto extra, en LiteLLM v1.99.1: subir el presupuesto de una **clave**, de un **usuario** o de un **equipo** (`--team`, que requiere ser administrador del proxy), como incremento o como valor absoluto (`--set`). Un aumento *temporal* de presupuesto (`temp_budget_increase`) y los presupuestos por modelo son exclusivos de la edición enterprise en el lado del proxy (ver [Presupuestos](#budgets-what-litellm-can-and-cannot-do)), así que el plugin no los ofrece en lugar de fingir que existen.
+Lo que *sí* se puede dar hoy como presupuesto extra, en LiteLLM v1.99.1 y v1.104.0: subir el presupuesto de una **clave**, de un **usuario** o de un **equipo** (`--team`, que requiere ser administrador del proxy), como incremento o como valor absoluto (`--set`). Un presupuesto de **organización** (`--org`) funciona hasta la v1.101; desde la v1.102 el proxy reserva las organizaciones a las licencias enterprise y el plugin lo indica. Un aumento *temporal* de presupuesto (`temp_budget_increase`) y los presupuestos por modelo son exclusivos de la edición enterprise en el lado del proxy (ver [Presupuestos](#budgets-what-litellm-can-and-cannot-do)), así que el plugin no los ofrece en lugar de fingir que existen.
 
 <a id="budgets-what-litellm-can-and-cannot-do"></a>
 
 ## Presupuestos: qué puede y qué no puede hacer LiteLLM
 
-Verificado en vivo contra LiteLLM v1.99.1 (proxy de código abierto, sin licencia):
+Verificado en vivo contra LiteLLM v1.99.1 (proxy de código abierto, sin licencia); el tope por miembro y las organizaciones también se verificaron en la v1.104.0:
 
 | Presupuesto | ¿Funciona? | Cómo |
 | --- | --- | --- |
 | Por **clave** (tope + ventana de reinicio) | ✅ | `/litellm key new --budget 10 --every 30d`; súbelo con `/litellm grant 5 --key NAME` |
 | Por **usuario** | ✅ | `/litellm grant 5 --user ID` (se aplica a todas las claves que posee el usuario) |
 | Por **equipo** | ✅ | `/litellm grant 50 --team NAME` (requiere ser administrador del proxy) |
+| Por **miembro** de un equipo (`team_member_budget`) | 👀 solo lectura | bloquea las solicitudes del usuario en ese equipo (HTTP 429, 422 desde la v1.104). El panel muestra el tope como `Member…`; defínelo en la interfaz o en la API de LiteLLM. Una clave virtual no puede leer el total del miembro, así que el medidor cuenta el **gasto de esta clave** y lo dice. Un reinicio pone a cero el gasto del miembro, pero no el de la clave, así que el banner de presupuesto excedido solo se activa para un tope que nunca se reinicia; frente a un tope que se reinicia el medidor avisa, no afirma un bloqueo |
+| Por **organización** | ✅ hasta la v1.101 · ⛔ enterprise desde la v1.102 | bloquea todas las claves que contiene (HTTP 429). Una clave virtual no puede leerlo: el panel nombra la organización, `/litellm org` muestra el presupuesto (admin), `grant --org` lo sube |
 | Varias ventanas en una misma clave (`budget_limits`, p. ej., $5/hora + $50/mes) | solo lectura | se muestran como medidores `Window 1h` cuando el proxy las tiene |
 | Por **modelo** en una clave (`model_max_budget`) | ⛔ enterprise | el proxy responde *"You must have an enterprise license to set model_max_budget"*, también para `/budget/new`. Si tu proxy tiene la licencia, el panel muestra esos medidores (`Model gpt-4o`) |
 | Aumento temporal de presupuesto (`temp_budget_increase`) | ⛔ enterprise | el proxy de código abierto acepta el campo pero nunca lo aplica |
@@ -239,7 +275,7 @@ Todas las opciones son opcionales (Claude Code avisa al instalar que están "not
 | --- | --- | --- |
 | `litellm_url` | vacío | Un proxy en una ubicación no predeterminada (Bedrock/Vertex a través de LiteLLM, URL con prefijo). |
 | `litellm_key` | vacío | Una clave explícita. 🔒 se guarda en el almacén de credenciales, no en `settings.json`. |
-| `litellm_admin_key` | vacío | Clave de administración para `keys`, `key new/block/unblock`, `grant`, `fallbacks`. 🔒 mismo almacenamiento. Nunca se imprime. |
+| `litellm_admin_key` | vacío | Clave de administración para `keys`, `key new/set/reset-spend/block/unblock`, `grant`, `org`, `fallbacks`. 🔒 mismo almacenamiento. Nunca se imprime. |
 | `refresh_seconds` | 60 | Intervalo de lectura (de 15 a 3600). También lee después de cada turno, como máximo cada 20 s. |
 | `warn_percent` | 80 | Primera advertencia de presupuesto (también avisa al 95% y al 100%). |
 | `show_status_line` | sí | La línea bajo el prompt. |
@@ -254,11 +290,12 @@ Todas las opciones son opcionales (Claude Code avisa al instalar que están "not
 | Endpoint | Para |
 | --- | --- |
 | `/key/info` | Alias, gasto, presupuesto y ventanas, reinicio, límites, vencimiento, estado, modelos, presupuestos por modelo. En cada lectura. |
-| `/user/info`, `/team/info` | Presupuesto del usuario y del equipo de la clave, cuando tienen tope. En cada lectura. |
+| `/user/info`, `/team/info` | Presupuesto del usuario y del equipo de la clave, y el tope por miembro del equipo, cuando tienen tope. En cada lectura. |
 | `/v1/models` | Los modelos realmente permitidos. Cada 10 min. |
+| `/model_group/info` | Precio por token y ventana de contexto de esos modelos (el proxy responde por todos sus modelos; el plugin se queda con los permitidos). Cada 10 min. |
 | `/user/daily/activity` | Gasto, solicitudes y tokens de los últimos 7 días, y el gasto por modelo. Cada 10 min. |
 
-**Gestionar** solo ocurre cuando escribes un comando de administración: `GET /key/list`, `/key/info`, `/user/info`, `/team/info`, `/v2/team/list`, `/router/settings`, y `POST /key/generate`, `/key/delete` (solo para rollback), `/key/block`, `/key/unblock`, `/key/update`, `/user/update`, `/team/update`.
+**Gestionar** solo ocurre cuando escribes un comando de administración: `GET /key/list`, `/key/info`, `/user/info`, `/team/info`, `/v2/team/list`, `/organization/info`, `/organization/list`, `/router/settings`, y `POST /key/generate`, `/key/delete` (solo para rollback), `/key/block`, `/key/unblock`, `/key/update`, `/key/{hash}/reset_spend`, `/user/update`, `/team/update`, `PATCH /organization/update`.
 
 Cada solicitud espera como máximo 4 s (15 s en los comandos de administración). Una lectura opcional que falla (403, 404…) se convierte en una nota discreta en el panel, nunca en un error. Si el proxy se cae, el panel conserva la última lectura válida, marcada como desactualizada. LiteLLM escribe el gasto en su base de datos por lotes, por lo que las cifras se retrasan unos 10 segundos respecto de la solicitud.
 
@@ -287,7 +324,7 @@ Cada solicitud espera como máximo 4 s (15 s en los comandos de administración)
 
 ## Pruébalo con un LiteLLM real en tu máquina
 
-`dev/litellm` es un laboratorio completo: LiteLLM v1.99.1 con Postgres en Docker, de modo que las claves virtuales, los presupuestos y el gasto son reales.
+`dev/litellm` es un laboratorio completo: LiteLLM v1.104.0 con Postgres 18 en Docker, de modo que las claves virtuales, los presupuestos y el gasto son reales. El CI lo levanta y ejecuta el smoke test en cada cambio.
 
 ```bash
 docker compose -f dev/litellm/docker-compose.yml up -d          # zero provider keys: canned answers
@@ -315,7 +352,10 @@ Estructura del plugin: `hooks/register.tsx` es el único archivo que toca el `$`
 
 - `apiKeyHelper` no se lee (ejecutar un comando del usuario queda fuera del alcance). Usa `litellm_key`.
 - `/user/daily/activity` es beta en LiteLLM y puede cambiar.
-- Los presupuestos por modelo (`model_max_budget`), los aumentos temporales de presupuesto y la regeneración de claves son exclusivos de la edición enterprise en el lado del proxy, por lo que no se ofrecen (ver [Presupuestos](#budgets-what-litellm-can-and-cannot-do)).
+- Los presupuestos por modelo (`model_max_budget`), los aumentos temporales de presupuesto y la regeneración de claves son exclusivos de la edición enterprise en el lado del proxy, por lo que no se ofrecen (ver [Presupuestos](#budgets-what-litellm-can-and-cannot-do)). Editar las cadenas de fallback requiere `STORE_MODEL_IN_DB=True` en el proxy, así que `/litellm fallbacks` sigue siendo de solo lectura.
+- El presupuesto de una **organización** no viene en la respuesta de la propia clave y una clave virtual puede no poder leerlo, así que el panel solo nombra la organización; `/litellm org` lo lee con una clave de administración. La clave de administración se sigue enviando solo cuando escribes un comando de administración, nunca con el temporizador de actualización.
+- El total de un **miembro** del equipo no se informa a una clave virtual: el medidor `Member` cuenta solo el gasto de esta clave, así que puede marcar de menos: si el usuario tiene varias claves en el equipo, el proxy puede bloquear antes de lo que indica el medidor. Frente a un tope que se reinicia también puede marcar de más (un reinicio pone a cero el gasto del miembro, no el de la clave), así que ahí avisa y el banner se mantiene en silencio.
+- El historial de 7 días lee una página de las filas de actividad del proxy; cuando hay más, el panel indica que es parcial.
 - El banner de presupuesto excedido se dibuja en las superficies de terminal y de escritorio (Claude Code solo ofrece la banda ahí); en las demás, lo indican la línea de estado y el panel.
 - El `⚠` que precede a la línea de estado lo dibuja Claude Code en cada entrada de estado de un plugin; no significa que la clave tenga problemas (eso lo dice el texto).
 - La API de plugins de Claude Code es de acceso anticipado y puede cambiar entre versiones.
