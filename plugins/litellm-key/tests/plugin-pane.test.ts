@@ -42,6 +42,25 @@ describe('the pane', () => {
     }
   })
 
+  test('shows the member cap of the team as a meter that counts this key only, and names the organization', async ($, on) => {
+    const routes = {
+      ...standardRoutes(),
+      '/key/info': reply(200, keyBody({ organization_id: 'org-1' })),
+      '/team/info': reply(200, { team_id: 'eng', team_info: { team_alias: 'eng-platform', spend: 412, max_budget: 1000, team_member_budget_table: { max_budget: 40 } }, team_memberships: [] }),
+    }
+    const { clock } = boot(on, { routes })
+
+    await start($, clock)
+    for (const surface of SURFACES) {
+      const ui = await mount($, surface)
+
+      expect(await ui.find({ type: 'Text', text: /Member jane/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /\$12\.50 \/ \$40\.00.*this key only/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /org-1 · budget: \/litellm org/ })).toBeDefined()
+      await ui.unmount()
+    }
+  })
+
   test('Refresh reads again, Copy puts the summary on the clipboard, Close closes', async ($, on) => {
     const { log, net, clock } = boot(on)
 

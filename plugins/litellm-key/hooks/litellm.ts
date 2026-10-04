@@ -5,7 +5,7 @@ import { classify, describeError, failure, looksLikeLiteLLM } from './failures'
 import { maskKey, utcDay } from './format'
 import type { Json } from './json'
 import { isObject, parse } from './json'
-import { parseKey, parseModels, parseTeam, parseUsage, parseUser, parseUserRole } from './parsers'
+import { hasMoreRows, parseKey, parseMember, parseModelPrices, parseModels, parseTeam, parseUsage, parseUser, parseUserRole } from './parsers'
 
 export type Reply = { status: number; text: string }
 export type Http = (url: string, headers: Record<string, string>) => Promise<Reply>
@@ -24,6 +24,8 @@ export type FetchRequest = {
   refreshSlow: boolean
   previous: Snapshot | null
 }
+
+const PARTIAL_USAGE = 'usage history is partial: the proxy has more rows than one page holds'
 
 export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => {
   const { credentials, http, now, pinnedRoot } = request
@@ -123,12 +125,12 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
     .join('&')
   const { previous, refreshSlow, wantRelated } = request
   const wantUsage = request.wantUsage && keyInfo.userId !== null
-  const [userBody, team, models, usage] = await Promise.all([
+  const [userBody, teamBody, models, usage, priceBody] = await Promise.all([
     wantRelated && keyInfo.userId
       ? attempt('user budget', () => get(`/user/info?user_id=${encodeURIComponent(keyInfo.userId ?? '')}`, true))
       : Promise.resolve(null),
     wantRelated && keyInfo.teamId
-      ? attempt('team budget', async () => parseTeam(await get(`/team/info?team_id=${encodeURIComponent(keyInfo.teamId ?? '')}&key_limit=1`, true)))
+      ? attempt('team budget', () => get(`/team/info?team_id=${encodeURIComponent(keyInfo.teamId ?? '')}&key_limit=1`, true))
       : Promise.resolve(null),
     refreshSlow
       ? attempt('model list', async () => parseModels(await get('/v1/models')))
@@ -136,9 +138,23 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
     !wantUsage
       ? Promise.resolve(null)
       : refreshSlow
-        ? attempt('usage history', async () => parseUsage(await get(`/user/daily/activity?${usageQuery}`), days))
+        ? attempt('usage history', async () => {
+            const body = await get(`/user/daily/activity?${usageQuery}`)
+
+            if (hasMoreRows(body)) {
+              notes.push(PARTIAL_USAGE)
+            }
+
+            return parseUsage(body, days)
+          })
         : Promise.resolve(previous?.usage ?? null),
+    refreshSlow ? attempt('model prices', () => get('/model_group/info', true)) : Promise.resolve(null),
   ])
+
+  // the fast ticks reuse the last usage, partial or not, so they keep saying so
+  if (wantUsage && !refreshSlow && previous?.notes.includes(PARTIAL_USAGE)) {
+    notes.push(PARTIAL_USAGE)
+  }
 
   return {
     ok: true,
@@ -151,8 +167,10 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
       key: keyInfo,
       user: parseUser(userBody),
       userRole: parseUserRole(userBody),
-      team,
+      team: parseTeam(teamBody),
+      member: parseMember(teamBody, keyInfo),
       models,
+      prices: refreshSlow ? parseModelPrices(priceBody, models) : (previous?.prices ?? null),
       usage,
       notes,
     },

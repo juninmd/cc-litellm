@@ -1,5 +1,9 @@
-import type { Admin, Budgeted } from './admin'
+import type { Budgeted } from './admin'
 import { listKeys, readFallbacks, resolveKey } from './admin'
+import type { Deps, Result } from './admin-flow'
+import { confirmed, done } from './admin-flow'
+import { keyResetSpend, keySet } from './admin-key-edit'
+import { orgCommand } from './admin-org'
 import { readTarget } from './admin-targets'
 import { applyBudget, deleteKey, generateKey, setBlocked } from './admin-writes'
 import { fallbacksText, keyBody, keyPreview, keysText, parseNewKey, planGrant, unknownFlags } from './admin-plan'
@@ -7,32 +11,21 @@ import type { Parsed } from './args'
 import { parseArgs, parseMoney } from './args'
 import { maskKey, money } from './format'
 
-export type Deps = {
-  admin: Admin
-  /** SHA-256 of the key Claude Code uses, when the last reading found it. */
-  ownHash: string | null
-  ownUserId: string | null
-  /** Drawing surfaces of the session: none means headless, with no dialog and no clipboard. */
-  surfaces: readonly string[]
-  now: number
-  ask: (question: string, options: string[]) => Promise<string>
-  copy: (text: string) => Promise<boolean>
-}
-
-export type Result = { text: string; isChanged: boolean }
-export type AdminCommand = 'keys' | 'key' | 'grant' | 'fallbacks'
+export type { Deps, Result } from './admin-flow'
+export type AdminCommand = 'keys' | 'key' | 'grant' | 'org' | 'fallbacks'
 
 const BOOLEANS = new Set(['yes', 'dry-run', 'reveal', 'set', 'all'])
-const done = (text: string, isChanged = false): Result => ({ text, isChanged })
 
 export const KEY_HELP = [
   '/litellm key new <alias> [--budget 10 --every 30d --models a,b --rpm 60 --tpm 100000 --expires 30d --user ID --team ID]',
   '/litellm key block <alias|hash>',
   '/litellm key unblock <alias|hash>',
+  '/litellm key set <alias|hash> [--models a,b|all --rpm 60|none --tpm 100000|none --parallel 4|none --expires 30d|never --alias NEW]',
+  '/litellm key reset-spend <alias|hash>',
 ].join('\n')
 
 export const GRANT_HELP =
-  '/litellm grant <amount> [--key <alias|hash> | --user <id> | --team <id|alias>] [--set] [--dry-run] [--yes]'
+  '/litellm grant <amount> [--key <alias|hash> | --user <id> | --team <id|alias> | --org <id|alias>] [--set] [--dry-run] [--yes]'
 
 const copied = async (deps: Deps, secret: string): Promise<boolean> => {
   try {
@@ -40,27 +33,6 @@ const copied = async (deps: Deps, secret: string): Promise<boolean> => {
   } catch {
     return false // a clipboard that throws is one that refuses: the key must not stay behind
   }
-}
-
-/** Shows the preview and gets a yes: --yes, else the engine's dialog; --dry-run, no dialog and a failed dialog all stop here. */
-const confirmed = async (deps: Deps, parsed: Parsed, preview: readonly string[], verb: string): Promise<string | null> => {
-  const shown = preview.join('\n')
-
-  if (parsed.flags['dry-run'] === true) {
-    return `${shown}\n(dry run: nothing changed)`
-  }
-  if (parsed.flags.yes === true) {
-    return null
-  }
-  if (deps.surfaces.length > 0) {
-    try {
-      return (await deps.ask(`${shown}\n\n${verb}?`, ['Apply', 'Cancel'])) === 'Apply' ? null : `${shown}\nCancelled: nothing changed.`
-    } catch {
-      // dismissed or no one to ask: fall through to the preview
-    }
-  }
-
-  return `${shown}\nNothing changed yet. Run it again with --yes to apply.`
 }
 
 const keys = async (deps: Deps, parsed: Parsed): Promise<Result> => {
@@ -162,7 +134,7 @@ const keyToggle = async (deps: Deps, parsed: Parsed, isBlocked: boolean): Promis
 }
 
 const grant = async (deps: Deps, parsed: Parsed): Promise<Result> => {
-  const bad = unknownFlags(parsed, ['key', 'user', 'team', 'set', 'yes', 'dry-run'])
+  const bad = unknownFlags(parsed, ['key', 'user', 'team', 'org', 'set', 'yes', 'dry-run'])
   const [rawAmount, ...extra] = parsed.positional
 
   if (bad || extra.length > 0) {
@@ -173,10 +145,10 @@ const grant = async (deps: Deps, parsed: Parsed): Promise<Result> => {
   if (!amount.ok) {
     return done(`${amount.message}\n${GRANT_HELP}`)
   }
-  const targets = (['key', 'user', 'team'] as const).filter(kind => parsed.flags[kind] !== undefined)
+  const targets = (['key', 'user', 'team', 'org'] as const).filter(kind => parsed.flags[kind] !== undefined)
 
   if (targets.length > 1) {
-    return done('Pick one target: --key, --user or --team.')
+    return done('Pick one target: --key, --user, --team or --org.')
   }
   const kind: Budgeted['kind'] = targets[0] ?? 'key'
   const ref = typeof parsed.flags[kind] === 'string' ? (parsed.flags[kind] as string) : null
@@ -222,7 +194,22 @@ export const runAdmin = async (deps: Deps, command: AdminCommand, input: string)
     return keys(deps, command === 'key' ? { ...parsed, positional: parsed.positional.slice(1) } : parsed)
   }
   if (command === 'key') {
-    return sub === 'new' ? keyNew(deps, parsed) : sub === 'block' || sub === 'unblock' ? keyToggle(deps, parsed, sub === 'block') : done(`Usage:\n${KEY_HELP}`)
+    switch (sub) {
+      case 'new':
+        return keyNew(deps, parsed)
+      case 'block':
+      case 'unblock':
+        return keyToggle(deps, parsed, sub === 'block')
+      case 'set':
+        return keySet(deps, parsed)
+      case 'reset-spend':
+        return keyResetSpend(deps, parsed)
+      default:
+        return done(`Usage:\n${KEY_HELP}`)
+    }
+  }
+  if (command === 'org') {
+    return orgCommand(deps, parsed)
   }
   if (command === 'grant') {
     return grant(deps, parsed)

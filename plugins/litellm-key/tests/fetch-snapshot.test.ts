@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import { fetchSnapshot } from '../hooks/litellm'
-import { credentials, request } from './factories'
+import { credentials, request, standardUsage } from './factories'
 import { BASE, HASH, KEY, keyBody, reply, router, standardRoutes } from './support'
 
 describe('fetchSnapshot', () => {
@@ -74,7 +74,26 @@ describe('fetchSnapshot', () => {
     const { http, calls } = router(standardRoutes())
 
     await fetchSnapshot(request(http, { wantRelated: false, wantUsage: false }))
-    expect(calls.map(call => call.url.replace(BASE, ''))).toEqual(['/key/info', '/v1/models'])
+    expect(calls.map(call => call.url.replace(BASE, ''))).toEqual(['/key/info', '/v1/models', '/model_group/info'])
+  })
+
+  test('says when the usage history does not fit in one page of the proxy', async () => {
+    const usage = { ...standardUsage(), metadata: { total_spend: 14.2, has_more: true, page: 1, total_pages: 3 } }
+    const result = await fetchSnapshot(request(router({ ...standardRoutes(), '/user/daily/activity': reply(200, usage) }).http))
+
+    expect(result.ok && result.snapshot.notes).toEqual(['usage history is partial: the proxy has more rows than one page holds'])
+    expect(result.ok && result.snapshot.usage?.days).toHaveLength(7)
+  })
+
+  test('keeps saying the history is partial on the fast ticks that reuse it, and stops when a slow refresh sees it whole', async () => {
+    const partial = { ...standardUsage(), metadata: { total_spend: 14.2, has_more: true, page: 1, total_pages: 3 } }
+    const first = await fetchSnapshot(request(router({ ...standardRoutes(), '/user/daily/activity': reply(200, partial) }).http))
+    const previous = first.ok ? first.snapshot : null
+    const fast = await fetchSnapshot(request(router(standardRoutes()).http, { refreshSlow: false, previous }))
+    const whole = await fetchSnapshot(request(router(standardRoutes()).http, { previous }))
+
+    expect(fast.ok && fast.snapshot.notes).toEqual(['usage history is partial: the proxy has more rows than one page holds'])
+    expect(whole.ok && whole.snapshot.notes).toEqual([])
   })
 
   test('a key without a user has no history and no user budget', async () => {

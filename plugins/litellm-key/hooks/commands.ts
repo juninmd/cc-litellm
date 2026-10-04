@@ -1,9 +1,10 @@
 import type { Snapshot } from '../types'
-import type { Deps } from './admin-commands'
+import type { AdminCommand, Deps } from './admin-commands'
 import { GRANT_HELP, KEY_HELP, runAdmin } from './admin-commands'
 import { clock, maskKey, redact, truncate } from './format'
 import type { Session } from './session'
 import { modelsText } from './facts'
+import { modelsTable } from './prices'
 import { failureText, oneLine, summaryText } from './summary'
 
 const PANE_WAIT_MS = 2_500
@@ -12,7 +13,7 @@ const HELP = [
   '/litellm            open the live pane',
   '/litellm refresh    read the key again now',
   '/litellm info       print the full summary here',
-  '/litellm models     list the models this key can call',
+  '/litellm models     list the models this key can call, with their prices',
   '/litellm debug      show where the URL and the key come from',
   '/litellm close      close the pane',
   '',
@@ -20,6 +21,7 @@ const HELP = [
   '/litellm keys [--user ID | --team ID | --all]',
   KEY_HELP,
   GRANT_HELP,
+  '/litellm org [id|alias]',
   '/litellm fallbacks [model]',
   'Every change shows a preview first; --dry-run stops there, --yes skips the confirmation.',
   'A new key goes to the clipboard, never to the transcript.',
@@ -128,19 +130,20 @@ export const runCommand = async (ctx: CommandContext, args: string): Promise<{ t
           text: await report(ctx, snapshot => {
             const names = snapshot.models ?? snapshot.key.models
 
-            return names.length === 0 ? `Models: ${modelsText(snapshot)}` : `Models (${names.length}): ${names.join(', ')}`
+            return names.length === 0 ? `Models: ${modelsText(snapshot)}` : modelsTable(snapshot, names)
           }),
         }
       case 'keys':
       case 'key':
       case 'grant':
+      case 'org':
       case 'fallbacks': {
         const ready = await ctx.admin()
 
         if (!('deps' in ready)) {
           return { text: ready.text }
         }
-        const outcome = await runAdmin(ready.deps, word.toLowerCase() as 'keys' | 'key' | 'grant' | 'fallbacks', args.trim().slice(word.length))
+        const outcome = await runAdmin(ready.deps, word.toLowerCase() as AdminCommand, args.trim().slice(word.length))
 
         if (outcome.isChanged) {
           ctx.reload()

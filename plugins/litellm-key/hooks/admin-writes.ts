@@ -2,9 +2,10 @@ import type { Admin, Budgeted, Json } from './admin'
 import { fail, HASH, ok, request } from './admin'
 import { readTarget } from './admin-targets'
 import type { Outcome } from './args'
+import { money } from './format'
 import { isObject, str } from './json'
 
-const UPDATE: Record<Budgeted['kind'], { path: string; field: string }> = {
+const UPDATE: Record<Exclude<Budgeted['kind'], 'org'>, { path: string; field: string }> = {
   key: { path: '/key/update', field: 'key' },
   user: { path: '/user/update', field: 'user_id' },
   team: { path: '/team/update', field: 'team_id' },
@@ -17,13 +18,19 @@ export type Applied = { budget: Budgeted; unread: string | null }
  * A failed read-back is not a failed write: `unread` carries why, and the caller must not suggest a retry.
  */
 export const applyBudget = async (admin: Admin, target: Budgeted, limit: number): Promise<Outcome<Applied>> => {
-  const { path, field } = UPDATE[target.kind]
-  const done = await request(admin, 'POST', path, { [field]: target.id, max_budget: limit })
+  const done =
+    target.kind === 'org'
+      ? await request(admin, 'PATCH', '/organization/update', { organization_id: target.id, litellm_budget_table: { max_budget: limit } })
+      : await request(admin, 'POST', UPDATE[target.kind].path, { [UPDATE[target.kind].field]: target.id, max_budget: limit })
 
   if (!done.ok) {
     return fail(done.message)
   }
   const back = await readTarget(admin, target.kind, target.id, null)
+
+  if (back.ok && back.value.limit !== limit) {
+    return fail(`The proxy answered ${target.kind} "${target.label}" with success, but its budget still reads ${money(back.value.limit)}, not ${money(limit)}: the change did not take.`)
+  }
 
   return ok(back.ok ? { budget: back.value, unread: null } : { budget: { ...target, limit }, unread: back.message })
 }

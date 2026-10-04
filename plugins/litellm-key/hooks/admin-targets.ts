@@ -57,7 +57,51 @@ const teamTarget = async (admin: Admin, ref: string): Promise<Outcome<Budgeted>>
   return info ? ok({ kind: 'team', id, label: str(info.team_alias) ?? id, exists: true, ...spendOf(info) }) : fail('The proxy answered, but not with team data.')
 }
 
-/** The budget a grant would change: a key, a user or a team, read the way the update endpoints name it. */
+const orgBudgetOf = (info: Json): Pick<Budgeted, 'spend' | 'limit' | 'duration'> => {
+  const table = isObject(info.litellm_budget_table) ? info.litellm_budget_table : null
+
+  return { spend: num(info.spend) ?? 0, limit: num(table?.max_budget), duration: str(table?.budget_duration) }
+}
+
+/** An organization by id or alias (the list filter matches substrings, so the alias is compared exactly). */
+export const orgInfo = async (admin: Admin, ref: string): Promise<Outcome<{ id: string; info: Json }>> => {
+  let id = ref
+  let answer = await request(admin, 'GET', `/organization/info?${query({ organization_id: id })}`)
+
+  if (!answer.ok && answer.status === 404) {
+    const byAlias = await request(admin, 'GET', `/organization/list?${query({ org_alias: ref })}`)
+    if (!byAlias.ok) {
+      return fail(byAlias.message)
+    }
+    const orgs = Array.isArray(byAlias.value) ? byAlias.value : []
+    const matches = orgs.filter(org => isObject(org) && org.organization_alias === ref)
+    const [match] = matches
+
+    if (matches.length > 1) {
+      return fail(`Several organizations share the alias "${truncate(ref, 60)}"; use the organization id.`)
+    }
+    if (!isObject(match) || typeof match.organization_id !== 'string') {
+      return fail(`No organization "${truncate(ref, 60)}" (looked by id and by alias).`)
+    }
+    id = match.organization_id
+    answer = await request(admin, 'GET', `/organization/info?${query({ organization_id: id })}`)
+  }
+  if (!answer.ok) {
+    return fail(answer.message)
+  }
+
+  return isObject(answer.value) ? ok({ id, info: answer.value }) : fail('The proxy answered, but not with organization data.')
+}
+
+const orgTarget = async (admin: Admin, ref: string): Promise<Outcome<Budgeted>> => {
+  const found = await orgInfo(admin, ref)
+
+  return found.ok
+    ? ok({ kind: 'org', id: found.value.id, label: str(found.value.info.organization_alias) ?? found.value.id, exists: true, ...orgBudgetOf(found.value.info) })
+    : found
+}
+
+/** The budget a grant would change: a key, a user, a team or an organization, read the way the update endpoints name it. */
 export const readTarget = async (
   admin: Admin,
   kind: Budgeted['kind'],
@@ -69,6 +113,9 @@ export const readTarget = async (
   }
   if (kind === 'team') {
     return ref ? teamTarget(admin, ref) : fail('--team needs a team id or alias.')
+  }
+  if (kind === 'org') {
+    return ref ? orgTarget(admin, ref) : fail('--org needs an organization id or alias.')
   }
   const row = await resolveKey(admin, ref, ownHash)
 

@@ -92,6 +92,10 @@ export const facts = (snapshot: Snapshot, now: number): Row[] => {
 
   add('Status', key.status, key.status === 'active' ? 'ok' : 'error')
   add('Role', snapshot.userRole)
+  add(
+    'Organization',
+    key.organizationId && `${key.organizationId} · budget: /litellm org`,
+  )
   add('Soft limit', key.budget.softLimit === null ? null : `alerts at ${money(key.budget.softLimit)}`)
   add('Limits', limitsText(snapshot))
   add(

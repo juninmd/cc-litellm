@@ -21,7 +21,7 @@ export type GrantPlan = { before: number | null; after: number; isNoop: boolean;
 
 const ALIAS = /^[A-Za-z0-9][\w.@:/-]{0,79}$/
 const ID = /^[\w.@:+-]{1,128}$/
-const MODEL = /^[\w.:/@+-]{1,100}$/
+const MODEL = /^[\w.:/@+][\w.:/@+-]{0,99}$/
 
 const fail = (message: string): Outcome<never> => ({ ok: false, message })
 
@@ -165,7 +165,9 @@ export const planGrant = (target: Budgeted, amount: number, isSet: boolean): Out
         `  spent    ${money(target.spend)} so far · ${left >= 0 ? `${money(left)} would be left` : `${money(-left)} over, so requests stay blocked until it resets`}`,
         ...(target.role ? [`  role     ${target.role}`] : []),
         ...(target.exists ? [] : [`  note     the proxy has no record of user "${target.label}"; this creates one with that budget`]),
-        ...(target.kind === 'key' ? [] : [`  note     this ${target.kind} budget applies to every key it owns`]),
+        ...(target.kind === 'key'
+          ? []
+          : [`  note     this ${target.kind === 'org' ? 'organization' : target.kind} budget applies to every key ${target.kind === 'org' ? 'and team in it' : 'it owns'}`]),
       ],
     },
   }

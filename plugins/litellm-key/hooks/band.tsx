@@ -37,9 +37,16 @@ export const overBudgetBand = ({ Box, Text }: Ui, items: readonly Exceeded[]) =>
           </Text>
         </Box>
       ))}
-      <Box paddingLeft={2}>
-        <Text>An admin can raise it with /litellm grant &lt;amount&gt;; otherwise it resets as shown.</Text>
-      </Box>
+      {items.some(item => item.isGrantable) && (
+        <Box paddingLeft={2}>
+          <Text>An admin can raise it with /litellm grant &lt;amount&gt;; otherwise it resets as shown.</Text>
+        </Box>
+      )}
+      {items.some(item => !item.isGrantable) && (
+        <Box paddingLeft={2}>
+          <Text>A member cap is set on the team (team_member_budget) that never resets, and the amount counts this key only: an admin changes the cap there.</Text>
+        </Box>
+      )}
     </Box>
   )
 }
