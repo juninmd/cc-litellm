@@ -1,0 +1,315 @@
+<p align="center">
+  <img src="../assets/banner.svg" alt="cc-litellm: ваш ключ LiteLLM, бюджет и fallback прямо в Claude Code" width="100%">
+</p>
+
+<p align="center">
+  <a href="#install"><img alt="Плагин Claude Code" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=for-the-badge"></a>
+  <img alt="LiteLLM v1.99.1" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20tested-6366f1?style=for-the-badge">
+  <img alt="Claude Code 2.1.289" src="https://img.shields.io/badge/Claude%20Code-2.1.289%20tested-0ea5e9?style=for-the-badge">
+  <img alt="Пройдено тестов: 217" src="https://img.shields.io/badge/tests-217%20passing-22c55e?style=for-the-badge">
+  <img alt="Версия 0.3.0" src="https://img.shields.io/badge/version-0.3.0-f472b6?style=for-the-badge">
+</p>
+
+<p align="center">
+  <a href="../../README.md">English</a> ·
+  <a href="README.pt-BR.md">Português</a> ·
+  <a href="README.es.md">Español</a> ·
+  <a href="README.fr.md">Français</a> ·
+  <a href="README.ja.md">日本語</a> ·
+  <a href="README.it.md">Italiano</a> ·
+  <a href="README.zh-CN.md">简体中文</a> ·
+  <a href="README.de.md">Deutsch</a> ·
+  <b>Русский</b> ·
+  <a href="README.tr.md">Türkçe</a> ·
+  <a href="README.hi.md">हिन्दी</a>
+</p>
+
+> Это перевод [английского README](../../README.md). Если версии расходятся, эталоном считается английская.
+
+# cc-litellm
+
+Плагин для [Claude Code](https://code.claude.com) для тех, кто обращается к моделям через **прокси [LiteLLM](https://docs.litellm.ai)**. Он показывает, что прокси знает о **виртуальном ключе**, который использует Claude Code (бюджет, расходы, лимиты, срок действия, модели, использование за 7 дней), а администраторам позволяет **создавать ключи, выдавать кому-то дополнительный бюджет, блокировать ключ и читать цепочки fallback роутера**, не выходя из терминала.
+
+Этот репозиторий — маркетплейс плагинов (`cc-litellm`) с одним плагином: [`litellm-key`](../../plugins/litellm-key).
+
+<p align="center">
+  <img src="../evidence/pane.png" alt="Панель /litellm рядом с диалогом, на реальном прокси LiteLLM" width="92%">
+</p>
+
+## Что вы получаете
+
+| | | |
+| --- | --- | --- |
+| 👀 **Наблюдение** | **Строка состояния** под промптом, всегда на виду | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
+| | **Панель `/litellm`** | шкалы бюджетов ключа, команды и пользователя, **роль** пользователя, лимиты, срок действия, модели, спарклайн за 7 дней; обновляется сама |
+| | **Тост-уведомления** | при 80% (настраивается), 95%, 100%; ключ скоро истекает; ключ заблокирован или истёк. Один раз за окно бюджета, даже между сессиями |
+| | **Баннер превышения бюджета** | красная полоса над промптом, которая **остаётся, пока бюджет исчерпан** (ключ, пользователь, команда, окно или модель) и пропадает, только когда цифры снова в норме |
+| 🛠️ **Управление** *(для админов)* | **`/litellm key new`** | создать виртуальный ключ; секрет попадает в **буфер обмена, а не в транскрипт** |
+| | **`/litellm grant`** | дополнительный бюджет для ключа, пользователя или команды, с предпросмотром и подтверждением |
+| | **`/litellm key block`** / `unblock` | остановить (или вернуть) ключ одной строкой |
+| | **`/litellm keys`** | список ключей: ваших, пользователя, команды или всех |
+| | **`/litellm fallbacks`** | цепочки fallback роутера (`cloud/auto → cloud/auto-long → …`), а также fallback по контекстному окну |
+
+Каждое изменение сначала показывает **предпросмотр**, запрашивает подтверждение в **нативном диалоге** Claude Code, применяется, а затем **перечитывает результат** с прокси.
+
+<a id="install"></a>
+
+## Установка
+
+Нужен свежий Claude Code: плагин использует функциональные хуки (API раннего доступа); проверено на 2.1.289.
+
+```text
+/plugin marketplace add juninmd/cc-litellm
+/plugin install litellm-key@cc-litellm
+```
+
+Попробовать из клона без установки: `claude --plugin-dir ./plugins/litellm-key`.
+
+Если Claude Code уже работает через LiteLLM, **настраивать ничего не нужно**: плагин берёт тот же URL и ключ, что и Claude Code. Для админских команд дополнительно нужен `litellm_admin_key` (см. [Команды администратора](#admin-commands)).
+
+## Краткий обзор
+
+### Следим за бюджетом
+
+<p align="center">
+  <img src="../evidence/statusline.png" alt="Claude Code со строкой состояния litellm-key под промптом" width="92%">
+</p>
+
+`/litellm models` показывает, какие модели доступны ключу, `/litellm keys` — ключи, которыми вы владеете:
+
+<p align="center">
+  <img src="../evidence/keys.png" alt="Вывод /litellm models и /litellm keys" width="92%">
+</p>
+
+### Замечаем проблему заранее и называем её по имени
+
+Плагин отличает заблокированный ключ от истёкшего и от неверного, а не выдаёт общую *401*:
+
+<table>
+  <tr>
+    <td width="50%"><img src="../evidence/warning.png" alt="Использовано 86% бюджета"><br><sub><b>86%</b>: предупреждающий тост и строка состояния</sub></td>
+    <td width="50%"><img src="../evidence/over-budget.png" alt="Бюджет превышен"><br><sub><b>Превышение бюджета</b>: баннер остаётся, пока бюджет не придёт в норму</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="../evidence/blocked.png" alt="Ключ заблокирован"><br><sub><b>Заблокированный</b> ключ, названный заблокированным</sub></td>
+    <td width="50%"><img src="../evidence/expired.png" alt="Ключ истёк"><br><sub><b>Истёкший</b> ключ, названный истёкшим</sub></td>
+  </tr>
+</table>
+
+### Создание ключа
+
+<table>
+  <tr>
+    <td width="50%"><img src="../evidence/key-new-dialog.png" alt="Нативное подтверждение перед созданием ключа"><br><sub>Предпросмотр, затем нативное подтверждение Claude Code</sub></td>
+    <td width="50%"><img src="../evidence/key-new-done.png" alt="Ключ скопирован в буфер обмена"><br><sub>Секрет попадает в буфер обмена. В транскрипте виден только <code>sk-…9FKg</code></sub></td>
+  </tr>
+</table>
+
+### Выдача дополнительного бюджета
+
+<table>
+  <tr>
+    <td width="50%"><img src="../evidence/grant-dialog.png" alt="Предпросмотр выдачи бюджета"><br><sub><code>$25 → $35 (+$10)</code>, сколько потрачено и сколько останется</sub></td>
+    <td width="50%"><img src="../evidence/grant-recovers.png" alt="У ключа снова есть запас после выдачи бюджета"><br><sub>Применено и перечитано; строка состояния следует за изменением (101% → 79%)</sub></td>
+  </tr>
+</table>
+
+### Читаем цепочки fallback
+
+<p align="center">
+  <img src="../evidence/fallbacks-filtered.png" alt="/litellm fallbacks cloud/auto" width="92%">
+</p>
+
+### И прокси с этим согласен
+
+Всё выше подтверждается настоящим админ-интерфейсом LiteLLM v1.99.1, который отражает действия плагина:
+
+<table>
+  <tr>
+    <td width="50%"><img src="../evidence/litellm-ui-keys.png" alt="Интерфейс LiteLLM, раздел Virtual Keys"><br><sub>Ключи, созданные и увеличенные из Claude Code; один истёк</sub></td>
+    <td width="50%"><img src="../evidence/litellm-ui-usage.png" alt="Интерфейс LiteLLM, раздел Usage"><br><sub>Расходы видны в разделе Usage</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="../evidence/litellm-ui-users.png" alt="Интерфейс LiteLLM, раздел Internal Users"><br><sub>Роль пользователя на прокси (<code>internal_user</code>, <code>proxy_admin</code>) — это то, что показывает строка <b>Role</b> в панели</sub></td>
+    <td width="50%"></td>
+  </tr>
+</table>
+
+## Команды
+
+| Команда | Что делает |
+| --- | --- |
+| `/litellm` | Открывает панель (и отвечает однострочной сводкой). Без экрана: печатает сводку. |
+| `/litellm refresh` | Перечитать данные прямо сейчас. |
+| `/litellm info` | Напечатать полную сводку в транскрипте. |
+| `/litellm models` | Показать модели, доступные этому ключу. |
+| `/litellm debug` | Показать, откуда берутся URL и ключи (всегда замаскированы), что пробовали и результат. |
+| `/litellm close` | Закрыть панель. |
+| `/litellm keys [--user ID \| --team ID \| --all]` | Список ключей. По умолчанию: ключи вашего пользователя. 🔐 |
+| `/litellm key new <alias> [flags]` | Создать ключ. 🔐 |
+| `/litellm key block <alias\|hash>` / `unblock` | Заблокировать или вернуть ключ. 🔐 |
+| `/litellm grant <amount> [--key \| --user \| --team] [--set]` | Добавить бюджет. 🔐 |
+| `/litellm fallbacks [model]` | Цепочки fallback роутера, при желании только для моделей, подходящих под имя. 🔐 |
+
+🔐 — команда администратора, см. ниже. В панели (фокус — кликом или `ctrl+x` `tab`): `r` обновляет, `c` копирует сводку, `q` закрывает, стрелки прокручивают. `Esc` тоже закрывает её при пустом промпте.
+
+Панель подстраивается под доступное место: рядом с диалогом (на весь экран, от 110 колонок) каждая шкала занимает две строки; над промптом, от 122 колонок, шкалы превращаются в таблицу; в более узких терминалах остаётся по две строки на шкалу или панель становится **компактной**, если включить `compact_pane`.
+
+<p align="center">
+  <img src="../evidence/help.png" alt="/litellm help" width="92%">
+</p>
+
+<a id="admin-commands"></a>
+
+## Команды администратора
+
+Чтение и изменение ключей требует прав администратора прокси. Задайте опцию **`litellm_admin_key`** (хранится в хранилище учётных данных ОС, но не в `settings.json`). Без неё плагин пробует с вашим виртуальным ключом и, если прокси отказывает, сообщает об этом прямо.
+
+```text
+/litellm key new ci-runner --budget 5 --every 7d --rpm 60 --user ana@example.com
+/litellm key new batch --budget 20 --models cloud/auto,cloud/auto-long --expires 30d --team platform-eng
+/litellm grant 10 --key claude-code-ana          # +$10 on top of the current budget
+/litellm grant 200 --team platform-eng --set     # cap the team at exactly $200
+/litellm key block old-contractor
+/litellm fallbacks cloud/auto
+```
+
+| Флаг `key new` | Значение |
+| --- | --- |
+| `--budget 10` | Лимит расходов в долларах. |
+| `--every 30d` | Окно бюджета: сбрасывается каждые 30 дней (`s m h d w mo`). |
+| `--soft 8` | Порог мягкого оповещения. |
+| `--models a,b` | Модели, доступные ключу (по умолчанию: все). |
+| `--rpm 60` / `--tpm 100000` / `--parallel 4` | Лимиты частоты запросов. |
+| `--expires 30d` | Ключ перестаёт работать через указанный срок. |
+| `--user ID` / `--team ID` | Кто владелец (и чей бюджет тоже применяется). |
+
+Предохранители в каждой админской команде:
+
+- **Сначала предпросмотр.** `--dry-run` останавливается на нём; `--yes` пропускает подтверждение; иначе спрашивает нативный диалог Claude Code (**Apply** / **Cancel**).
+- **Перечитывание.** После выдачи бюджета плагин заново читает бюджет с прокси и сообщает то, что там *есть*, а не то, что было отправлено.
+- **Новый секрет никогда не попадает в транскрипт.** Он уходит в буфер обмена. Если буфер обмена его не принимает, ключ **удаляется обратно** (откат), а не остаётся нечитаемым. `--reveal` печатает его с предупреждением, что теперь он сохранён в транскрипте.
+- **Сырые значения `sk-…` отклоняются** в качестве ссылки на ключ: используйте алиас или хеш ключа. Неизвестные флаги — это ошибки, а не молча игнорируются.
+- **Честные цифры.** `grant` сообщает, когда расходы уже превышают новый бюджет, когда лимита, к которому можно прибавлять, нет (используйте `--set`), когда ничего не изменится и когда `--user` создал бы пользователя, которого прокси ещё не видел.
+- **Админ-ключ** отправляется только на прокси, который уже принял собственный ключ вашей сессии, и никогда не печатается (в сообщениях об ошибках он маскируется).
+
+Что *можно* выдать в качестве дополнительного бюджета сейчас, на LiteLLM v1.99.1: увеличить бюджет **ключа**, **пользователя** или **команды** (`--team`, нужен администратор прокси) — приращением или абсолютным значением (`--set`). *Временное* увеличение бюджета (`temp_budget_increase`) и бюджеты на отдельные модели на стороне прокси доступны только в enterprise-версии (см. [Бюджеты](#budgets-what-litellm-can-and-cannot-do)), поэтому плагин их не предлагает, а не делает вид, что они работают.
+
+<a id="budgets-what-litellm-can-and-cannot-do"></a>
+
+## Бюджеты: что LiteLLM умеет, а что нет
+
+Проверено вживую на LiteLLM v1.99.1 (прокси с открытым исходным кодом, без лицензии):
+
+| Бюджет | Работает? | Как |
+| --- | --- | --- |
+| На **ключ** (лимит + окно сброса) | ✅ | `/litellm key new --budget 10 --every 30d`; увеличить: `/litellm grant 5 --key NAME` |
+| На **пользователя** | ✅ | `/litellm grant 5 --user ID` (действует на все ключи пользователя) |
+| На **команду** | ✅ | `/litellm grant 50 --team NAME` (нужен администратор прокси) |
+| Несколько окон на одном ключе (`budget_limits`, напр. $5/час + $50/месяц) | только чтение | отображаются как шкалы `Window 1h`, если они есть на прокси |
+| На **модель** в рамках ключа (`model_max_budget`) | ⛔ enterprise | прокси отвечает *«You must have an enterprise license to set model_max_budget»*, в том числе для `/budget/new`. Если на вашем прокси есть лицензия, панель показывает эти шкалы (`Model gpt-4o`) |
+| Временное увеличение бюджета (`temp_budget_increase`) | ⛔ enterprise | прокси с открытым исходным кодом принимает это поле, но никогда его не применяет |
+
+**Бюджет на модель без лицензии:** заведите по одному ключу на модель, каждый со своим лимитом, например
+`/litellm key new auto-only --models cloud/auto --budget 5 --every 30d`. Такой ключ может вызывать только эту модель и останавливается на $5.
+
+## Конфигурация
+
+Плагин читает тот же URL и ключ, что использует Claude Code, в таком порядке (сначала переменные процесса, затем блок `env` в `settings.json`):
+
+| Что | Откуда |
+| --- | --- |
+| URL | опция `litellm_url`, `ANTHROPIC_BASE_URL`, `LITELLM_PROXY_API_BASE` |
+| Ключ | опция `litellm_key`, заголовок `x-litellm-api-key` в `ANTHROPIC_CUSTOM_HEADERS`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY`, `LITELLM_PROXY_API_KEY` |
+
+Если URL заканчивается на сквозной (pass-through) маршрут (`/anthropic`, `/bedrock`, `/v1`…), плагин также пробует корень прокси. Ключ используется только с тем URL, которому он принадлежит: ключи из окружения никогда не отправляются на `litellm_url` другого хоста, а `LITELLM_PROXY_API_BASE` сочетается только с `LITELLM_PROXY_API_KEY`.
+
+Все опции необязательны (при установке Claude Code пишет, что они «not set» — это безвредно). Менять их можно через `/plugin configure litellm-key@cc-litellm` или `claude plugin configure litellm-key@cc-litellm --values-stdin`, передав JSON-объект со строками.
+
+| Опция | По умолчанию | Назначение |
+| --- | --- | --- |
+| `litellm_url` | пусто | Прокси в нестандартном месте (Bedrock/Vertex через LiteLLM, URL с префиксом). |
+| `litellm_key` | пусто | Явно заданный ключ. 🔒 хранится в хранилище учётных данных, а не в `settings.json`. |
+| `litellm_admin_key` | пусто | Админ-ключ для `keys`, `key new/block/unblock`, `grant`, `fallbacks`. 🔒 то же хранилище. Никогда не печатается. |
+| `refresh_seconds` | 60 | Интервал чтения (от 15 до 3600). Также читает после каждого хода, не чаще раза в 20 с. |
+| `warn_percent` | 80 | Первое предупреждение о бюджете (также предупреждает при 95% и 100%). |
+| `show_status_line` | да | Строка под промптом. |
+| `show_related` | да | Читать `/user/info` и `/team/info`: эти бюджеты тоже могут блокировать запросы. |
+| `show_usage` | да | Читать `/user/daily/activity` (бета-эндпоинт LiteLLM) для статистики использования за 7 дней. |
+| `compact_pane` | нет | Компактная панель над промптом в узких терминалах (от 74 до 121 колонки): одна шкала на строку, сведения в ряд. |
+
+## Откуда берутся данные
+
+**Наблюдение** только читает (`GET`), всегда вашим собственным ключом:
+
+| Эндпоинт | Назначение |
+| --- | --- |
+| `/key/info` | Алиас, расходы, бюджет и окна, сброс, лимиты, срок действия, статус, модели, бюджеты по моделям. При каждом чтении. |
+| `/user/info`, `/team/info` | Бюджет пользователя и команды ключа, если он ограничен. При каждом чтении. |
+| `/v1/models` | Реально разрешённые модели. Каждые 10 минут. |
+| `/user/daily/activity` | Расходы, запросы и токены за последние 7 дней. Каждые 10 минут. |
+
+**Управление** происходит только когда вы вводите админскую команду: `GET /key/list`, `/key/info`, `/user/info`, `/team/info`, `/v2/team/list`, `/router/settings` и `POST /key/generate`, `/key/delete` (только откат), `/key/block`, `/key/unblock`, `/key/update`, `/user/update`, `/team/update`.
+
+Каждый запрос ждёт не дольше 4 с (15 с для админских команд). Необязательное чтение, которое не удалось (403, 404…), превращается в тихую заметку в панели, но не в ошибку. Если прокси падает, панель сохраняет последнее удачное чтение, помеченное как устаревшее. LiteLLM записывает расходы в базу данных пакетами, поэтому цифры отстают от запроса примерно на 10 секунд.
+
+## Конфиденциальность и безопасность
+
+- Ваш ключ отправляется только на прокси, который уже использует Claude Code, в заголовке `Authorization` (или `x-litellm-api-key`). Никогда — в URL, логе, тосте, состоянии или хранилище плагина; сообщения об ошибках проходят через фильтр, который его маскирует.
+- Админ-ключ отправляется только на корень прокси, который уже принял ключ вашей сессии, и только когда вы вводите админскую команду.
+- Плагин хранит только идентификаторы уже показанных предупреждений, чтобы не повторять их.
+- `litellm-key` читает `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY`, `ANTHROPIC_CUSTOM_HEADERS`, `LITELLM_PROXY_API_BASE` и `LITELLM_PROXY_API_KEY`, блок `env` в `settings.json` и выполняет HTTP-запросы. `claude plugin validate plugins/litellm-key` перечисляет всё это.
+
+## Если что-то не отображается
+
+| Симптом | Вероятная причина |
+| --- | --- |
+| Строка состояния пуста, тост сообщает «not configured» | Claude Code работает не через прокси (`ANTHROPIC_BASE_URL` отсутствует или указывает на `api.anthropic.com`). |
+| «The proxy has no database record for this key» | Это мастер-ключ или ключ, заданный только в `config.yaml`. Данные есть лишь у ключей, созданных через `/key/generate`. |
+| «The proxy has no database» | Прокси запущен без `DATABASE_URL`: виртуальных ключей для чтения нет. |
+| «does not look like a LiteLLM proxy» | URL указывает на что-то другое. Задайте в `litellm_url` корень прокси. |
+| «key blocked» / «key expired» | Именно это и означает. Обратитесь к администратору или выполните `/litellm key unblock` из другой сессии. |
+| «key rejected (401)» | Недействительный ключ. |
+| Нет истории за 7 дней | У ключа нет `user_id`, либо бета-эндпоинта нет в вашей версии LiteLLM. |
+| Админ-команда сообщает, что нужен админ-ключ | Задайте `litellm_admin_key`. |
+| Админ-команда ждёт «until the proxy accepts this session's key» | Так задумано: админ-ключ отправляется только на прокси, принявший ваш собственный ключ. Исправьте этот ключ из другой сессии или через интерфейс LiteLLM. |
+
+`/litellm debug` показывает, что определил плагин.
+
+## Попробуйте с настоящим LiteLLM на ноутбуке
+
+`dev/litellm` — это полноценная лаборатория: LiteLLM v1.99.1 с Postgres в Docker, поэтому виртуальные ключи, бюджеты и расходы настоящие.
+
+```bash
+docker compose -f dev/litellm/docker-compose.yml up -d          # zero provider keys: canned answers
+bun dev/litellm/smoke.ts                                         # live homologation of the plugin's own modules
+```
+
+- **`config.mock.yaml`** (по умолчанию) повторяет реальную «auto»-конфигурацию: взвешенную группу `cloud/auto`, цепочку fallback, fallback по контекстному окну и модель (`demo/always-429`), которая всегда падает, чтобы роутер наглядно переключался на fallback. Ничего не покидает вашу машину.
+- **Маршрутизация вашего собственного кластера:** `python dev/litellm/from-cluster.py --namespace NS --configmap CM --secret SECRET` читает (только чтение, через `kubectl`) `config.yaml` вашего прокси и **только** те переменные провайдеров, на которые он ссылается, и записывает локальные `config.cluster.yaml` + `.env` (в git-ignore: никогда их не коммитьте). Затем `LITELLM_CONFIG=config.cluster.yaml docker compose -f dev/litellm/docker-compose.yml up -d`.
+- **`dev/mock-litellm.py`** — крошечный фейковый прокси для проверки состояний интерфейса (`--scenario warning|blocked|…`), без Docker.
+- **`dev/evidence/`** — стенд, которым сделан каждый скриншот в этом README: настоящий Claude Code в ConPTY, отрендеренный в PNG. См. [`dev/evidence/README.md`](../../dev/evidence/README.md).
+
+## Разработка
+
+```bash
+claude plugin validate .                                # marketplace
+claude plugin validate plugins/litellm-key --strict     # plugin
+claude plugin test plugins/litellm-key                  # tests (they use Claude Code's engine)
+tsc -p plugins/litellm-key                              # types (.claude-plugin/types appears on first load)
+```
+
+Структура плагина: `hooks/register.tsx` подключает события, команды, таймеры и тосты; `hooks/litellm.ts` определяет учётные данные, читает и нормализует ответы; `hooks/admin*.ts` — админские команды (`admin.ts` — чтение с прокси, `admin-writes.ts` — запись на него, `admin-plan.ts` — предпросмотры и планы, `admin-commands.ts` — сам сценарий, `args.ts` — парсер аргументов); `hooks/exceeded.ts` и `hooks/band.tsx` — баннер превышения бюджета; `hooks/summary.ts` и `hooks/view.tsx` формируют текст и панель; в `hooks/format.ts` лежат чистые форматтеры; `types/index.d.ts` — контракт состояния.
+
+## Известные ограничения
+
+- `apiKeyHelper` не читается (запуск пользовательской команды выходит за рамки). Используйте `litellm_key`.
+- `/user/daily/activity` в LiteLLM находится в бете и может измениться.
+- Бюджеты на модель (`model_max_budget`), временные увеличения бюджета и перевыпуск ключей на стороне прокси доступны только в enterprise-версии, поэтому не предлагаются (см. [Бюджеты](#budgets-what-litellm-can-and-cannot-do)).
+- Баннер превышения бюджета рисуется в терминале и в десктопном приложении (Claude Code предоставляет полосу только там); на остальных поверхностях об этом сообщают строка состояния и панель.
+- Значок `⚠` перед строкой состояния Claude Code рисует для каждой записи статуса любого плагина; он не означает, что с ключом проблема (это говорит текст).
+- API плагинов Claude Code находится в раннем доступе и может меняться между версиями.
+
+## Другие языки
+
+[English](../../README.md) · [Português (Brasil)](README.pt-BR.md) · [Español](README.es.md) · [Français](README.fr.md) · [日本語](README.ja.md) · [Italiano](README.it.md) · [简体中文](README.zh-CN.md) · [Deutsch](README.de.md) · [Türkçe](README.tr.md) · [हिन्दी](README.hi.md)
