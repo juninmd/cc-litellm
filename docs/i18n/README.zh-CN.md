@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="#install"><img alt="Claude Code 插件" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=for-the-badge"></a>
-  <img alt="LiteLLM v1.99.1" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20tested-6366f1?style=for-the-badge">
+  <img alt="LiteLLM v1.99.1 和 v1.104.0" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20%C2%B7%20v1.104.0%20tested-6366f1?style=for-the-badge">
   <img alt="Claude Code 2.1.289" src="https://img.shields.io/badge/Claude%20Code-2.1.289%20tested-0ea5e9?style=for-the-badge">
   <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/juninmd/cc-litellm/ci.yml?branch=main&style=for-the-badge&label=CI">
   <img alt="License: MIT" src="https://img.shields.io/github/license/juninmd/cc-litellm?style=for-the-badge&color=22c55e">
@@ -29,7 +29,7 @@
 
 # cc-litellm
 
-这是一个 [Claude Code](https://code.claude.com) 插件，面向通过 **[LiteLLM](https://docs.litellm.ai) 代理** 访问模型的用户。它会显示代理所掌握的、Claude Code 当前所用**虚拟密钥**的信息（预算、花费、限额、有效期、可用模型、近 7 天用量）；对管理员而言，还能在不离开终端的情况下 **创建密钥、为他人追加预算、禁用密钥，并查看路由器的回退链**。
+这是一个 [Claude Code](https://code.claude.com) 插件，面向通过 **[LiteLLM](https://docs.litellm.ai) 代理** 访问模型的用户。它会显示代理所掌握的、Claude Code 当前所用**虚拟密钥**的信息（预算、花费、限额、有效期、可用模型、近 7 天用量）；对管理员而言，还能在不离开终端的情况下 **创建和编辑密钥、为他人追加预算、禁用密钥，并查看路由器的回退链**。
 
 本仓库是一个插件市场（`cc-litellm`），目前只有一个插件：[`litellm-key`](../../plugins/litellm-key)。
 
@@ -42,12 +42,14 @@
 | | | |
 | --- | --- | --- |
 | 👀 **监控** | **状态栏**，位于输入框下方，始终可见 | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
-| | **`/litellm` 面板** | 密钥、团队和用户预算的用量条，用户**角色**、限额、有效期、可用模型、7 天迷你趋势图、本周的**模型排行**以及 **Runway** 预测；自动刷新 |
+| | **`/litellm` 面板** | 密钥、团队、用户和**团队成员**预算的用量条，用户**角色**、限额、有效期、可用模型、7 天迷你趋势图、本周的**模型排行**以及 **Runway** 预测；自动刷新 |
 | | **Toast 提示** | 预算用到 80%（可配置）、95%、100% 时；密钥即将过期；密钥被禁用或已过期。每个预算周期只提醒一次，跨会话同样如此 |
 | | **超预算横幅** | 输入框上方的红色横条，**只要有预算被用尽就会一直显示**（密钥、用户、团队、预算窗口或模型），数值恢复正常后才消失 |
 | 🛠️ **管理** *(管理员)* | **`/litellm key new`** | 创建虚拟密钥；密钥明文会写入**剪贴板，绝不进入对话记录** |
-| | **`/litellm grant`** | 为密钥、用户或团队追加预算，附带预览与确认 |
+| | **`/litellm grant`** | 为密钥、用户、团队或组织追加预算，附带预览与确认 |
+| | **`/litellm key set`** / `reset-spend` | 修改密钥的可用模型、限额、有效期或别名；把它的花费计数器清零 |
 | | **`/litellm key block`** / `unblock` | 一行命令禁用（或恢复）一个密钥 |
+| | **`/litellm org`** | 组织的预算，虚拟密钥无法读取 |
 | | **`/litellm keys`** | 列出密钥：你自己的、某位用户的、某个团队的，或全部 |
 | | **`/litellm fallbacks`** | 路由器的回退链（`cloud/auto → cloud/auto-long → …`），以及上下文窗口回退 |
 
@@ -114,10 +116,26 @@
   </tr>
 </table>
 
+### 团队为每位成员设上限时
+
+团队可以为每位成员的花费设置上限（`team_member_budget`）。即使密钥自身的预算还有余量，代理也会拒绝请求，所以插件会读取这个上限，并以 `Member` 用量条显示出来，超预算横幅也会点出它：
+
+<p align="center">
+  <img src="../evidence/member-cap.png" alt="面板中超出上限的 Member 用量条、输入框上方的横幅，以及已点名的密钥所属组织" width="92%">
+</p>
+
+<sub>拍摄自 `dev/mock-litellm.py --scenario member`。代理不会向虚拟密钥报告成员的总额，所以用量条统计的是<b>这个密钥的花费</b>，并会如实说明。读数可能偏低；对于会重置的上限，读数也可能偏高（重置会清零成员的花费，而不是密钥的花费），因此只有针对从不重置的上限，才会显示超预算横幅。密钥所属的组织也会被点名；其预算仅限管理员查看，<code>/litellm org</code> 可以读取。</sub>
+
 ### 查看回退链
 
 <p align="center">
   <img src="../evidence/fallbacks-filtered.png" alt="/litellm fallbacks cloud/auto" width="92%">
+</p>
+
+### 了解模型的价格
+
+<p align="center">
+  <img src="../evidence/models-prices.png" alt="显示每百万 token 输入与输出价格以及上下文窗口的 /litellm models" width="92%">
 </p>
 
 ### 代理端的数据也一致
@@ -142,13 +160,16 @@
 | `/litellm` | 打开面板（并以一行摘要作答）。无界面环境下：直接打印摘要。 |
 | `/litellm refresh` | 立即重新读取。 |
 | `/litellm info` | 在对话记录中打印完整摘要。 |
-| `/litellm models` | 列出该密钥可调用的模型。 |
+| `/litellm models` | 列出该密钥可调用的模型，并附上每百万 token 的价格和上下文窗口。 |
 | `/litellm debug` | 显示 URL 和密钥的来源（始终做掩码处理）、尝试过什么、结果如何。 |
 | `/litellm close` | 关闭面板。 |
 | `/litellm keys [--user ID \| --team ID \| --all]` | 列出密钥。默认：你自己所属用户的密钥。🔐 |
 | `/litellm key new <alias> [flags]` | 创建密钥。🔐 |
 | `/litellm key block <alias\|hash>` / `unblock` | 禁用或恢复密钥。🔐 |
-| `/litellm grant <amount> [--key \| --user \| --team] [--set]` | 追加预算。🔐 |
+| `/litellm key set <alias\|hash> [flags]` | 修改密钥的可用模型、限额、有效期或别名。🔐 |
+| `/litellm key reset-spend <alias\|hash>` | 把密钥的花费计数器清零。🔐 |
+| `/litellm grant <amount> [--key \| --user \| --team \| --org] [--set]` | 追加预算。🔐 |
+| `/litellm org [id\|alias]` | 组织的预算；不带名称时，显示该密钥自己所属的组织，否则显示列表。🔐 |
 | `/litellm fallbacks [model]` | 路由器的回退链，可只看名称匹配的模型。🔐 |
 
 🔐 = 管理员命令，见下文。在面板中（点击面板，或按 `ctrl+x` `tab` 获得焦点）：`r` 刷新，`c` 复制摘要，`q` 关闭，方向键滚动；每个按钮都标明了对应的按键（`Refresh (r)`、`Copy (c)`、`Close (q)`）。输入框为空时，`Esc` 同样可以关闭面板。
@@ -177,6 +198,10 @@
 /litellm key new batch --budget 20 --models cloud/auto,cloud/auto-long --expires 30d --team platform-eng
 /litellm grant 10 --key claude-code-ana          # +$10 on top of the current budget
 /litellm grant 200 --team platform-eng --set     # cap the team at exactly $200
+/litellm grant 25 --org acme                     # +$25 on the organization (LiteLLM before 1.102, or enterprise)
+/litellm key set ci-runner --models cloud/auto --rpm 30 --expires 14d
+/litellm key set ci-runner --rpm none --expires never   # none removes a limit; --models all clears the list
+/litellm key reset-spend ci-runner               # the budget counter back to $0
 /litellm key block old-contractor
 /litellm fallbacks cloud/auto
 ```
@@ -191,6 +216,15 @@
 | `--expires 30d` | 经过这么长时间后，密钥失效。 |
 | `--user ID` / `--team ID` | 密钥归属方（该方的预算同样适用）。 |
 
+| `key set` 参数 | 含义 |
+| --- | --- |
+| `--models a,b` / `--models all` | 替换该密钥可调用的模型（`all`：所有模型）。 |
+| `--rpm N` / `--tpm N` / `--parallel N` | 设置限制；`none` 表示移除该限制。 |
+| `--expires 30d` / `--expires never` | 自现在起经过这么长时间后过期，或永不过期。 |
+| `--alias NEW` | 重命名该密钥。 |
+
+未指定的字段保持不变。预览会为每个字段显示 `before → after`，并在该密钥正是 Claude Code 当前使用的密钥时给出警告。
+
 每条管理员命令都有这些安全护栏：
 
 - **先预览。** `--dry-run` 到预览为止；`--yes` 跳过确认；否则由 Claude Code 的原生对话框询问（**Apply** / **Cancel**）。
@@ -200,18 +234,20 @@
 - **数字如实呈现。** `grant` 会明确指出以下情形：花费已超过新预算、没有上限可供叠加（请用 `--set`）、没有任何变化，以及 `--user` 将创建一个代理从未见过的用户。
 - **管理员密钥**只会发送给已接受你当前会话自身密钥的那个代理，并且绝不打印（错误信息会做脱敏）。
 
-目前在 LiteLLM v1.99.1 上，*能够*追加的预算有：调高**密钥**预算、**用户**预算或**团队**预算（`--team`，需要代理管理员），可按增量或绝对值（`--set`）调整。*临时*预算上调（`temp_budget_increase`）和按模型设置的预算在代理端属于企业版专属功能（见[预算](#budgets-what-litellm-can-and-cannot-do)），因此插件不提供这些功能，而不是假装支持。
+目前在 LiteLLM v1.99.1 和 v1.104.0 上，*能够*追加的预算有：调高**密钥**预算、**用户**预算或**团队**预算（`--team`，需要代理管理员），可按增量或绝对值（`--set`）调整。**组织**预算（`--org`）在 v1.101 及以前可用；从 v1.102 起，代理把组织功能留给企业版许可证，插件会如实说明。*临时*预算上调（`temp_budget_increase`）和按模型设置的预算在代理端属于企业版专属功能（见[预算](#budgets-what-litellm-can-and-cannot-do)），因此插件不提供这些功能，而不是假装支持。
 
 <a id="budgets-what-litellm-can-and-cannot-do"></a>
 ## 预算：LiteLLM 能做什么，不能做什么
 
-已针对 LiteLLM v1.99.1（开源版代理，无许可证）实测：
+已针对 LiteLLM v1.99.1（开源版代理，无许可证）实测；成员上限和组织预算也在 v1.104.0 上实测过：
 
 | 预算 | 是否可用 | 方式 |
 | --- | --- | --- |
 | 按**密钥**（上限 + 重置窗口） | ✅ | `/litellm key new --budget 10 --every 30d`；用 `/litellm grant 5 --key NAME` 调高 |
 | 按**用户** | ✅ | `/litellm grant 5 --user ID`（对该用户名下的所有密钥生效） |
 | 按**团队** | ✅ | `/litellm grant 50 --team NAME`（需要代理管理员） |
+| 按团队**成员**（`team_member_budget`） | 👀 只读 | 拦截该用户在这个团队中的请求（HTTP 429，v1.104 起为 422）。面板把上限显示为 `Member…`；请在 LiteLLM UI 或 API 中设置。虚拟密钥读不到该成员的总额，所以用量条统计的是**这个密钥的花费**，并会如实说明。重置会清零成员的花费，但不会清零密钥的花费，所以只有针对从不重置的上限，才会显示超预算横幅；针对会重置的上限，用量条只给出警告，不会断言请求已被拦截 |
+| 按**组织** | ✅ v1.101 及以前 · ⛔ v1.102 起为企业版 | 拦截该组织内的所有密钥（HTTP 429）。虚拟密钥读不到它：面板会显示组织名称，`/litellm org` 显示预算（管理员），`grant --org` 可调高预算 |
 | 同一密钥上的多个窗口（`budget_limits`，例如每小时 $5 + 每月 $50） | 只读 | 代理里存在时，显示为 `Window 1h` 用量条 |
 | 密钥上按**模型**设置（`model_max_budget`） | ⛔ 企业版 | 代理返回 *"You must have an enterprise license to set model_max_budget"*，`/budget/new` 同样如此。如果你的代理有许可证，面板会显示这些用量条（`Model gpt-4o`） |
 | 临时预算上调（`temp_budget_increase`） | ⛔ 企业版 | 开源版代理会接受该字段，但从不执行 |
@@ -236,7 +272,7 @@
 | --- | --- | --- |
 | `litellm_url` | 空 | 代理位于非默认位置时使用（经 LiteLLM 的 Bedrock/Vertex，或带前缀的 URL）。 |
 | `litellm_key` | 空 | 显式指定密钥。🔒 存放在凭据存储中，不写入 `settings.json`。 |
-| `litellm_admin_key` | 空 | 供 `keys`、`key new/block/unblock`、`grant`、`fallbacks` 使用的管理员密钥。🔒 存储方式相同。绝不打印。 |
+| `litellm_admin_key` | 空 | 供 `keys`、`key new/set/reset-spend/block/unblock`、`grant`、`org`、`fallbacks` 使用的管理员密钥。🔒 存储方式相同。绝不打印。 |
 | `refresh_seconds` | 60 | 读取间隔（15 到 3600）。每轮对话结束后也会读取，最多每 20 秒一次。 |
 | `warn_percent` | 80 | 首次预算预警（用到 95% 和 100% 时也会预警）。 |
 | `show_status_line` | `yes` | 输入框下方的那一行状态栏。 |
@@ -251,11 +287,12 @@
 | 端点 | 用途 |
 | --- | --- |
 | `/key/info` | 别名、花费、预算与窗口、重置时间、限额、有效期、状态、模型、按模型预算。每次读取都会请求。 |
-| `/user/info`、`/team/info` | 密钥所属用户和团队的预算（设有上限时）。每次读取都会请求。 |
+| `/user/info`、`/team/info` | 密钥所属用户和团队的预算，以及团队的单成员上限（设有上限时）。每次读取都会请求。 |
 | `/v1/models` | 实际允许使用的模型。每 10 分钟一次。 |
+| `/model_group/info` | 这些模型每个 token 的价格和上下文窗口（代理会返回它所有模型的数据，插件只保留被允许的那些）。每 10 分钟一次。 |
 | `/user/daily/activity` | 最近 7 天的花费、请求数和 token 数，以及按模型划分的花费。每 10 分钟一次。 |
 
-**管理**只会在你输入管理员命令时发生：`GET /key/list`、`/key/info`、`/user/info`、`/team/info`、`/v2/team/list`、`/router/settings`，以及 `POST /key/generate`、`/key/delete`（仅用于回滚）、`/key/block`、`/key/unblock`、`/key/update`、`/user/update`、`/team/update`。
+**管理**只会在你输入管理员命令时发生：`GET /key/list`、`/key/info`、`/user/info`、`/team/info`、`/v2/team/list`、`/organization/info`、`/organization/list`、`/router/settings`，以及 `POST /key/generate`、`/key/delete`（仅用于回滚）、`/key/block`、`/key/unblock`、`/key/update`、`/key/{hash}/reset_spend`、`/user/update`、`/team/update`、`PATCH /organization/update`。
 
 每个请求最多等待 4 秒（管理员命令为 15 秒）。可选的读取失败时（403、404…），只会在面板里留下一条不起眼的提示，绝不会报错。代理宕机时，面板会保留最近一次成功的读数，并标记为已过期。LiteLLM 是分批把花费写入数据库的，因此数字会比请求滞后约 10 秒。
 
@@ -284,7 +321,7 @@
 
 ## 在本机用真实的 LiteLLM 试一试
 
-`dev/litellm` 是一套完整的实验环境：LiteLLM v1.99.1 加 Docker 中的 Postgres，所以虚拟密钥、预算和花费都是真实的。
+`dev/litellm` 是一套完整的实验环境：LiteLLM v1.104.0 加 Docker 中的 Postgres 18，所以虚拟密钥、预算和花费都是真实的。CI 会在每次变更时启动它并运行冒烟测试。
 
 ```bash
 docker compose -f dev/litellm/docker-compose.yml up -d          # zero provider keys: canned answers
@@ -312,7 +349,10 @@ bash dev/check-file-size.sh                             # no source file over 30
 
 - 不读取 `apiKeyHelper`（执行用户命令不在范围之内）。请使用 `litellm_key`。
 - `/user/daily/activity` 在 LiteLLM 中仍是 beta 端点，可能会变化。
-- 按模型预算（`model_max_budget`）、临时预算上调和密钥重新生成在代理端都是企业版专属功能，因此不提供（见[预算](#budgets-what-litellm-can-and-cannot-do)）。
+- 按模型预算（`model_max_budget`）、临时预算上调和密钥重新生成在代理端都是企业版专属功能，因此不提供（见[预算](#budgets-what-litellm-can-and-cannot-do)）。在代理端编辑回退链需要 `STORE_MODEL_IN_DB=True`，因此 `/litellm fallbacks` 保持只读。
+- **组织**的预算不在密钥自身的响应里，虚拟密钥也可能无权读取它，所以面板只显示组织的名称；`/litellm org` 用管理员密钥读取。管理员密钥仍然只在你输入管理员命令时才会发送，绝不会随刷新定时器发送。
+- 团队**成员**的总额不会报告给虚拟密钥：`Member` 用量条只统计这个密钥的花费，所以读数可能偏低：如果该用户在团队里有多个密钥，代理可能比用量条显示的更早拦截请求。对于会重置的上限，读数也可能偏高（重置会清零成员的花费，而不是密钥的花费），因此这种情况下只发出警告，横幅保持静默。
+- 7 天历史只读取代理活动记录的一页；记录更多时，面板会提示这是部分数据。
 - 超预算横幅绘制在终端和桌面端界面上（Claude Code 只在这两处提供该横条）；在其他界面上，由状态栏和面板来提示。
 - 状态栏前面的 `⚠` 是 Claude Code 为每个插件状态项统一绘制的；它并不表示密钥出了问题（要看后面的文字）。
 - Claude Code 的插件 API 处于早期访问阶段，不同版本之间可能会变化。

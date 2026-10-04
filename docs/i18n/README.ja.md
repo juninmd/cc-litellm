@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="#install"><img alt="Claude Code プラグイン" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=for-the-badge"></a>
-  <img alt="LiteLLM v1.99.1 検証済み" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20tested-6366f1?style=for-the-badge">
+  <img alt="LiteLLM v1.99.1 と v1.104.0 検証済み" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20%C2%B7%20v1.104.0%20tested-6366f1?style=for-the-badge">
   <img alt="Claude Code 2.1.289 検証済み" src="https://img.shields.io/badge/Claude%20Code-2.1.289%20tested-0ea5e9?style=for-the-badge">
   <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/juninmd/cc-litellm/ci.yml?branch=main&style=for-the-badge&label=CI">
   <img alt="License: MIT" src="https://img.shields.io/github/license/juninmd/cc-litellm?style=for-the-badge&color=22c55e">
@@ -29,7 +29,7 @@
 
 # cc-litellm
 
-**[LiteLLM](https://docs.litellm.ai) プロキシ**経由でモデルを利用している人向けの [Claude Code](https://code.claude.com) プラグインです。Claude Code が使っている**仮想キー**についてプロキシが把握している情報(予算、使用額、制限、有効期限、利用可能なモデル、直近 7 日間の使用状況)を表示します。管理者は、ターミナルを離れることなく、**キーの作成、追加予算の付与、キーのブロック、ルーターのフォールバックチェーンの確認**も行えます。
+**[LiteLLM](https://docs.litellm.ai) プロキシ**経由でモデルを利用している人向けの [Claude Code](https://code.claude.com) プラグインです。Claude Code が使っている**仮想キー**についてプロキシが把握している情報(予算、使用額、制限、有効期限、利用可能なモデル、直近 7 日間の使用状況)を表示します。管理者は、ターミナルを離れることなく、**キーの作成と編集、追加予算の付与、キーのブロック、ルーターのフォールバックチェーンの確認**も行えます。
 
 このリポジトリはプラグインマーケットプレイス(`cc-litellm`)で、プラグインは 1 つだけ含まれています: [`litellm-key`](../../plugins/litellm-key)。
 
@@ -42,12 +42,14 @@
 | | | |
 | --- | --- | --- |
 | 👀 **監視** | **ステータスライン**: プロンプトの下に常時表示 | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
-| | **`/litellm` ペイン** | キー、チーム、ユーザーの予算メーター、ユーザーの**ロール**、制限、有効期限、モデル、7 日間のスパークライン、週の**上位モデル**、**Runway** の予測。自動で更新 |
+| | **`/litellm` ペイン** | キー、チーム、ユーザー、**チームメンバー**の予算メーター、ユーザーの**ロール**、制限、有効期限、モデル、7 日間のスパークライン、週の**上位モデル**、**Runway** の予測。自動で更新 |
 | | **トースト** | 予算が 80%(変更可)、95%、100% に達したとき、キーの期限切れが近いとき、キーがブロックまたは期限切れになったとき。予算ウィンドウごとに 1 回のみで、セッションをまたいでも重複しない |
 | | **予算超過バナー** | プロンプトの上に出る赤い帯。予算(キー、ユーザー、チーム、ウィンドウ、モデル)を使い切っている間は**表示され続け**、数値が正常に戻ったときだけ消える |
 | 🛠️ **管理** *(管理者)* | **`/litellm key new`** | 仮想キーを作成。シークレットは**クリップボードに入り、トランスクリプトには残らない** |
-| | **`/litellm grant`** | キー、ユーザー、チームへの追加予算。プレビューと確認つき |
+| | **`/litellm grant`** | キー、ユーザー、チーム、組織への追加予算。プレビューと確認つき |
+| | **`/litellm key set`** / `reset-spend` | キーのモデル、制限、有効期限、エイリアスを変更。使用額カウンターを 0 に戻す |
 | | **`/litellm key block`** / `unblock` | 1 行でキーを停止(または復元) |
+| | **`/litellm org`** | 組織の予算。仮想キーでは読み取れない |
 | | **`/litellm keys`** | キーの一覧: 自分のキー、特定ユーザーのキー、特定チームのキー、またはすべて |
 | | **`/litellm fallbacks`** | ルーターのフォールバックチェーン(`cloud/auto → cloud/auto-long → …`)と、コンテキストウィンドウのフォールバック |
 
@@ -115,10 +117,26 @@ Claude Code がすでに LiteLLM と通信している場合、**設定は不要
   </tr>
 </table>
 
+### チームがメンバーごとに上限を設けるとき
+
+チームは、メンバーごとの支出に上限を設けられます(`team_member_budget`)。キー自身の予算に余裕があってもプロキシはリクエストを拒否するため、プラグインはこの上限を読み取って `Member` メーターとして表示し、予算超過バナーもそれを名指しします:
+
+<p align="center">
+  <img src="../evidence/member-cap.png" alt="上限を超えた Member メーターを表示したペイン、プロンプトの上のバナー、名前が示されたキーの組織" width="92%">
+</p>
+
+<sub>`dev/mock-litellm.py --scenario member` に対して撮影。プロキシは仮想キーにメンバーの合計額を報告しないため、メーターは<b>このキーの使用額</b>を数え、その旨を明示します。実際より低く表示されることがあり、リセットされる上限に対しては高く表示されることもあります(リセットでゼロになるのはメンバーの支出であって、キーの支出ではありません)。そのため、バナーはリセットされない上限に対してのみ表示されます。キーの組織も名前が表示されます。その予算は管理者専用で、<code>/litellm org</code> が読み取ります。</sub>
+
 ### フォールバックチェーンを読む
 
 <p align="center">
   <img src="../evidence/fallbacks-filtered.png" alt="/litellm fallbacks cloud/auto" width="92%">
+</p>
+
+### モデルの価格を知る
+
+<p align="center">
+  <img src="../evidence/models-prices.png" alt="入力・出力の 100 万トークンあたりの価格とコンテキストウィンドウを示した /litellm models" width="92%">
 </p>
 
 ### プロキシ側でも一致している
@@ -143,13 +161,16 @@ Claude Code がすでに LiteLLM と通信している場合、**設定は不要
 | `/litellm` | ペインを開く(1 行のサマリーも返す)。画面がない場合はサマリーを出力する。 |
 | `/litellm refresh` | 今すぐ再読み込みする。 |
 | `/litellm info` | サマリー全文をトランスクリプトに出力する。 |
-| `/litellm models` | このキーが呼び出せるモデルを一覧表示する。 |
+| `/litellm models` | このキーが呼び出せるモデルを、100 万トークンあたりの価格とコンテキストウィンドウとともに一覧表示する。 |
 | `/litellm debug` | URL とキーの取得元(常にマスク)、試行した内容、結果を表示する。 |
 | `/litellm close` | ペインを閉じる。 |
 | `/litellm keys [--user ID \| --team ID \| --all]` | キーを一覧表示する。既定は自分のユーザーのキー。🔐 |
 | `/litellm key new <alias> [flags]` | キーを作成する。🔐 |
 | `/litellm key block <alias\|hash>` / `unblock` | キーをブロック、または復元する。🔐 |
-| `/litellm grant <amount> [--key \| --user \| --team] [--set]` | 予算を追加する。🔐 |
+| `/litellm key set <alias\|hash> [flags]` | キーのモデル、制限、有効期限、エイリアスを変更する。🔐 |
+| `/litellm key reset-spend <alias\|hash>` | キーの使用額カウンターを 0 に戻す。🔐 |
+| `/litellm grant <amount> [--key \| --user \| --team \| --org] [--set]` | 予算を追加する。🔐 |
+| `/litellm org [id\|alias]` | 組織の予算。名前を省略した場合は、キー自身の組織、なければ一覧。🔐 |
 | `/litellm fallbacks [model]` | ルーターのフォールバックチェーン。名前に一致するモデルに絞ることもできる。🔐 |
 
 🔐 = 管理者コマンド(下記を参照)。ペイン内の操作(クリック、または `ctrl+x` `tab` でフォーカス): `r` で更新、`c` でサマリーをコピー、`q` で閉じる、矢印キーでスクロール。各ボタンには対応するキーが併記されます(`Refresh (r)`、`Copy (c)`、`Close (q)`)。空のプロンプトでは `Esc` でも閉じられます。
@@ -179,6 +200,10 @@ Claude Code がすでに LiteLLM と通信している場合、**設定は不要
 /litellm key new batch --budget 20 --models cloud/auto,cloud/auto-long --expires 30d --team platform-eng
 /litellm grant 10 --key claude-code-ana          # +$10 on top of the current budget
 /litellm grant 200 --team platform-eng --set     # cap the team at exactly $200
+/litellm grant 25 --org acme                     # +$25 on the organization (LiteLLM before 1.102, or enterprise)
+/litellm key set ci-runner --models cloud/auto --rpm 30 --expires 14d
+/litellm key set ci-runner --rpm none --expires never   # none removes a limit; --models all clears the list
+/litellm key reset-spend ci-runner               # the budget counter back to $0
 /litellm key block old-contractor
 /litellm fallbacks cloud/auto
 ```
@@ -193,6 +218,15 @@ Claude Code がすでに LiteLLM と通信している場合、**設定は不要
 | `--expires 30d` | この期間が過ぎるとキーが使えなくなる。 |
 | `--user ID` / `--team ID` | キーの所有者(その予算も併せて適用される)。 |
 
+| `key set` のフラグ | 意味 |
+| --- | --- |
+| `--models a,b` / `--models all` | キーが呼び出せるモデルを置き換える(`all`: すべてのモデル)。 |
+| `--rpm N` / `--tpm N` / `--parallel N` | 制限を設定する。`none` で制限を解除する。 |
+| `--expires 30d` / `--expires never` | 今からこの期間が過ぎると期限切れにする。`never` なら無期限。 |
+| `--alias NEW` | キーのエイリアスを変更する。 |
+
+指定しなかったフィールドは、そのまま変わりません。プレビューには各フィールドの `before → after` が表示され、そのキーが Claude Code で使用中のキーである場合は警告が出ます。
+
 すべての管理者コマンドに備わる安全策:
 
 - **まずプレビュー。** `--dry-run` はプレビューで止まります。`--yes` は確認を省略します。どちらも指定しなければ、Claude Code のネイティブダイアログで確認します(**Apply** / **Cancel**)。
@@ -202,19 +236,21 @@ Claude Code がすでに LiteLLM と通信している場合、**設定は不要
 - **正直な数値。** `grant` は、使用額がすでに新しい予算を超えている場合、加算先となる上限がない場合(`--set` を使用)、何も変わらない場合、`--user` がプロキシの未知のユーザーを新規作成することになる場合に、それぞれ明示します。
 - **管理者キー**は、セッション自身のキーをすでに受け入れたプロキシにのみ送信され、表示されることはありません(エラーはマスク処理されます)。
 
-LiteLLM v1.99.1 で現時点で追加予算として付与*できる*のは、**キー**の予算、**ユーザー**の予算、**チーム**の予算(`--team`、プロキシ管理者が必要)の引き上げで、増分または絶対値(`--set`)で指定します。*一時的な*予算の増額(`temp_budget_increase`)とモデル別の予算は、プロキシ側ではエンタープライズ限定です([予算](#budgets-what-litellm-can-and-cannot-do)を参照)。できるように見せかけず、プラグインでは提供していません。
+LiteLLM v1.99.1 と v1.104.0 で現時点で追加予算として付与*できる*のは、**キー**の予算、**ユーザー**の予算、**チーム**の予算(`--team`、プロキシ管理者が必要)の引き上げで、増分または絶対値(`--set`)で指定します。**組織**の予算(`--org`)は v1.101 まで使えます。v1.102 以降、プロキシは組織をエンタープライズライセンス専用にしており、プラグインはその旨を伝えます。*一時的な*予算の増額(`temp_budget_increase`)とモデル別の予算は、プロキシ側ではエンタープライズ限定です([予算](#budgets-what-litellm-can-and-cannot-do)を参照)。できるように見せかけず、プラグインでは提供していません。
 
 <a id="budgets-what-litellm-can-and-cannot-do"></a>
 
 ## 予算: LiteLLM でできること、できないこと
 
-LiteLLM v1.99.1(オープンソースのプロキシ、ライセンスなし)で実機確認済みです:
+LiteLLM v1.99.1(オープンソースのプロキシ、ライセンスなし)で実機確認済みです。メンバー上限と組織は v1.104.0 でも確認しました:
 
 | 予算 | 可否 | 方法 |
 | --- | --- | --- |
 | **キー**単位(上限 + リセットウィンドウ) | ✅ | `/litellm key new --budget 10 --every 30d`。引き上げは `/litellm grant 5 --key NAME` |
 | **ユーザー**単位 | ✅ | `/litellm grant 5 --user ID`(ユーザーが所有するすべてのキーに適用) |
 | **チーム**単位 | ✅ | `/litellm grant 50 --team NAME`(プロキシ管理者が必要) |
+| チームの**メンバー**単位(`team_member_budget`) | 👀 読み取り専用 | そのチーム内でのユーザーのリクエストをブロックする(HTTP 429、v1.104 以降は 422)。ペインには上限が `Member…` として表示される。設定は LiteLLM の UI または API で行う。仮想キーはメンバーの合計額を読み取れないため、メーターは**このキーの使用額**を数え、その旨を明示する。リセットでゼロになるのはメンバーの支出であってキーの支出ではないため、予算超過バナーはリセットされない上限に対してのみ表示される。リセットされる上限に対しては、メーターは警告を出すだけで、ブロックされるとは断定しない |
+| **組織**単位 | ✅ v1.101 まで · ⛔ v1.102 以降はエンタープライズ | 組織内のすべてのキーをブロックする(HTTP 429)。仮想キーでは読み取れない。ペインには組織名が表示され、`/litellm org` で予算を確認でき(管理者)、`grant --org` で引き上げられる |
 | 1 つのキーに複数のウィンドウ(`budget_limits`、例: $5/時間 + $50/月) | 読み取り専用 | プロキシ側に設定がある場合、`Window 1h` のメーターとして表示 |
 | キーの**モデル**単位(`model_max_budget`) | ⛔ エンタープライズ | プロキシは *"You must have an enterprise license to set model_max_budget"* と応答する(`/budget/new` でも同様)。プロキシにライセンスがあれば、ペインにそのメーター(`Model gpt-4o`)が表示される |
 | 一時的な予算の増額(`temp_budget_increase`) | ⛔ エンタープライズ | オープンソースのプロキシはこのフィールドを受け付けるが、適用はしない |
@@ -239,7 +275,7 @@ URL がパススルーのルート(`/anthropic`、`/bedrock`、`/v1` など)で�
 | --- | --- | --- |
 | `litellm_url` | 空 | 既定以外の場所にあるプロキシ(LiteLLM 経由の Bedrock/Vertex、プレフィックス付きの URL)。 |
 | `litellm_key` | 空 | 明示的に指定するキー。🔒 資格情報ストアに保存され、`settings.json` には保存されない。 |
-| `litellm_admin_key` | 空 | `keys`、`key new/block/unblock`、`grant`、`fallbacks` 用の管理者キー。🔒 保存先は同じ。表示されない。 |
+| `litellm_admin_key` | 空 | `keys`、`key new/set/reset-spend/block/unblock`、`grant`、`org`、`fallbacks` 用の管理者キー。🔒 保存先は同じ。表示されない。 |
 | `refresh_seconds` | 60 | 読み取り間隔(15〜3600)。各ターンの後にも、最短 20 秒の間隔で読み取る。 |
 | `warn_percent` | 80 | 最初の予算警告(95% と 100% でも警告する)。 |
 | `show_status_line` | `yes` | プロンプトの下の行。 |
@@ -254,11 +290,12 @@ URL がパススルーのルート(`/anthropic`、`/bedrock`、`/v1` など)で�
 | エンドポイント | 用途 |
 | --- | --- |
 | `/key/info` | エイリアス、使用額、予算とウィンドウ、リセット、制限、有効期限、ステータス、モデル、モデル別の予算。読み取りのたびに取得。 |
-| `/user/info`、`/team/info` | キーのユーザーとチームの予算(上限がある場合)。読み取りのたびに取得。 |
+| `/user/info`、`/team/info` | キーのユーザーとチームの予算、およびチームのメンバー別の上限(上限がある場合)。読み取りのたびに取得。 |
 | `/v1/models` | 実際に許可されているモデル。10 分ごと。 |
+| `/model_group/info` | それらのモデルのトークンあたりの価格とコンテキストウィンドウ(プロキシは全モデル分を返し、プラグインは許可されたものだけを残す)。10 分ごと。 |
 | `/user/daily/activity` | 直近 7 日間の使用額、リクエスト数、トークン数、およびモデル別の使用額。10 分ごと。 |
 
-**管理**は、管理者コマンドを入力したときにだけ行われます: `GET /key/list`、`/key/info`、`/user/info`、`/team/info`、`/v2/team/list`、`/router/settings`、および `POST /key/generate`、`/key/delete`(ロールバック時のみ)、`/key/block`、`/key/unblock`、`/key/update`、`/user/update`、`/team/update`。
+**管理**は、管理者コマンドを入力したときにだけ行われます: `GET /key/list`、`/key/info`、`/user/info`、`/team/info`、`/v2/team/list`、`/organization/info`、`/organization/list`、`/router/settings`、および `POST /key/generate`、`/key/delete`(ロールバック時のみ)、`/key/block`、`/key/unblock`、`/key/update`、`/key/{hash}/reset_spend`、`/user/update`、`/team/update`、`PATCH /organization/update`。
 
 各リクエストの待機時間は最大 4 秒です(管理者コマンドは 15 秒)。任意の読み取りが失敗しても(403、404 など)、ペインに控えめな注記が出るだけで、エラーにはなりません。プロキシが停止した場合、ペインは最後に成功した読み取り結果を保持し、古いデータであることを示します。LiteLLM は使用額をバッチでデータベースに書き込むため、数値はリクエストから約 10 秒遅れます。
 
@@ -287,7 +324,7 @@ URL がパススルーのルート(`/anthropic`、`/bedrock`、`/v1` など)で�
 
 ## 手元のノート PC で本物の LiteLLM を試す
 
-`dev/litellm` は完全なラボ環境です。Docker 上の Postgres を伴う LiteLLM v1.99.1 なので、仮想キー、予算、使用額はすべて本物です。
+`dev/litellm` は完全なラボ環境です。Docker 上の Postgres 18 を伴う LiteLLM v1.104.0 なので、仮想キー、予算、使用額はすべて本物です。CI は変更のたびにこれを起動し、スモークテストを実行します。
 
 ```bash
 docker compose -f dev/litellm/docker-compose.yml up -d          # zero provider keys: canned answers
@@ -315,7 +352,10 @@ bash dev/check-file-size.sh                             # no source file over 30
 
 - `apiKeyHelper` は読み取りません(ユーザーのコマンドを実行することはスコープ外です)。`litellm_key` を使ってください。
 - `/user/daily/activity` は LiteLLM のベータ版で、変更される可能性があります。
-- モデル別の予算(`model_max_budget`)、一時的な予算の増額、キーの再生成は、プロキシ側ではエンタープライズ限定のため提供していません([予算](#budgets-what-litellm-can-and-cannot-do)を参照)。
+- モデル別の予算(`model_max_budget`)、一時的な予算の増額、キーの再生成は、プロキシ側ではエンタープライズ限定のため提供していません([予算](#budgets-what-litellm-can-and-cannot-do)を参照)。フォールバックチェーンの編集にはプロキシ側で `STORE_MODEL_IN_DB=True` が必要なため、`/litellm fallbacks` は読み取り専用のままです。
+- **組織**の予算はキー自身の応答に含まれず、仮想キーでは読み取れない場合があるため、ペインには組織名が表示されるだけです。`/litellm org` は管理者キーで読み取ります。管理者キーは、これまでどおり管理者コマンドを入力したときにだけ送信され、更新タイマーでは送信されません。
+- チーム**メンバー**の合計額は仮想キーには報告されません。`Member` メーターはこのキーの使用額だけを数えるため、実際より低く表示されることがあります。ユーザーがチーム内に複数のキーを持つ場合、メーターが示すより早くプロキシがブロックすることがあります。リセットされる上限に対しては高く表示されることもあります(リセットでゼロになるのはメンバーの支出であって、キーの支出ではありません)。そのため、その場合は警告を出し、バナーは表示されません。
+- 7 日間の履歴はプロキシのアクティビティ行を 1 ページ分だけ読み取ります。それより多い場合、ペインは一部のみであることを表示します。
 - 予算超過バナーが描画されるのは、ターミナルとデスクトップのサーフェスです(Claude Code がバンドを提供するのはそこだけ)。それ以外では、ステータスラインとペインで知らせます。
 - ステータスラインの前の `⚠` は、プラグインのステータス項目すべてに対して Claude Code が描画するもので、キーに問題があることを意味しません(それを示すのはテキストです)。
 - Claude Code のプラグイン API はアーリーアクセスであり、バージョン間で変更される可能性があります。

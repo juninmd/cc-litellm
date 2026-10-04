@@ -55,6 +55,7 @@ export const adminLink = async (session: Session, ports: Ports, io: AdminIo): Pr
       },
       ownHash: state.latest.snapshot?.key.keyHash ?? null,
       ownUserId: state.latest.snapshot?.key.userId ?? null,
+      ownOrgId: state.latest.snapshot?.key.organizationId ?? null,
       surfaces: await io.surfaces(),
       now,
       ask: io.ask,

@@ -100,7 +100,7 @@ export const register: Register = (on, options) => {
     await $.command.register({
       name: 'litellm',
       description: 'Show your LiteLLM virtual key: budget, limits, models and usage',
-      argumentHint: '[refresh|info|models|keys|key|grant|fallbacks|debug|close|help]',
+      argumentHint: '[refresh|info|models|keys|key|grant|org|fallbacks|debug|close|help]',
     })
     state.ticker?.cancel()
     state.ticker = $.clock.every(state.config.refreshSeconds * 1000, () => {

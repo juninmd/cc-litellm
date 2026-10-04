@@ -13,12 +13,12 @@ export type Call = { method: string; path: string; body: Row | null; auth: strin
 const FUTURE = '2026-11-01T00:00:00+00:00'
 
 /** The management endpoints of a LiteLLM v1.99 proxy, shaped like its real answers, in memory. */
-export const fakeProxy = (options: { admin?: string; rows?: Row[]; users?: Row[]; teams?: Row[]; fallbacks?: Row } = {}) => {
+export const fakeProxy = (options: { admin?: string; rows?: Row[]; users?: Row[]; teams?: Row[]; orgs?: Row[]; fallbacks?: Row } = {}) => {
   const admin = options.admin ?? ADMIN_KEY
   const calls: Call[] = []
   const keys = new Map<string, Row>(
     (options.rows ?? [
-      { token: hashOf(1), key_alias: 'alice-ci', key_name: 'sk-...1111', spend: 0.09, max_budget: 5, budget_duration: '30d', user_id: 'alice', expires: FUTURE },
+      { token: hashOf(1), key_alias: 'alice-ci', key_name: 'sk-...1111', spend: 0.09, max_budget: 5, budget_duration: '30d', user_id: 'alice', expires: FUTURE, models: ['cloud/auto'], rpm_limit: 60 },
       { token: hashOf(2), key_alias: 'bob-dev', key_name: 'sk-...2222', spend: 1, max_budget: null, user_id: 'bob', team_id: 'team-1' },
     ]).map(row => [String(row.token), row]),
   )
@@ -27,6 +27,9 @@ export const fakeProxy = (options: { admin?: string; rows?: Row[]; users?: Row[]
   )
   const teams = new Map<string, Row>(
     (options.teams ?? [{ team_id: 'team-1', team_alias: 'platform-eng', spend: 40, max_budget: 100, budget_duration: '30d' }]).map(row => [String(row.team_id), row]),
+  )
+  const orgs = new Map<string, Row>(
+    (options.orgs ?? [{ organization_id: 'org-1', organization_alias: 'acme', spend: 2, litellm_budget_table: { max_budget: 10, budget_duration: '30d' }, models: [], members: [{}, {}], teams: [{}] }]).map(row => [String(row.organization_id), row]),
   )
   let serial = 100
 
@@ -77,9 +80,29 @@ export const fakeProxy = (options: { admin?: string; rows?: Row[]; users?: Row[]
       if (!row) {
         return reply(404, { error: { message: 'Key not found', code: '404' } })
       }
-      row.max_budget = body.max_budget
+      for (const [field, value] of Object.entries(body)) {
+        if (field === 'duration') {
+          row.expires = value === '-1' ? null : new Date(Date.parse('2026-10-03T12:00:00Z') + Number.parseInt(String(value), 10) * 86_400_000).toISOString()
+        } else if (field !== 'key') {
+          row[field] = value
+        }
+      }
 
       return reply(200, { ...row, key: RAW_LEAK })
+    }
+    const reset = /^\/key\/([0-9a-f]{64})\/reset_spend$/.exec(route)
+
+    if (reset && body) {
+      const row = keys.get(reset[1] ?? '')
+
+      if (!row) {
+        return reply(404, { error: { message: 'Key not found', code: '404' } })
+      }
+      const previous = row.spend
+
+      row.spend = body.reset_to ?? 0
+
+      return reply(200, { key_hash: row.token, spend: row.spend, previous_spend: previous, max_budget: row.max_budget, budget_reset_at: null })
     }
     if ((route === '/key/block' || route === '/key/unblock') && body) {
       const row = keys.get(String(body.key))
@@ -122,6 +145,26 @@ export const fakeProxy = (options: { admin?: string; rows?: Row[]; users?: Row[]
 
       return reply(200, { team_id: body.team_id })
     }
+    if (route === '/organization/info') {
+      const org = orgs.get(query.get('organization_id') ?? '')
+
+      return org ? reply(200, org) : reply(404, { detail: { error: 'Organization not found' } })
+    }
+    if (route === '/organization/list') {
+      const alias = query.get('org_alias')
+
+      return reply(200, [...orgs.values()].filter(org => !alias || String(org.organization_alias).includes(alias)))
+    }
+    if (route === '/organization/update' && body && init.method === 'PATCH') {
+      const org = orgs.get(String(body.organization_id))
+
+      if (!org) {
+        return reply(500, { error: { message: 'Internal server error', type: 'internal_server_error' } })
+      }
+      org.litellm_budget_table = { ...(org.litellm_budget_table as Row), ...(body.litellm_budget_table as Row) }
+
+      return reply(200, org)
+    }
     if (route === '/router/settings') {
       return reply(200, {
         current_values: options.fallbacks ?? {
@@ -138,7 +181,7 @@ export const fakeProxy = (options: { admin?: string; rows?: Row[]; users?: Row[]
     return reply(404, { detail: 'Not Found' })
   }
 
-  return { send, calls, keys, users, teams, writes: () => calls.filter(call => call.method === 'POST') }
+  return { send, calls, keys, users, teams, orgs, writes: () => calls.filter(call => call.method !== 'GET') }
 }
 
 export type Fake = ReturnType<typeof fakeProxy>
@@ -160,6 +203,7 @@ export const depsOf = (fake: Fake, patch: Partial<Deps> = {}, admin: Partial<Adm
     admin: adminOf(fake.send, admin),
     ownHash: hashOf(1),
     ownUserId: 'alice',
+    ownOrgId: null,
     surfaces: ['terminal'],
     now: Date.parse('2026-10-03T12:00:00Z'),
     ask: async question => {

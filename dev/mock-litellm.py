@@ -33,6 +33,8 @@ SCENARIOS = {
     "expiring": dict(spend=12.5, window=0.42, model=1.2, team=412.0, user=26.1, expires_hours=20),
     "blocked": dict(spend=12.5, window=0.42, model=1.2, team=412.0, user=26.1, blocked=True),
     "nocap": dict(spend=12.5, window=0.42, model=1.2, team=412.0, user=26.1, max_budget=None),
+    # the team caps each member at $10 (a cap that never resets) and the key alone has spent $12.50: the proxy refuses it, the key's own budget is fine
+    "member": dict(spend=12.5, window=0.42, model=1.2, team=412.0, user=26.1, member_cap=10.0, organization="acme-org"),
 }
 
 
@@ -54,6 +56,7 @@ def key_info(c):
         "models": [],
         "user_id": "demo",
         "team_id": "platform",
+        "organization_id": c.get("organization"),
         "tpm_limit": 400000,
         "rpm_limit": 120,
         "max_parallel_requests": 8,
@@ -97,10 +100,17 @@ def team_info(c):
             "max_budget": 1000.0,
             "budget_duration": "30d",
             "budget_reset_at": at(timedelta(days=4)),
+            "team_member_budget_table": {"max_budget": c["member_cap"], "budget_duration": None} if c.get("member_cap") else None,
         },
         "keys": [],
         "team_memberships": [],
     }
+
+
+def model_groups():
+    # per-token dollars, like /model_group/info; the proxy lists every group, the plugin keeps the key's
+    groups = {"claude-sonnet-4-5": (3e-6, 1.5e-5, 200000), "claude-opus-4-1": (1.5e-5, 7.5e-5, 200000), "claude-haiku-4-5": (1e-6, 5e-6, 200000), "gpt-5": (1.25e-6, 1e-5, 400000)}
+    return {"data": [{"model_group": name, "input_cost_per_token": i, "output_cost_per_token": o, "max_input_tokens": ctx} for name, (i, o, ctx) in groups.items()]}
 
 
 def models():
@@ -180,6 +190,7 @@ def handler(config, delay, fail_after):
                 "/user/info": lambda: user_info(config),
                 "/team/info": lambda: team_info(config),
                 "/v1/models": models,
+                "/model_group/info": model_groups,
                 "/user/daily/activity": daily_activity,
             }
             if path in routes:

@@ -62,7 +62,7 @@ export const budgetBrief = (budget: Budget, now: number): string =>
     .join(' · ')
 
 export const meters = (snapshot: Snapshot, now: number, warnPercent: number): Meter[] => {
-  const { key, team, user } = snapshot
+  const { key, member, team, user } = snapshot
   const list: Meter[] = [
     {
       label: 'Budget',
@@ -107,16 +107,20 @@ export const meters = (snapshot: Snapshot, now: number, warnPercent: number): Me
       })
     }
   }
-  for (const [label, related] of [['Team', team], ['User', user]] as const) {
+  for (const [label, related] of [['Team', team], ['User', user], ['Member', member]] as const) {
     if (related) {
+      // a floor is only what this key spent: say so, or the meter reads as the member's whole total
+      const floor = related.isFloor ? ' · this key only' : ''
+
       list.push({
         label: `${label} ${related.label}`,
         used: related.budget.spend,
         limit: related.budget.limit,
-        text: budgetText(related.budget, now),
-        detail: budgetText(related.budget, now, false),
-        brief: budgetBrief(related.budget, now),
-        tone: toneOf(related.budget.spend, related.budget.limit, warnPercent),
+        text: `${budgetText(related.budget, now)}${floor}`,
+        detail: `${budgetText(related.budget, now, false)}${floor}`,
+        brief: `${budgetBrief(related.budget, now)}${floor}`,
+        // a floor of a cap that resets may hold older periods' spend: it can warn, but not claim the proxy refuses requests
+        tone: related.isFloor && related.budget.duration !== null && isSpentUp(related.budget.spend, related.budget.limit) ? 'warn' : toneOf(related.budget.spend, related.budget.limit, warnPercent),
       })
     }
   }

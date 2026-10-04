@@ -1,4 +1,4 @@
-import type { Budget, BudgetWindow, KeyInfo, KeyStatus, Limits, ModelBudget, Related, Usage } from '../types'
+import type { Budget, BudgetWindow, KeyInfo, KeyStatus, Limits, ModelBudget, ModelPrice, Related, Usage } from '../types'
 import type { Json } from './json'
 import { date, isObject, num, str, strings } from './json'
 
@@ -99,6 +99,7 @@ export const parseKey = (body: Json, info: Json, now: number): KeyInfo => {
     lastActiveAt: date(info.last_active),
     userId: str(info.user_id),
     teamId: str(info.team_id),
+    organizationId: str(info.organization_id),
     keyType: str(info.key_type),
   }
 }
@@ -131,6 +132,75 @@ export const parseTeam = (body: unknown): Related | null => {
 
   return budget.limit === null ? null : { id, label: str(info.team_alias) ?? id, budget }
 }
+
+/**
+ * The per-member cap of the team (team_member_budget) for the key's user. A virtual key can read the cap but not the
+ * member's total, so the key's own spend stands in as a floor. It is never above the real figure for a cap that does not
+ * reset; a cap that resets zeroes the member's spend each period (reset_budget_job.py, v1.99.1) but not the key's.
+ */
+export const parseMember = (body: unknown, key: KeyInfo): Related | null => {
+  const info = isObject(body) && isObject(body.team_info) ? body.team_info : null
+
+  if (!info || key.userId === null) {
+    return null
+  }
+  const memberships = isObject(body) && Array.isArray(body.team_memberships) ? body.team_memberships : []
+  const own = memberships.find(item => isObject(item) && item.user_id === key.userId)
+  const ownTable = isObject(own) && isObject(own.litellm_budget_table) ? own.litellm_budget_table : null
+  const shared = isObject(info.team_member_budget_table) ? info.team_member_budget_table : null
+  const table = num(ownTable?.max_budget) === null ? shared : ownTable
+  const limit = num(table?.max_budget)
+
+  if (limit === null) {
+    return null
+  }
+  const reported = isObject(own) ? (num(own.spend) ?? 0) : 0
+
+  return {
+    id: key.userId,
+    label: key.userId,
+    budget: {
+      spend: Math.max(reported, key.budget.spend),
+      limit,
+      softLimit: num(table?.soft_budget),
+      duration: str(table?.budget_duration),
+      resetAt: date(table?.budget_reset_at),
+    },
+    isFloor: true,
+  }
+}
+
+const perMillion = (perToken: unknown): number | null => {
+  const value = num(perToken)
+
+  return value === null ? null : Math.round(value * 1e10) / 1e4
+}
+
+/** /model_group/info answers for every model of the proxy, whatever the key may call: `allowed` narrows it. */
+export const parseModelPrices = (body: unknown, allowed: readonly string[] | null): Record<string, ModelPrice> | null => {
+  if (!isObject(body) || !Array.isArray(body.data)) {
+    return null
+  }
+  const prices: Record<string, ModelPrice> = {}
+
+  for (const item of body.data) {
+    const name = isObject(item) ? str(item.model_group) : null
+
+    if (isObject(item) && name !== null && (allowed === null || allowed.includes(name))) {
+      prices[name] = {
+        input: perMillion(item.input_cost_per_token),
+        output: perMillion(item.output_cost_per_token),
+        context: num(item.max_input_tokens),
+      }
+    }
+  }
+
+  return prices
+}
+
+/** The activity endpoint pages its rows: more than one page means the week is not all in the answer. */
+export const hasMoreRows = (body: unknown): boolean =>
+  isObject(body) && isObject(body.metadata) && body.metadata.has_more === true
 
 export const parseModels = (body: unknown): string[] | null => {
   if (!isObject(body) || !Array.isArray(body.data)) {

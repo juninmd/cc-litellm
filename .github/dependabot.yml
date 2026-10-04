@@ -8,7 +8,7 @@ updates:
       prefix: "chore(deps)"
 
   # The local lab pins the LiteLLM image the plugin was checked against: a bump here is a version
-  # change, so read the release notes and re-run the smoke test before merging it.
+  # change: the `lab` CI job runs the smoke test on the PR, but still read the release notes before merging it.
   - package-ecosystem: docker-compose
     directory: /dev/litellm
     schedule:

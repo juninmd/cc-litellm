@@ -6,7 +6,7 @@ import type { Reply } from './litellm'
 
 export type Send = (
   url: string,
-  init: { method: 'GET' | 'POST'; headers: Record<string, string>; body?: string },
+  init: { method: 'GET' | 'POST' | 'PATCH'; headers: Record<string, string>; body?: string },
 ) => Promise<Reply>
 
 export type Admin = {
@@ -35,7 +35,7 @@ export type KeyRow = {
 }
 
 export type Budgeted = {
-  kind: 'key' | 'user' | 'team'
+  kind: 'key' | 'user' | 'team' | 'org'
   /** What the update endpoint takes: a key hash, a user id or a team id. */
   id: string
   label: string
@@ -71,6 +71,9 @@ export const query = (params: Record<string, string | number | null | undefined>
 const explain = (status: number, message: string, admin: Admin): string => {
   const text = truncate(redact(message.replace(/\s+/g, ' '), admin.secrets), 200)
 
+  if (status === 403 && /enterprise/i.test(text)) {
+    return `This needs a LiteLLM enterprise license on the proxy (HTTP 403): ${text}`
+  }
   if ((status === 401 || status === 403) && /only proxy admin|not authorized|not allowed|admin/i.test(text)) {
     return admin.isOwnKey
       ? `This needs a proxy admin key (HTTP ${status}): ${text}\nSet litellm_admin_key with: claude plugin configure litellm-key`
@@ -85,7 +88,7 @@ const explain = (status: number, message: string, admin: Admin): string => {
 
 export const request = async (
   admin: Admin,
-  method: 'GET' | 'POST',
+  method: 'GET' | 'POST' | 'PATCH',
   path: string,
   body?: Json,
 ): Promise<Outcome<unknown> & { status?: number }> => {
@@ -99,7 +102,7 @@ export const request = async (
     })
   } catch (error) {
     const message = redact(describeError(error, admin.secrets[0] ?? ''), admin.secrets)
-    const mayHaveLanded = method === 'POST' && /no answer within/.test(message)
+    const mayHaveLanded = method !== 'GET' && /no answer within/.test(message)
 
     return fail(`Could not reach the proxy: ${message}${mayHaveLanded ? ' The change may still have gone through: check before trying again.' : ''}`)
   }

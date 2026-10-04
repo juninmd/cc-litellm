@@ -4,6 +4,7 @@
 import type { Admin, Send } from '../../plugins/litellm-key/hooks/admin'
 import { runAdmin } from '../../plugins/litellm-key/hooks/admin-commands'
 import type { Deps } from '../../plugins/litellm-key/hooks/admin-commands'
+import { exceededItems } from '../../plugins/litellm-key/hooks/exceeded'
 import { maskKey } from '../../plugins/litellm-key/hooks/format'
 import type { Credentials } from '../../plugins/litellm-key/hooks/credentials'
 import { fetchSnapshot } from '../../plugins/litellm-key/hooks/litellm'
@@ -64,10 +65,23 @@ const chat = async (key: string, body: Record<string, unknown>) => {
   return { status: response.status, headers: response.headers, json: (await response.json().catch(() => ({}))) as Record<string, any> }
 }
 
+// The proxy's own management API, for what the plugin does not offer (teams) and for cleanup.
+const api = async (method: string, path: string, body?: unknown) => {
+  const response = await fetch(`${URL_}${path}`, {
+    method,
+    headers: { authorization: `Bearer ${ADMIN_KEY}`, 'content-type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    signal: AbortSignal.timeout(30_000),
+  })
+
+  return { status: response.status, json: (await response.json().catch(() => null)) as Record<string, any> | null }
+}
+
 const deps = (clipboard: string[], ownHash: string | null): Deps => ({
   admin: adminOf(ADMIN_KEY, false),
   ownHash,
   ownUserId: null,
+  ownOrgId: null,
   surfaces: ['terminal'],
   now: Date.now(),
   ask: async () => 'Apply',
@@ -106,6 +120,7 @@ const main = async (): Promise<void> => {
   say(`    status line: ${statusText(first.snapshot, null, Date.now())}`)
   check('alias, budget and rpm parsed', first.snapshot.key.alias === alias('main') && first.snapshot.key.budget.limit === 2 && first.snapshot.key.limits.rpm === 120)
   check('models listed', (first.snapshot.models ?? []).includes(MODEL), `${first.snapshot.models?.length ?? 0} models`)
+  check('prices read for the models the key may call', typeof first.snapshot.prices?.[MODEL]?.input === 'number', JSON.stringify(first.snapshot.prices?.[MODEL] ?? null))
   check('no user record is not a problem', first.snapshot.notes.length === 0, first.snapshot.notes.join('; '))
 
   step(`3. spend through ${MODEL} with that key`)
@@ -163,7 +178,63 @@ const main = async (): Promise<void> => {
 
   check('cloud/auto forced to fail walks its chain to cloud/auto-long', forced.status === 200 && forced.headers.get('x-litellm-model-group') === 'cloud/auto-long', `HTTP ${forced.status} · served by ${forced.json.model ?? '?'} · group ${forced.headers.get('x-litellm-model-group') ?? '?'}`)
 
-  step('8. failure modes the status line must name')
+  step('8. /litellm key set, reset-spend')
+  const edited = await runAdmin(deps(clipboard, ownHash), 'key', `set ${alias('main')} --rpm 90 --parallel 3 --models ${MODEL} --yes`)
+
+  say(edited.text.split('\n').map(line => `    ${line}`).join('\n'))
+  const afterEdit = await snapshotOf(secret)
+
+  check('limits and models changed on the proxy', afterEdit.ok && afterEdit.snapshot.key.limits.rpm === 90 && afterEdit.snapshot.key.limits.parallel === 3 && afterEdit.snapshot.key.models.join() === MODEL)
+  await runAdmin(deps(clipboard, ownHash), 'key', `set ${alias('main')} --rpm none --parallel none --models all --yes`)
+  const afterClear = await snapshotOf(secret)
+
+  check('none and all clear them again', afterClear.ok && afterClear.snapshot.key.limits.rpm === null && afterClear.snapshot.key.limits.parallel === null && afterClear.snapshot.key.models.length === 0)
+  const wiped = await runAdmin(deps(clipboard, ownHash), 'key', `reset-spend ${alias('main')} --yes`)
+
+  say(`    ${wiped.text}`)
+  const afterWipe = await snapshotOf(secret)
+
+  check('spend is back to zero', afterWipe.ok && afterWipe.snapshot.key.budget.spend === 0)
+
+  step('9. a team that caps each member, and organizations')
+  const userId = `smoke-member-${RUN}`
+  const team = await api('POST', '/team/new', { team_alias: alias('team'), team_member_budget: 0.0001 })
+  const teamId = String(team.json?.team_id ?? '')
+  const member = await api('POST', '/key/generate', { key_alias: alias('member'), team_id: teamId, user_id: userId })
+  const memberKey = String(member.json?.key ?? '')
+
+  await chat(memberKey, {})
+  let read = await snapshotOf(memberKey)
+
+  for (let waited = 0; waited < 25 && read.ok && read.snapshot.key.budget.spend === 0; waited += 2) {
+    await Bun.sleep(2000)
+    read = await snapshotOf(memberKey)
+  }
+  check('a plain key reads the member cap', read.ok && read.snapshot.member?.budget.limit === 0.0001, read.ok ? JSON.stringify(read.snapshot.member?.budget ?? null) : read.failure.message)
+  check('and sees it spent up', read.ok && exceededItems(read.snapshot, Date.now()).some(item => item.label.startsWith('member ')))
+  const refusedChat = await chat(memberKey, {})
+
+  check('the proxy does refuse that key', refusedChat.status === 429 || refusedChat.status === 422, `HTTP ${refusedChat.status}`)
+  const org = await api('POST', '/organization/new', { organization_alias: alias('org'), max_budget: 3 })
+
+  if (org.status === 403) {
+    const gated = await runAdmin(deps(clipboard, ownHash), 'org', alias('org'))
+
+    check('organizations are enterprise here, and the plugin says so', gated.text.includes('enterprise license'), gated.text.slice(0, 90))
+  } else {
+    const view = await runAdmin(deps(clipboard, ownHash), 'org', alias('org'))
+    const more = await runAdmin(deps(clipboard, ownHash), 'grant', `2 --org ${alias('org')} --yes`)
+
+    say(view.text.split('\n').map(line => `    ${line}`).join('\n'))
+    check('the organization budget is shown', view.text.includes('$3.00'))
+    check('grant --org raised it to $5', more.text.includes('$5.00'), more.text)
+    await api('DELETE', '/organization/delete', { organization_ids: [String(org.json?.organization_id ?? '')] })
+  }
+  await api('POST', '/key/delete', { key_aliases: [alias('member')] })
+  await api('POST', '/team/delete', { team_ids: [teamId] })
+  await api('POST', '/user/delete', { user_ids: [userId] })
+
+  step('10. failure modes the status line must name')
   const wrong = await snapshotOf('sk-not-a-real-key-000000')
 
   check('a wrong key is rejected, not echoed', !wrong.ok && wrong.failure.kind === 'auth' && !JSON.stringify(wrong).includes('sk-not-a-real-key-000000'))
@@ -172,7 +243,7 @@ const main = async (): Promise<void> => {
   say(refused.text.split('\n').map(line => `    ${line}`).join('\n'))
   check('a non-admin key is told to set litellm_admin_key', refused.text.includes('litellm_admin_key'))
 
-  step('9. cleanup')
+  step('11. cleanup')
   for (const name of created) {
     const row = await runAdmin(deps(clipboard, ownHash), 'keys', '--all')
 

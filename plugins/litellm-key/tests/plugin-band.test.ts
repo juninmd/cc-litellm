@@ -65,6 +65,21 @@ describe('the over-budget band', () => {
     expect(await ui.find({ type: 'Text', text: /^key prod-claude$/ })).toBeUndefined()
   })
 
+  test('says a member cap is changed on the team, not with /litellm grant', async ($, on) => {
+    const routes = {
+      ...standardRoutes(),
+      '/team/info': reply(200, { team_id: 'eng', team_info: { team_alias: 'Eng', spend: 1, max_budget: 1000, team_member_budget_table: { max_budget: 10 } }, team_memberships: [] }),
+    }
+    const { clock } = boot(on, { routes })
+
+    await start($, clock)
+    const ui = await mountBand($, 'terminal')
+
+    expect(await ui.find({ type: 'Text', text: /^member jane \(team Eng\)$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /team_member_budget/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /\/litellm grant/ })).toBeUndefined()
+  })
+
   test('is not drawn while the budget is fine', async ($, on) => {
     const { clock } = boot(on, { routes: routesAt({ spend: 5, limit: 50 }) })
 

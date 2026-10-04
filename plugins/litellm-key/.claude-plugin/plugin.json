@@ -1,7 +1,7 @@
 {
   "name": "litellm-key",
   "version": "0.3.0",
-  "description": "See your LiteLLM virtual key inside Claude Code: budget, spend, limits, expiry, models and recent usage. Admins can also create keys, grant extra budget and read router fallbacks.",
+  "description": "See your LiteLLM virtual key inside Claude Code: budget, spend, limits, expiry, models and recent usage. Admins can also create and edit keys, grant extra budget and read router fallbacks.",
   "author": {
     "name": "juninmd"
   },
@@ -32,7 +32,7 @@
     "litellm_admin_key": {
       "type": "string",
       "title": "LiteLLM admin key (optional)",
-      "description": "Only for /litellm keys, key new, key block, grant and fallbacks. Leave empty to use the virtual key itself, which the proxy lets manage keys only if it is an admin key. Never printed, and sent only to the proxy.",
+      "description": "Only for /litellm keys, key new/set/reset-spend/block, grant, org and fallbacks. Leave empty to use the virtual key itself, which the proxy lets manage keys only if it is an admin key. Never printed, and sent only to the proxy.",
       "sensitive": true
     },
     "refresh_seconds": {

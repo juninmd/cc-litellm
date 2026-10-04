@@ -45,6 +45,7 @@ export type KeyInfo = {
   lastActiveAt: number | null
   userId: string | null
   teamId: string | null
+  organizationId: string | null
   keyType: string | null
 }
 
@@ -52,6 +53,15 @@ export type Related = {
   id: string
   label: string
   budget: Budget
+  /** True when `budget.spend` is a lower bound: the proxy does not report the real figure to a virtual key. */
+  isFloor?: boolean
+}
+
+/** Dollars per million tokens, and the context window, of one model the key can call. */
+export type ModelPrice = {
+  input: number | null
+  output: number | null
+  context: number | null
 }
 
 export type UsageDay = {
@@ -80,7 +90,11 @@ export type Snapshot = {
   /** The user's proxy role (proxy_admin, internal_user…), known even when the user has no budget cap. */
   userRole: string | null
   team: Related | null
+  /** The per-member cap of the team (team_member_budget), for the key's user. */
+  member: Related | null
   models: string[] | null
+  /** Prices of the allowed models, by name; null when the proxy does not say. */
+  prices: Record<string, ModelPrice> | null
   usage: Usage | null
   notes: string[]
 }
