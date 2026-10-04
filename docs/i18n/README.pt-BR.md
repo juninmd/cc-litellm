@@ -42,7 +42,7 @@ Este repositório é um marketplace de plugins (`cc-litellm`) com um único plug
 | | | |
 | --- | --- | --- |
 | 👀 **Acompanhar** | **Linha de status** abaixo do prompt, sempre visível | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
-| | **Painel `/litellm`** | medidores dos orçamentos de chave, time e usuário, o **role** do usuário, limites, validade, modelos, sparkline dos 7 dias; atualiza sozinho |
+| | **Painel `/litellm`** | medidores dos orçamentos de chave, time e usuário, o **role** do usuário, limites, validade, modelos, sparkline dos 7 dias, os **modelos que mais gastaram** na semana e uma previsão de **runway**; atualiza sozinho |
 | | **Toasts** | aos 80% (configurável), 95% e 100%; chave prestes a expirar; chave bloqueada ou expirada. Uma vez por janela de orçamento, mesmo entre sessões |
 | | **Banner de orçamento estourado** | uma faixa vermelha acima do prompt que **permanece enquanto algum orçamento estiver estourado** (chave, usuário, time, janela ou modelo) e só some quando os números voltam ao normal |
 | 🛠️ **Gerenciar** *(admin)* | **`/litellm key new`** | cria uma chave virtual; o segredo vai para a sua **área de transferência, nunca para o histórico da conversa** |
@@ -152,9 +152,17 @@ Tudo acima é a UI de admin real do LiteLLM v1.99.1 refletindo o que o plugin fe
 | `/litellm grant <amount> [--key \| --user \| --team] [--set]` | Adiciona orçamento. 🔐 |
 | `/litellm fallbacks [model]` | Cadeias de fallback do router, opcionalmente só dos modelos que casam com um nome. 🔐 |
 
-🔐 = comando de admin, veja abaixo. No painel (dê foco com um clique ou `ctrl+x` `tab`): `r` atualiza, `c` copia o resumo, `q` fecha, as setas rolam. `Esc` também o fecha com o prompt vazio.
+🔐 = comando de admin, veja abaixo. No painel (dê foco com um clique ou `ctrl+x` `tab`): `r` atualiza, `c` copia o resumo, `q` fecha, as setas rolam; cada botão mostra a sua tecla (`Refresh (r)`, `Copy (c)`, `Close (q)`). `Esc` também o fecha com o prompt vazio.
 
-O painel se adapta ao espaço: ao lado da conversa (tela cheia, a partir de 110 colunas) cada medidor ocupa duas linhas; acima do prompt, a partir de 122 colunas, os medidores viram uma tabela; em terminais mais estreitos ele mantém duas linhas por medidor, ou fica **compacto** se você ativar `compact_pane`. Ao lado da conversa, o painel ganha seções com título (`BUDGETS`, `KEY`, `LAST 7 DAYS`) e uma letra embaixo de cada dia da semana. A cor nunca é o único sinal: `▲` marca um orçamento perto do teto, `✖` um que estourou, e um dia sem gasto é um `·`, nunca uma barra curta.
+O painel se adapta ao espaço: ao lado da conversa (tela cheia, a partir de 110 colunas) cada medidor ocupa duas linhas; acima do prompt, a partir de 122 colunas, os medidores viram uma tabela; em terminais mais estreitos ele mantém duas linhas por medidor, ou fica **compacto** se você ativar `compact_pane`. Ao lado da conversa, o painel ganha seções com título (`BUDGETS`, `KEY`, `LAST 7 DAYS`, `TOP MODELS`) e uma letra embaixo de cada dia da semana; `TOP MODELS` ordena os cinco modelos que mais gastaram, cada um com a sua parte da semana em uma barra. Um nome longo é cortado no meio, para que `claude-sonnet-4-5` e `claude-sonnet-4-6` continuem distintos. A cor nunca é o único sinal: `▲` marca um orçamento perto do teto, `✖` um que estourou, e um dia sem gasto é um `·`, nunca uma barra curta.
+
+**Runway.** A linha `Runway` (no painel e em `/litellm info`) compara o ritmo dos últimos 7 dias (menos dias para uma chave mais nova que isso, nunca menos de um) com o teto: `lasts until the reset at $2.18/day`, ou `out in 2d 6h at $2.18/day · resets in 6d 12h` quando o orçamento acabaria antes. A linha de status acrescenta `out in 2d 6h at this pace` só quando isso está por vir: antes do reset, ou em até 3 dias para uma chave sem reset. Uma chave sem teto, uma que já estourou e uma cujo reset está vencido não recebem previsão.
+
+<p align="center">
+  <img src="../evidence/runway.png" alt="O painel de uma chave a caminho de esgotar: a linha Runway e a linha de status avisam, e a semana aparece dividida por modelo" width="92%">
+</p>
+
+<sub>Captura feita contra `dev/mock-litellm.py --scenario warning`: o laboratório local não tem uma semana de histórico em que basear a previsão.</sub>
 
 <p align="center">
   <img src="../evidence/help.png" alt="/litellm help" width="92%">
@@ -248,7 +256,7 @@ Todas as opções são opcionais (o Claude Code avisa na instalação que elas e
 | `/key/info` | Alias, gasto, orçamento e janelas, reset, limites, validade, status, modelos, orçamentos por modelo. A cada leitura. |
 | `/user/info`, `/team/info` | Orçamento do usuário e do time da chave, quando há limite. A cada leitura. |
 | `/v1/models` | Os modelos realmente permitidos. A cada 10 min. |
-| `/user/daily/activity` | Gasto, requisições e tokens dos últimos 7 dias. A cada 10 min. |
+| `/user/daily/activity` | Gasto, requisições e tokens dos últimos 7 dias, e o gasto por modelo. A cada 10 min. |
 
 **Gerenciar** só acontece quando você digita um comando de admin: `GET /key/list`, `/key/info`, `/user/info`, `/team/info`, `/v2/team/list`, `/router/settings`, e `POST /key/generate`, `/key/delete` (somente rollback), `/key/block`, `/key/unblock`, `/key/update`, `/user/update`, `/team/update`.
 

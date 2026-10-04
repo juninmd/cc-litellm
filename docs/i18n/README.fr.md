@@ -42,7 +42,7 @@ Ce dépôt est une marketplace de plugins (`cc-litellm`) qui contient un seul pl
 | | | |
 | --- | --- | --- |
 | 👀 **Surveiller** | **Barre d'état** sous le prompt, toujours visible | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
-| | **Volet `/litellm`** | jauges des budgets de la clé, de l'équipe et de l'utilisateur, **rôle** de l'utilisateur, limites, expiration, modèles, sparkline sur 7 jours ; se rafraîchit tout seul |
+| | **Volet `/litellm`** | jauges des budgets de la clé, de l'équipe et de l'utilisateur, **rôle** de l'utilisateur, limites, expiration, modèles, sparkline sur 7 jours, le **top des modèles** de la semaine et une prévision de **runway** ; se rafraîchit tout seul |
 | | **Notifications toast** | à 80 % (configurable), 95 %, 100 % ; clé sur le point d'expirer ; clé bloquée ou expirée. Une seule fois par fenêtre budgétaire, même entre les sessions |
 | | **Bannière de dépassement de budget** | un bandeau rouge au-dessus du prompt qui **reste tant qu'un budget est épuisé** (clé, utilisateur, équipe, fenêtre ou modèle) et ne disparaît que lorsque les chiffres redeviennent normaux |
 | 🛠️ **Gérer** *(admin)* | **`/litellm key new`** | créer une clé virtuelle ; le secret va dans votre **presse-papiers, jamais dans la transcription** |
@@ -152,9 +152,17 @@ Tout ce qui précède, c'est la vraie interface d'administration de LiteLLM v1.9
 | `/litellm grant <amount> [--key \| --user \| --team] [--set]` | Ajoute du budget. 🔐 |
 | `/litellm fallbacks [model]` | Chaînes de fallback du routeur, éventuellement pour les modèles correspondant à un nom. 🔐 |
 
-🔐 = commande admin, voir ci-dessous. Dans le volet (donnez-lui le focus par un clic ou `ctrl+x` `tab`) : `r` rafraîchit, `c` copie le résumé, `q` ferme, les flèches font défiler. `Esc` le ferme aussi lorsque le prompt est vide.
+🔐 = commande admin, voir ci-dessous. Dans le volet (donnez-lui le focus par un clic ou `ctrl+x` `tab`) : `r` rafraîchit, `c` copie le résumé, `q` ferme, les flèches font défiler ; chaque bouton indique sa touche (`Refresh (r)`, `Copy (c)`, `Close (q)`). `Esc` le ferme aussi lorsque le prompt est vide.
 
-Le volet s'adapte à l'espace disponible : à côté de la conversation (plein écran, à partir de 110 colonnes), chaque jauge occupe deux lignes ; au-dessus du prompt, à partir de 122 colonnes, les jauges deviennent un tableau ; dans les terminaux plus étroits, il garde deux lignes par jauge, ou devient **compact** si vous activez `compact_pane`. À côté de la conversation, le volet affiche des sections titrées (`BUDGETS`, `KEY`, `LAST 7 DAYS`) et une lettre sous chaque jour de la semaine. La couleur n'est jamais le seul signal : `▲` signale un budget proche de son plafond, `✖` un budget épuisé, et un jour sans dépense est un `·`, jamais une barre courte.
+Le volet s'adapte à l'espace disponible : à côté de la conversation (plein écran, à partir de 110 colonnes), chaque jauge occupe deux lignes ; au-dessus du prompt, à partir de 122 colonnes, les jauges deviennent un tableau ; dans les terminaux plus étroits, il garde deux lignes par jauge, ou devient **compact** si vous activez `compact_pane`. À côté de la conversation, le volet affiche des sections titrées (`BUDGETS`, `KEY`, `LAST 7 DAYS`, `TOP MODELS`) et une lettre sous chaque jour de la semaine ; `TOP MODELS` classe les cinq modèles qui ont le plus dépensé, chacun avec sa part de la semaine sous forme de barre. Un nom long est coupé au milieu, de sorte que `claude-sonnet-4-5` et `claude-sonnet-4-6` restent distincts. La couleur n'est jamais le seul signal : `▲` signale un budget proche de son plafond, `✖` un budget épuisé, et un jour sans dépense est un `·`, jamais une barre courte.
+
+**Runway.** La ligne `Runway` (dans le volet et dans `/litellm info`) compare le rythme des 7 derniers jours (moins de jours pour une clé plus récente, jamais moins d'un) au plafond : `lasts until the reset at $2.18/day`, ou `out in 2d 6h at $2.18/day · resets in 6d 12h` lorsque le budget serait épuisé avant. La barre d'état ajoute `out in 2d 6h at this pace` uniquement lorsque c'est imminent : avant la réinitialisation, ou dans les 3 jours pour une clé sans réinitialisation. Une clé sans plafond, une clé déjà épuisée et une clé dont la réinitialisation est échue ne reçoivent aucune prévision.
+
+<p align="center">
+  <img src="../evidence/runway.png" alt="Le volet d'une clé en passe d'être épuisée : la ligne Runway et la barre d'état avertissent, et la semaine est répartie par modèle" width="92%">
+</p>
+
+<sub>Capture réalisée contre `dev/mock-litellm.py --scenario warning` : le laboratoire local n'a pas une semaine d'historique sur laquelle fonder une prévision.</sub>
 
 <p align="center">
   <img src="../evidence/help.png" alt="/litellm help" width="92%">
@@ -248,7 +256,7 @@ Toutes les options sont facultatives (à l'installation, Claude Code indique qu'
 | `/key/info` | Alias, dépense, budget et fenêtres, réinitialisation, limites, expiration, statut, modèles, budgets par modèle. À chaque lecture. |
 | `/user/info`, `/team/info` | Budget de l'utilisateur et de l'équipe de la clé, lorsqu'il est plafonné. À chaque lecture. |
 | `/v1/models` | Les modèles réellement autorisés. Toutes les 10 min. |
-| `/user/daily/activity` | Dépense, requêtes et tokens des 7 derniers jours. Toutes les 10 min. |
+| `/user/daily/activity` | Dépense, requêtes et tokens des 7 derniers jours, et la dépense par modèle. Toutes les 10 min. |
 
 **Gérer** n'intervient que lorsque vous saisissez une commande admin : `GET /key/list`, `/key/info`, `/user/info`, `/team/info`, `/v2/team/list`, `/router/settings`, et `POST /key/generate`, `/key/delete` (rollback uniquement), `/key/block`, `/key/unblock`, `/key/update`, `/user/update`, `/team/update`.
 

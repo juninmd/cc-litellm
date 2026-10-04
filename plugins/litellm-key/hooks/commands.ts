@@ -3,7 +3,8 @@ import type { Deps } from './admin-commands'
 import { GRANT_HELP, KEY_HELP, runAdmin } from './admin-commands'
 import { clock, maskKey, redact, truncate } from './format'
 import type { Session } from './session'
-import { failureText, modelsText, oneLine, summaryText } from './summary'
+import { modelsText } from './facts'
+import { failureText, oneLine, summaryText } from './summary'
 
 const PANE_WAIT_MS = 2_500
 

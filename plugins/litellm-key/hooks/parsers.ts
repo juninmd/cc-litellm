@@ -4,6 +4,8 @@ import { date, isObject, num, str, strings } from './json'
 
 const STATUSES: readonly KeyStatus[] = ['active', 'expired', 'revoked', 'deleted']
 const SHA256 = /^[0-9a-f]{64}$/i
+// The pane lists this many models of the week; past that the long tail is noise.
+const TOP_MODELS = 5
 
 const budgetOf = (row: Json, table: Json | null): Budget => ({
   spend: num(row.spend) ?? 0,
@@ -187,7 +189,7 @@ export const parseUsage = (body: unknown, days: readonly string[]): Usage | null
     topModels: [...perModel.entries()]
       .filter(([, spend]) => spend > 0)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
+      .slice(0, TOP_MODELS)
       .map(([model, spend]) => ({ model, spend })),
   }
 }

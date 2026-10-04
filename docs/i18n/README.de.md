@@ -42,7 +42,7 @@ Dieses Repository ist ein Plugin-Marketplace (`cc-litellm`) mit einem Plugin: [`
 | | | |
 | --- | --- | --- |
 | 👀 **Beobachten** | **Statuszeile** unter dem Prompt, immer sichtbar | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
-| | **`/litellm`-Panel** | Balken für Key-, Team- und User-Budgets, die **Rolle** des Users, Limits, Ablauf, Modelle, 7-Tage-Sparkline; aktualisiert sich selbst |
+| | **`/litellm`-Panel** | Balken für Key-, Team- und User-Budgets, die **Rolle** des Users, Limits, Ablauf, Modelle, 7-Tage-Sparkline, die **Top-Modelle** der Woche und eine **Runway**-Prognose; aktualisiert sich selbst |
 | | **Toasts** | bei 80 % (konfigurierbar), 95 %, 100 %; Key läuft bald ab; Key gesperrt oder abgelaufen. Einmal pro Budgetfenster, auch über Sessions hinweg |
 | | **Banner bei Budgetüberschreitung** | ein rotes Band über dem Prompt, das **so lange bleibt, wie ein Budget aufgebraucht ist** (Key, User, Team, Fenster oder Modell) und erst verschwindet, wenn die Zahlen wieder normal sind |
 | 🛠️ **Verwalten** *(Admin)* | **`/litellm key new`** | einen virtuellen Key anlegen; das Secret landet in deiner **Zwischenablage, nie im Transkript** |
@@ -151,9 +151,17 @@ Alles oben Gezeigte ist die echte Admin-UI von LiteLLM v1.99.1, die widerspiegel
 | `/litellm grant <amount> [--key \| --user \| --team] [--set]` | Fügt Budget hinzu. 🔐 |
 | `/litellm fallbacks [model]` | Fallback-Ketten des Routers, optional für Modelle, die zu einem Namen passen. 🔐 |
 
-🔐 = Admin-Befehl, siehe unten. Im Panel (per Klick oder mit `ctrl+x` `tab` fokussieren): `r` aktualisiert, `c` kopiert die Zusammenfassung, `q` schließt, Pfeiltasten scrollen. `Esc` schließt es ebenfalls, wenn der Prompt leer ist.
+🔐 = Admin-Befehl, siehe unten. Im Panel (per Klick oder mit `ctrl+x` `tab` fokussieren): `r` aktualisiert, `c` kopiert die Zusammenfassung, `q` schließt, Pfeiltasten scrollen; jede Schaltfläche nennt ihre Taste (`Refresh (r)`, `Copy (c)`, `Close (q)`). `Esc` schließt es ebenfalls, wenn der Prompt leer ist.
 
-Das Panel passt sich dem verfügbaren Platz an: Neben der Unterhaltung (Vollbild, ab 110 Spalten) belegt jeder Balken zwei Zeilen; über dem Prompt werden die Balken ab 122 Spalten zu einer Tabelle; in schmaleren Terminals bleibt es bei zwei Zeilen pro Balken oder wird **kompakt**, wenn du `compact_pane` aktivierst. Neben der Unterhaltung bekommt das Panel betitelte Abschnitte (`BUDGETS`, `KEY`, `LAST 7 DAYS`) und unter jedem Wochentag einen Buchstaben. Farbe ist nie das einzige Signal: `▲` markiert ein Budget, das kurz vor seiner Obergrenze steht, `✖` eines, das aufgebraucht ist, und ein Tag ohne Verbrauch ist ein `·`, nie ein kurzer Balken.
+Das Panel passt sich dem verfügbaren Platz an: Neben der Unterhaltung (Vollbild, ab 110 Spalten) belegt jeder Balken zwei Zeilen; über dem Prompt werden die Balken ab 122 Spalten zu einer Tabelle; in schmaleren Terminals bleibt es bei zwei Zeilen pro Balken oder wird **kompakt**, wenn du `compact_pane` aktivierst. Neben der Unterhaltung bekommt das Panel betitelte Abschnitte (`BUDGETS`, `KEY`, `LAST 7 DAYS`, `TOP MODELS`) und unter jedem Wochentag einen Buchstaben; `TOP MODELS` rangiert die fünf Modelle mit dem höchsten Verbrauch, jedes mit seinem Wochenanteil als Balken. Ein langer Name wird in der Mitte gekürzt, damit `claude-sonnet-4-5` und `claude-sonnet-4-6` unterscheidbar bleiben. Farbe ist nie das einzige Signal: `▲` markiert ein Budget, das kurz vor seiner Obergrenze steht, `✖` eines, das aufgebraucht ist, und ein Tag ohne Verbrauch ist ein `·`, nie ein kurzer Balken.
+
+**Runway.** Die Zeile `Runway` (im Panel und in `/litellm info`) setzt das Verbrauchstempo der letzten 7 Tage (bei einem jüngeren Key weniger Tage, nie weniger als einen) ins Verhältnis zur Obergrenze: `lasts until the reset at $2.18/day`, oder `out in 2d 6h at $2.18/day · resets in 6d 12h`, wenn das Budget vorher aufgebraucht wäre. Die Statuszeile ergänzt `out in 2d 6h at this pace` nur, wenn das bevorsteht: vor dem Reset oder innerhalb von 3 Tagen bei einem Key ohne Reset. Ein Key ohne Obergrenze, einer, der bereits aufgebraucht ist, und einer, dessen Reset fällig ist, bekommen keine Prognose.
+
+<p align="center">
+  <img src="../evidence/runway.png" alt="Das Panel eines Keys, der bald aufgebraucht ist: Die Zeile Runway und die Statuszeile warnen, und die Woche ist nach Modell aufgeteilt" width="92%">
+</p>
+
+<sub>Aufgenommen gegen `dev/mock-litellm.py --scenario warning`: Im lokalen Labor gibt es keine Woche an Verlauf, auf deren Basis sich prognostizieren ließe.</sub>
 
 <p align="center">
   <img src="../evidence/help.png" alt="/litellm help" width="92%">
@@ -245,7 +253,7 @@ Alle Optionen sind optional (Claude Code meldet bei der Installation, sie seien 
 | `/key/info` | Alias, Verbrauch, Budget und Fenster, Reset, Limits, Ablauf, Status, Modelle, Budgets pro Modell. Bei jedem Lesen. |
 | `/user/info`, `/team/info` | Budget des Users und des Teams des Keys, sofern begrenzt. Bei jedem Lesen. |
 | `/v1/models` | Die tatsächlich erlaubten Modelle. Alle 10 Min. |
-| `/user/daily/activity` | Verbrauch, Requests und Tokens der letzten 7 Tage. Alle 10 Min. |
+| `/user/daily/activity` | Verbrauch, Requests und Tokens der letzten 7 Tage sowie der Verbrauch pro Modell. Alle 10 Min. |
 
 **Verwalten** passiert nur, wenn du einen Admin-Befehl eingibst: `GET /key/list`, `/key/info`, `/user/info`, `/team/info`, `/v2/team/list`, `/router/settings` und `POST /key/generate`, `/key/delete` (nur Rollback), `/key/block`, `/key/unblock`, `/key/update`, `/user/update`, `/team/update`.
 

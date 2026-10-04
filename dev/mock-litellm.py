@@ -127,8 +127,10 @@ def daily_activity():
                 },
                 "breakdown": {
                     "models": {
-                        "claude-sonnet-4-5": {"metrics": {"spend": spend * 0.7}},
-                        "claude-opus-4-1": {"metrics": {"spend": spend * 0.3}},
+                        "claude-sonnet-4-5": {"metrics": {"spend": spend * 0.52}},
+                        "claude-opus-4-1": {"metrics": {"spend": spend * 0.28}},
+                        "claude-haiku-4-5": {"metrics": {"spend": spend * 0.14}},
+                        "gpt-5": {"metrics": {"spend": spend * 0.06}},
                     }
                 },
             }

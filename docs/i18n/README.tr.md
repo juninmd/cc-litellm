@@ -42,7 +42,7 @@ Bu depo, tek eklentili bir eklenti marketplace'idir (`cc-litellm`): [`litellm-ke
 | | | |
 | --- | --- | --- |
 | 👀 **İzleyin** | **Durum satırı** prompt'un altında, her zaman görünür | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
-| | **`/litellm` paneli** | anahtar, takım ve kullanıcı bütçeleri için göstergeler, kullanıcının **rolü**, limitler, son kullanma, modeller, 7 günlük sparkline; kendini yeniler |
+| | **`/litellm` paneli** | anahtar, takım ve kullanıcı bütçeleri için göstergeler, kullanıcının **rolü**, limitler, son kullanma, modeller, 7 günlük sparkline, haftanın **en çok harcayan modelleri** ve **runway** tahmini; kendini yeniler |
 | | **Toast bildirimleri** | %80'de (yapılandırılabilir), %95'te, %100'de; anahtarın süresi dolmak üzere; anahtar engellenmiş veya süresi dolmuş. Bütçe penceresi başına bir kez, oturumlar arasında bile |
 | | **Bütçe aşımı banner'ı** | prompt'un üzerinde, **bir bütçe tükendiği sürece ekranda kalan** (anahtar, kullanıcı, takım, pencere veya model) ve yalnızca değerler yeniden normale döndüğünde kalkan kırmızı bir bant |
 | 🛠️ **Yönetin** *(admin)* | **`/litellm key new`** | sanal anahtar oluşturur; secret **panonuza gider, transkripte asla** |
@@ -152,9 +152,17 @@ Yukarıdakilerin hepsi, eklentinin yaptıklarını yansıtan gerçek LiteLLM v1.
 | `/litellm grant <amount> [--key \| --user \| --team] [--set]` | Bütçe ekler. 🔐 |
 | `/litellm fallbacks [model]` | Router fallback zincirleri; isteğe bağlı olarak adı eşleşen modeller için. 🔐 |
 
-🔐 = yönetici komutu, aşağıya bakın. Panelde (tıklayarak veya `ctrl+x` `tab` ile odaklanın): `r` yeniler, `c` özeti kopyalar, `q` kapatır, ok tuşları kaydırır. `Esc` de boş bir prompt'ta paneli kapatır.
+🔐 = yönetici komutu, aşağıya bakın. Panelde (tıklayarak veya `ctrl+x` `tab` ile odaklanın): `r` yeniler, `c` özeti kopyalar, `q` kapatır, ok tuşları kaydırır; her düğme kendi tuşunu belirtir (`Refresh (r)`, `Copy (c)`, `Close (q)`). `Esc` de boş bir prompt'ta paneli kapatır.
 
-Panel, mevcut alana uyum sağlar: konuşmanın yanında (tam ekran, 110 sütundan itibaren) her gösterge iki satır kaplar; prompt'un üzerinde, 122 sütundan itibaren göstergeler tabloya dönüşür; daha dar terminallerde gösterge başına iki satırı korur ya da `compact_pane` seçeneğini etkinleştirirseniz **kompakt** hâle gelir. Konuşmanın yanında panel, başlıklı bölümler (`BUDGETS`, `KEY`, `LAST 7 DAYS`) gösterir ve haftanın her gününün altına bir harf koyar. Renk hiçbir zaman tek sinyal değildir: `▲` üst sınırına yaklaşmış bir bütçeyi, `✖` tükenmiş bir bütçeyi işaretler; harcama olmayan gün kısa bir çubuk değil, bir `·` olarak görünür.
+Panel, mevcut alana uyum sağlar: konuşmanın yanında (tam ekran, 110 sütundan itibaren) her gösterge iki satır kaplar; prompt'un üzerinde, 122 sütundan itibaren göstergeler tabloya dönüşür; daha dar terminallerde gösterge başına iki satırı korur ya da `compact_pane` seçeneğini etkinleştirirseniz **kompakt** hâle gelir. Konuşmanın yanında panel, başlıklı bölümler (`BUDGETS`, `KEY`, `LAST 7 DAYS`, `TOP MODELS`) gösterir ve haftanın her gününün altına bir harf koyar; `TOP MODELS` en çok harcayan beş modeli sıralar, her birinin haftadaki payını bir çubuk olarak gösterir. Uzun bir ad ortadan kısaltılır, böylece `claude-sonnet-4-5` ile `claude-sonnet-4-6` birbirinden ayırt edilebilir kalır. Renk hiçbir zaman tek sinyal değildir: `▲` üst sınırına yaklaşmış bir bütçeyi, `✖` tükenmiş bir bütçeyi işaretler; harcama olmayan gün kısa bir çubuk değil, bir `·` olarak görünür.
+
+**Runway.** `Runway` satırı (panelde ve `/litellm info` içinde) son 7 günün harcama hızını (bundan genç bir anahtar için daha az gün, ama hiçbir zaman birden az değil) üst sınırla karşılaştırır: `lasts until the reset at $2.18/day`, ya da bütçe önce tükenecekse `out in 2d 6h at $2.18/day · resets in 6d 12h`. Durum satırı `out in 2d 6h at this pace` ifadesini yalnızca bu yaklaşıyorsa ekler: sıfırlamadan önce ya da sıfırlaması olmayan bir anahtar için 3 gün içinde. Üst sınırı olmayan bir anahtar, zaten tükenmiş bir anahtar ve sıfırlaması gelmiş bir anahtar için tahmin gösterilmez.
+
+<p align="center">
+  <img src="../evidence/runway.png" alt="Tükenmek üzere olan bir anahtarın paneli: Runway satırı ve durum satırı uyarır, hafta modellere göre bölünmüştür" width="92%">
+</p>
+
+<sub>`dev/mock-litellm.py --scenario warning` üzerinde çekildi: yerel laboratuvarda tahmin yapılabilecek bir haftalık geçmiş yok.</sub>
 
 <p align="center">
   <img src="../evidence/help.png" alt="/litellm help çıktısı" width="92%">
@@ -248,7 +256,7 @@ Tüm seçenekler isteğe bağlıdır (Claude Code kurulumda bunların "ayarlanma
 | `/key/info` | Alias, harcama, bütçe ve pencereler, sıfırlama, limitler, son kullanma, durum, modeller, model başına bütçeler. Her okumada. |
 | `/user/info`, `/team/info` | Anahtarın kullanıcısının ve takımının bütçesi (üst sınır varsa). Her okumada. |
 | `/v1/models` | Gerçekte izin verilen modeller. 10 dakikada bir. |
-| `/user/daily/activity` | Son 7 günün harcaması, istek ve token sayıları. 10 dakikada bir. |
+| `/user/daily/activity` | Son 7 günün harcaması, istek ve token sayıları, ayrıca model başına harcama. 10 dakikada bir. |
 
 **Yönetim** yalnızca bir yönetici komutu yazdığınızda gerçekleşir: `GET /key/list`, `/key/info`, `/user/info`, `/team/info`, `/v2/team/list`, `/router/settings` ve `POST /key/generate`, `/key/delete` (yalnızca rollback), `/key/block`, `/key/unblock`, `/key/update`, `/user/update`, `/team/update`.
 

@@ -1,6 +1,8 @@
 import type { Budget, Failure, Snapshot } from '../types'
 import { isSpentUp } from './exceeded'
-import { clock, compact, gauge, money, percent, plural, sparkline, truncate, until, usedShare } from './format'
+import { facts, identity, SOON_MS } from './facts'
+import { clock, gauge, money, percent, truncateMiddle, until, usedShare } from './format'
+import { runwayAlert } from './runway'
 
 export type Tone = 'ok' | 'warn' | 'error'
 export type Meter = {
@@ -16,7 +18,6 @@ export type Meter = {
 }
 export type Row = { label: string; text: string; tone: Tone }
 
-const SOON_MS = 3 * 86_400_000
 const STATUS_BAR = 8
 
 // Error means spent up, the same test the banner uses: 99.6% rounds to 100% on screen but the proxy still answers.
@@ -123,93 +124,6 @@ export const meters = (snapshot: Snapshot, now: number, warnPercent: number): Me
   return list
 }
 
-const limitsText = (snapshot: Snapshot): string | null => {
-  const { limits } = snapshot.key
-  const parts = [
-    limits.rpm === null ? null : `${compact(limits.rpm)} rpm`,
-    limits.tpm === null ? null : `${compact(limits.tpm)} tpm`,
-    limits.tpd === null ? null : `${compact(limits.tpd)} tokens/day`,
-    limits.parallel === null ? null : `${limits.parallel} parallel`,
-  ].filter(Boolean)
-
-  return parts.length === 0 ? null : parts.join(' · ')
-}
-
-export const modelsText = (snapshot: Snapshot, max = 4): string => {
-  const names = snapshot.models ?? snapshot.key.models
-  const isAll = snapshot.key.models.length === 0 || snapshot.key.models.includes('all-proxy-models')
-
-  if (names.length === 0) {
-    return isAll ? 'all proxy models' : 'none'
-  }
-  const shown = names.slice(0, max).join(', ')
-  const more = names.length > max ? `, +${names.length - max}` : ''
-
-  return `${shown}${more}`
-}
-
-const initialOf = (date: string): string => {
-  const day = new Date(`${date}T00:00:00Z`).getUTCDay()
-
-  return Number.isNaN(day) ? '·' : 'SMTWTFS'.charAt(day)
-}
-
-/** The last days as a sparkline, the weekday under each, and the totals. */
-export const usageParts = (snapshot: Snapshot): { spark: string; days: string; rest: string } | null => {
-  const { usage } = snapshot
-
-  if (!usage) {
-    return null
-  }
-
-  return {
-    spark: sparkline(usage.days.map(day => day.spend)),
-    days: usage.days.map(day => initialOf(day.date)).join(''),
-    rest: [money(usage.spend), plural(usage.requests, 'request'), `${compact(usage.tokens)} tokens`].join(' · '),
-  }
-}
-
-const usageText = (snapshot: Snapshot): string | null => {
-  const parts = usageParts(snapshot)
-
-  return parts && `${parts.spark} · ${parts.rest}`
-}
-
-export const facts = (snapshot: Snapshot, now: number): Row[] => {
-  const { key } = snapshot
-  const rows: Row[] = []
-  const add = (label: string, text: string | null, tone: Tone = 'ok'): void => {
-    if (text) {
-      rows.push({ label, text, tone })
-    }
-  }
-  const expires = key.expiresAt === null ? null : until(key.expiresAt, now)
-
-  add('Status', key.status, key.status === 'active' ? 'ok' : 'error')
-  add('Role', snapshot.userRole)
-  add('Soft limit', key.budget.softLimit === null ? null : `alerts at ${money(key.budget.softLimit)}`)
-  add('Limits', limitsText(snapshot))
-  add(
-    key.expiresAt !== null && key.expiresAt < now ? 'Expired' : 'Expires',
-    expires,
-    key.expiresAt === null ? 'ok' : key.expiresAt < now ? 'error' : key.expiresAt - now < SOON_MS ? 'warn' : 'ok',
-  )
-  add('Models', `${modelsText(snapshot)}${snapshot.models ? ` (${snapshot.models.length})` : ''}`)
-  if (key.lifetimeSpend !== null && key.lifetimeSpend > key.budget.spend + 0.005) {
-    add('Lifetime', `${money(key.lifetimeSpend)} across budget resets`)
-  }
-  add('Last 7 days', usageText(snapshot))
-
-  return rows
-}
-
-export const identity = (snapshot: Snapshot): string => {
-  const { key } = snapshot
-  const name = key.alias ?? key.keyName ?? snapshot.keyHint
-
-  return key.alias ? `${name} · ${key.keyName ?? snapshot.keyHint}` : name
-}
-
 export const summaryText = (snapshot: Snapshot, now: number, warnPercent: number): string => {
   const rows = [
     ...meters(snapshot, now, warnPercent),
@@ -221,7 +135,7 @@ export const summaryText = (snapshot: Snapshot, now: number, warnPercent: number
 
   return [
     `${identity(snapshot)} · ${snapshot.host}`,
-    ...rows.map(row => `${truncate(row.label, width).padEnd(width)}  ${row.text}`),
+    ...rows.map(row => `${truncateMiddle(row.label, width).padEnd(width)}  ${row.text}`),
   ].join('\n')
 }
 
@@ -276,6 +190,7 @@ export const statusText = (snapshot: Snapshot | null, failure: Failure | null, n
       `${full}${track} ${pct}% of budget`,
       `${money(key.budget.spend)} of ${money(key.budget.limit)}`,
       isSpentUp(key.budget.spend, key.budget.limit) ? 'over budget' : resetText(key.budget, now),
+      runwayAlert(snapshot, now),
     )
   }
   if (expiresSoon && key.expiresAt !== null) {

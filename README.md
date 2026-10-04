@@ -40,7 +40,7 @@ This repository is a plugin marketplace (`cc-litellm`) with one plugin: [`litell
 | | | |
 | --- | --- | --- |
 | 👀 **Watch** | **Status line** under the prompt, always visible | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
-| | **`/litellm` pane** | meters for key, team and user budgets, the user's **role**, limits, expiry, models, 7-day sparkline; refreshes itself |
+| | **`/litellm` pane** | meters for key, team and user budgets, the user's **role**, limits, expiry, models, 7-day sparkline, **top models** of the week, and a **runway** forecast; refreshes itself |
 | | **Toasts** | at 80% (configurable), 95%, 100%; key about to expire; key blocked or expired. Once per budget window, even across sessions |
 | | **Over-budget banner** | a red band above the prompt that **stays for as long as a budget is spent up** (key, user, team, window or model) and leaves only when the numbers are normal again |
 | 🛠️ **Manage** *(admin)* | **`/litellm key new`** | create a virtual key; the secret goes to your **clipboard, never the transcript** |
@@ -148,9 +148,17 @@ Everything above is the real LiteLLM v1.99.1 admin UI reflecting what the plugin
 | `/litellm grant <amount> [--key \| --user \| --team] [--set]` | Add budget. 🔐 |
 | `/litellm fallbacks [model]` | Router fallback chains, optionally for models matching a name. 🔐 |
 
-🔐 = admin command, see below. In the pane (focus it with a click or `ctrl+x` `tab`): `r` refreshes, `c` copies the summary, `q` closes, arrows scroll. `Esc` also closes it on an empty prompt.
+🔐 = admin command, see below. In the pane (focus it with a click or `ctrl+x` `tab`): `r` refreshes, `c` copies the summary, `q` closes, arrows scroll; each button names its key (`Refresh (r)`, `Copy (c)`, `Close (q)`). `Esc` also closes it on an empty prompt.
 
-The pane adapts to the space: beside the conversation (full screen, from 110 columns) each meter takes two lines; above the prompt, from 122 columns, the meters become a table; in narrower terminals it keeps two lines per meter, or turns **compact** if you enable `compact_pane`. Beside the conversation the pane gets titled sections (`BUDGETS`, `KEY`, `LAST 7 DAYS`) and a letter under each day of the week. Color is never the only signal: `▲` marks a budget that is close to its cap, `✖` one that is spent up, and a day with no spend is a `·`, never a short bar.
+The pane adapts to the space: beside the conversation (full screen, from 110 columns) each meter takes two lines; above the prompt, from 122 columns, the meters become a table; in narrower terminals it keeps two lines per meter, or turns **compact** if you enable `compact_pane`. Beside the conversation the pane gets titled sections (`BUDGETS`, `KEY`, `LAST 7 DAYS`, `TOP MODELS`) and a letter under each day of the week; `TOP MODELS` ranks the five models that spent most, each with its share of the week as a bar. A long name is cut in the middle, so `claude-sonnet-4-5` and `claude-sonnet-4-6` stay apart. Color is never the only signal: `▲` marks a budget that is close to its cap, `✖` one that is spent up, and a day with no spend is a `·`, never a short bar.
+
+**Runway.** The `Runway` row (in the pane and in `/litellm info`) sets the pace of the last 7 days (fewer for a key younger than that, never fewer than one) against the cap: `lasts until the reset at $2.18/day`, or `out in 2d 6h at $2.18/day · resets in 6d 12h` when the budget would run out first. The status line adds `out in 2d 6h at this pace` only when that is coming: before the reset, or within 3 days for a key with no reset. A key with no cap, one already spent up, and one whose reset is due get no forecast.
+
+<p align="center">
+  <img src="docs/evidence/runway.png" alt="The pane for a key on course to run out: the Runway row and the status line warn, and the week is split by model" width="92%">
+</p>
+
+<sub>Shot against `dev/mock-litellm.py --scenario warning`: the local lab has no week of history to forecast from.</sub>
 
 <p align="center">
   <img src="docs/evidence/help.png" alt="/litellm help" width="92%">
@@ -240,7 +248,7 @@ All options are optional (Claude Code says at install that they are "not set"; t
 | `/key/info` | Alias, spend, budget and windows, reset, limits, expiry, status, models, per-model budgets. Every read. |
 | `/user/info`, `/team/info` | Budget of the key's user and team, when capped. Every read. |
 | `/v1/models` | The models actually allowed. Every 10 min. |
-| `/user/daily/activity` | Spend, requests and tokens of the last 7 days. Every 10 min. |
+| `/user/daily/activity` | Spend, requests and tokens of the last 7 days, and the spend per model. Every 10 min. |
 
 **Managing** only happens when you type an admin command: `GET /key/list`, `/key/info`, `/user/info`, `/team/info`, `/v2/team/list`, `/router/settings`, and `POST /key/generate`, `/key/delete` (rollback only), `/key/block`, `/key/unblock`, `/key/update`, `/user/update`, `/team/update`.
 

@@ -42,7 +42,7 @@ Este repositorio es un marketplace de plugins (`cc-litellm`) con un único plugi
 | | | |
 | --- | --- | --- |
 | 👀 **Supervisar** | **Línea de estado** bajo el prompt, siempre visible | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
-| | **Panel `/litellm`** | medidores de los presupuestos de la clave, el equipo y el usuario, el **rol** del usuario, límites, vencimiento, modelos, sparkline de 7 días; se actualiza solo |
+| | **Panel `/litellm`** | medidores de los presupuestos de la clave, el equipo y el usuario, el **rol** del usuario, límites, vencimiento, modelos, sparkline de 7 días, los **modelos con más gasto** de la semana y un pronóstico de **runway**; se actualiza solo |
 | | **Notificaciones (toasts)** | al 80% (configurable), 95% y 100%; clave a punto de vencer; clave bloqueada o vencida. Una vez por ventana de presupuesto, incluso entre sesiones |
 | | **Banner de presupuesto excedido** | una banda roja sobre el prompt que **permanece mientras algún presupuesto esté agotado** (clave, usuario, equipo, ventana o modelo) y desaparece solo cuando las cifras vuelven a la normalidad |
 | 🛠️ **Gestionar** *(admin)* | **`/litellm key new`** | crea una clave virtual; el secreto va a tu **portapapeles, nunca a la transcripción** |
@@ -152,9 +152,17 @@ Todo lo anterior es la interfaz de administración real de LiteLLM v1.99.1 refle
 | `/litellm grant <amount> [--key \| --user \| --team] [--set]` | Suma presupuesto. 🔐 |
 | `/litellm fallbacks [model]` | Cadenas de fallback del router, opcionalmente solo para los modelos que coincidan con un nombre. 🔐 |
 
-🔐 = comando de administración, ver más abajo. En el panel (dale el foco con un clic o con `ctrl+x` `tab`): `r` actualiza, `c` copia el resumen, `q` cierra y las flechas desplazan. `Esc` también lo cierra cuando el prompt está vacío.
+🔐 = comando de administración, ver más abajo. En el panel (dale el foco con un clic o con `ctrl+x` `tab`): `r` actualiza, `c` copia el resumen, `q` cierra y las flechas desplazan; cada botón indica su tecla (`Refresh (r)`, `Copy (c)`, `Close (q)`). `Esc` también lo cierra cuando el prompt está vacío.
 
-El panel se adapta al espacio: junto a la conversación (pantalla completa, desde 110 columnas) cada medidor ocupa dos líneas; sobre el prompt, desde 122 columnas, los medidores pasan a ser una tabla; en terminales más estrechas mantiene dos líneas por medidor o se vuelve **compacto** si activas `compact_pane`. Junto a la conversación, el panel muestra secciones con título (`BUDGETS`, `KEY`, `LAST 7 DAYS`) y una letra bajo cada día de la semana. El color nunca es la única señal: `▲` marca un presupuesto cercano a su tope, `✖` uno que ya está agotado, y un día sin gasto es un `·`, nunca una barra corta.
+El panel se adapta al espacio: junto a la conversación (pantalla completa, desde 110 columnas) cada medidor ocupa dos líneas; sobre el prompt, desde 122 columnas, los medidores pasan a ser una tabla; en terminales más estrechas mantiene dos líneas por medidor o se vuelve **compacto** si activas `compact_pane`. Junto a la conversación, el panel muestra secciones con título (`BUDGETS`, `KEY`, `LAST 7 DAYS`, `TOP MODELS`) y una letra bajo cada día de la semana; `TOP MODELS` ordena los cinco modelos que más gastaron, cada uno con su parte de la semana como una barra. Un nombre largo se corta por el medio, para que `claude-sonnet-4-5` y `claude-sonnet-4-6` sigan distinguiéndose. El color nunca es la única señal: `▲` marca un presupuesto cercano a su tope, `✖` uno que ya está agotado, y un día sin gasto es un `·`, nunca una barra corta.
+
+**Runway.** La fila `Runway` (en el panel y en `/litellm info`) compara el ritmo de los últimos 7 días (menos días en una clave más reciente, nunca menos de uno) con el tope: `lasts until the reset at $2.18/day`, o `out in 2d 6h at $2.18/day · resets in 6d 12h` cuando el presupuesto se agotaría antes. La línea de estado añade `out in 2d 6h at this pace` solo cuando eso se avecina: antes del reinicio, o dentro de 3 días en una clave sin reinicio. Una clave sin tope, una ya agotada y una cuyo reinicio ya venció no reciben pronóstico.
+
+<p align="center">
+  <img src="../evidence/runway.png" alt="El panel de una clave en camino de agotarse: la fila Runway y la línea de estado avisan, y la semana se reparte por modelo" width="92%">
+</p>
+
+<sub>Captura contra `dev/mock-litellm.py --scenario warning`: el laboratorio local no tiene una semana de historial sobre la que pronosticar.</sub>
 
 <p align="center">
   <img src="../evidence/help.png" alt="/litellm help" width="92%">
@@ -248,7 +256,7 @@ Todas las opciones son opcionales (Claude Code avisa al instalar que están "not
 | `/key/info` | Alias, gasto, presupuesto y ventanas, reinicio, límites, vencimiento, estado, modelos, presupuestos por modelo. En cada lectura. |
 | `/user/info`, `/team/info` | Presupuesto del usuario y del equipo de la clave, cuando tienen tope. En cada lectura. |
 | `/v1/models` | Los modelos realmente permitidos. Cada 10 min. |
-| `/user/daily/activity` | Gasto, solicitudes y tokens de los últimos 7 días. Cada 10 min. |
+| `/user/daily/activity` | Gasto, solicitudes y tokens de los últimos 7 días, y el gasto por modelo. Cada 10 min. |
 
 **Gestionar** solo ocurre cuando escribes un comando de administración: `GET /key/list`, `/key/info`, `/user/info`, `/team/info`, `/v2/team/list`, `/router/settings`, y `POST /key/generate`, `/key/delete` (solo para rollback), `/key/block`, `/key/unblock`, `/key/update`, `/user/update`, `/team/update`.
 

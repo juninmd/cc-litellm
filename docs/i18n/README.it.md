@@ -42,7 +42,7 @@ Questo repository è un marketplace di plugin (`cc-litellm`) con un solo plugin:
 | | | |
 | --- | --- | --- |
 | 👀 **Monitora** | **Barra di stato** sotto il prompt, sempre visibile | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
-| | **Pannello `/litellm`** | indicatori per i budget di chiave, team e utente, il **ruolo** dell'utente, limiti, scadenza, modelli, sparkline a 7 giorni; si aggiorna da solo |
+| | **Pannello `/litellm`** | indicatori per i budget di chiave, team e utente, il **ruolo** dell'utente, limiti, scadenza, modelli, sparkline a 7 giorni, i **modelli con la spesa maggiore** della settimana e una previsione di **runway**; si aggiorna da solo |
 | | **Toast** | all'80% (configurabile), al 95%, al 100%; chiave in scadenza; chiave bloccata o scaduta. Una volta per finestra di budget, anche tra sessioni diverse |
 | | **Banner di budget superato** | una fascia rossa sopra il prompt che **resta finché un budget è esaurito** (chiave, utente, team, finestra o modello) e sparisce solo quando i numeri tornano nella norma |
 | 🛠️ **Gestisci** *(admin)* | **`/litellm key new`** | crea una virtual key; il segreto va negli **appunti, mai nella trascrizione** |
@@ -151,9 +151,17 @@ Tutto quanto sopra è la vera UI admin di LiteLLM v1.99.1 che riflette ciò che 
 | `/litellm grant <amount> [--key \| --user \| --team] [--set]` | Aggiunge budget. 🔐 |
 | `/litellm fallbacks [model]` | Catene di fallback del router, volendo solo per i modelli che corrispondono a un nome. 🔐 |
 
-🔐 = comando admin, vedi sotto. Nel pannello (dagli il focus con un clic o con `ctrl+x` `tab`): `r` aggiorna, `c` copia il riepilogo, `q` chiude, le frecce scorrono. `Esc` lo chiude anche quando il prompt è vuoto.
+🔐 = comando admin, vedi sotto. Nel pannello (dagli il focus con un clic o con `ctrl+x` `tab`): `r` aggiorna, `c` copia il riepilogo, `q` chiude, le frecce scorrono; ogni pulsante indica il proprio tasto (`Refresh (r)`, `Copy (c)`, `Close (q)`). `Esc` lo chiude anche quando il prompt è vuoto.
 
-Il pannello si adatta allo spazio: accanto alla conversazione (a schermo intero, da 110 colonne) ogni indicatore occupa due righe; sopra il prompt, da 122 colonne, gli indicatori diventano una tabella; nei terminali più stretti mantiene due righe per indicatore, oppure diventa **compatto** se attivi `compact_pane`. Accanto alla conversazione il pannello mostra sezioni con titolo (`BUDGETS`, `KEY`, `LAST 7 DAYS`) e una lettera sotto ogni giorno della settimana. Il colore non è mai l'unico segnale: `▲` indica un budget vicino al suo tetto, `✖` uno esaurito, e un giorno senza spesa è un `·`, mai una barra corta.
+Il pannello si adatta allo spazio: accanto alla conversazione (a schermo intero, da 110 colonne) ogni indicatore occupa due righe; sopra il prompt, da 122 colonne, gli indicatori diventano una tabella; nei terminali più stretti mantiene due righe per indicatore, oppure diventa **compatto** se attivi `compact_pane`. Accanto alla conversazione il pannello mostra sezioni con titolo (`BUDGETS`, `KEY`, `LAST 7 DAYS`, `TOP MODELS`) e una lettera sotto ogni giorno della settimana; `TOP MODELS` classifica i cinque modelli che hanno speso di più, ciascuno con la sua quota della settimana come barra. Un nome lungo viene tagliato a metà, così `claude-sonnet-4-5` e `claude-sonnet-4-6` restano distinguibili. Il colore non è mai l'unico segnale: `▲` indica un budget vicino al suo tetto, `✖` uno esaurito, e un giorno senza spesa è un `·`, mai una barra corta.
+
+**Runway.** La riga `Runway` (nel pannello e in `/litellm info`) confronta il ritmo degli ultimi 7 giorni (meno giorni per una chiave più recente, mai meno di uno) con il tetto: `lasts until the reset at $2.18/day`, oppure `out in 2d 6h at $2.18/day · resets in 6d 12h` quando il budget si esaurirebbe prima. La barra di stato aggiunge `out in 2d 6h at this pace` solo quando questo sta per accadere: prima del reset, o entro 3 giorni per una chiave senza reset. Una chiave senza tetto, una già esaurita e una il cui reset è scaduto non ricevono alcuna previsione.
+
+<p align="center">
+  <img src="../evidence/runway.png" alt="Il pannello di una chiave destinata a esaurirsi: la riga Runway e la barra di stato avvisano, e la settimana è suddivisa per modello" width="92%">
+</p>
+
+<sub>Acquisito su `dev/mock-litellm.py --scenario warning`: il laboratorio locale non ha una settimana di storico su cui basare la previsione.</sub>
 
 <p align="center">
   <img src="../evidence/help.png" alt="/litellm help" width="92%">
@@ -245,7 +253,7 @@ Il **monitoraggio** fa solo letture (`GET`), sempre con la tua chiave:
 | `/key/info` | Alias, spesa, budget e finestre, reset, limiti, scadenza, stato, modelli, budget per modello. A ogni lettura. |
 | `/user/info`, `/team/info` | Budget dell'utente e del team della chiave, quando hanno un tetto. A ogni lettura. |
 | `/v1/models` | I modelli effettivamente consentiti. Ogni 10 min. |
-| `/user/daily/activity` | Spesa, richieste e token degli ultimi 7 giorni. Ogni 10 min. |
+| `/user/daily/activity` | Spesa, richieste e token degli ultimi 7 giorni, e la spesa per modello. Ogni 10 min. |
 
 La **gestione** avviene solo quando digiti un comando admin: `GET /key/list`, `/key/info`, `/user/info`, `/team/info`, `/v2/team/list`, `/router/settings`, e `POST /key/generate`, `/key/delete` (solo per il rollback), `/key/block`, `/key/unblock`, `/key/update`, `/user/update`, `/team/update`.
 

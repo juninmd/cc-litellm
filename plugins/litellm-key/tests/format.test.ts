@@ -7,10 +7,12 @@ import {
   percent,
   plural,
   redact,
+  rule,
   span,
   gauge,
   sparkline,
   truncate,
+  truncateMiddle,
   until,
   usedShare,
   utcDay,
@@ -73,6 +75,16 @@ describe('charts', () => {
     expect(gauge(0.999, 10)).toEqual({ full: '██████████', track: '' })
   })
 
+  test('rule is a slim bar in whole cells, and any share above zero keeps one', () => {
+    expect(rule(0.75, 16)).toEqual({ full: '▄'.repeat(12), track: '▁'.repeat(4) })
+    expect(rule(0.03, 16)).toEqual({ full: '▄', track: '▁'.repeat(15) })
+    expect(rule(0, 4)).toEqual({ full: '', track: '▁▁▁▁' })
+    expect(rule(1, 4)).toEqual({ full: '▄▄▄▄', track: '' })
+    expect(rule(5, 4)).toEqual({ full: '▄▄▄▄', track: '' })
+    expect(rule(Number.NaN, 4)).toEqual({ full: '', track: '▁▁▁▁' })
+    expect(rule(0.5, 0)).toEqual({ full: '', track: '' })
+  })
+
   test('sparkline scales to the biggest value', () => {
     expect(sparkline([0, 0, 0])).toBe('···')
     // a day with nothing is a dot: "none" must never look like "a little"
@@ -125,5 +137,26 @@ describe('secrets', () => {
   test('truncate adds an ellipsis', () => {
     expect(truncate('abcdef', 4)).toBe('abc…')
     expect(truncate('abc', 4)).toBe('abc')
+  })
+
+  test('truncateMiddle keeps both ends, so names that differ at the end stay apart', () => {
+    const a = 'Model claude-sonnet-4-5'
+    const b = 'Model claude-sonnet-4-6'
+
+    expect(truncateMiddle(a, 16)).toBe('Model cl…net-4-5')
+    expect(truncateMiddle(a, 16)).toHaveLength(16)
+    expect(truncateMiddle(a, 16)).not.toBe(truncateMiddle(b, 16))
+    // the plain cut is what made them collide
+    expect(truncate(a, 16)).toBe(truncate(b, 16))
+    expect(truncateMiddle('abcdef', 6)).toBe('abcdef')
+  })
+
+  test('truncateMiddle is exact in the tight cases and never longer than asked', () => {
+    expect(truncateMiddle('abcdef', 2)).toBe('a…')
+    expect(truncateMiddle('abcdef', 1)).toBe('…')
+    expect(truncateMiddle('abcdef', 0)).toBe('')
+    for (let max = 0; max <= 12; max += 1) {
+      expect(truncateMiddle('abcdefghijklmnopqrstuvwxyz', max).length).toBeLessThanOrEqual(max)
+    }
   })
 })
