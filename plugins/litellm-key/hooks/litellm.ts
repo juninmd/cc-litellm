@@ -527,8 +527,22 @@ export const parseUsage = (body: unknown, days: readonly string[]): Usage | null
   }
 }
 
-const describeError = (error: unknown, key: string): string =>
-  truncate(redact(error instanceof Error ? error.message : String(error), [key]), 160)
+const NETWORK_ERRORS: readonly [RegExp, string][] = [
+  [/ECONNREFUSED/i, 'connection refused'],
+  [/ENOTFOUND|EAI_AGAIN/i, 'host not found'],
+  [/ECONNRESET|socket hang up/i, 'connection reset'],
+  [/CERT|SSL|TLS/i, 'TLS certificate problem'],
+]
+
+const describeError = (error: unknown, key: string): string => {
+  const raw = error instanceof Error ? error.message : String(error)
+  const bare = raw
+    .replace(/^[\w-]+: \$\.http\.fetch\([^)]*\) (?:failed|aborted): /, '')
+    .replace(/^(\w+): \1\b/, '$1')
+  const known = NETWORK_ERRORS.find(([pattern]) => pattern.test(bare))
+
+  return known ? known[1] : truncate(redact(bare, [key]), 160)
+}
 
 export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => {
   const { credentials, http, now, pinnedRoot } = request
@@ -548,7 +562,11 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
     try {
       reply = await http(`${root}/key/info`, headers)
     } catch (error) {
-      mismatches.push(failure('network', `Could not reach ${hostOf(root)}: ${describeError(error, key)}`, now))
+      mismatches.push(
+        failure('network', `Could not reach ${hostOf(root)}: ${describeError(error, key)}`, now, {
+          hint: 'Check that the proxy is running and that ANTHROPIC_BASE_URL points at it.',
+        }),
+      )
       break
     }
     const json = parse(reply.text)

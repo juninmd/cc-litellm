@@ -97,7 +97,7 @@ describe('session start', () => {
 
     expect(log.commands).toEqual(['litellm'])
     expect(urls(net)).toContain('/key/info')
-    expect(log.statuses.at(-1)).toBe('25% · $12.50 of $50.00 · resets in 6d 12h (30d)')
+    expect(log.statuses.at(-1)).toBe('25% of budget · $12.50 of $50.00 · resets in 6d 12h (30d)')
   })
 
   test('re-reads on the refresh interval and not before', async ($, on) => {
@@ -135,7 +135,7 @@ describe('session start', () => {
 
     expect(net.calls).toHaveLength(0)
     expect(log.statuses.at(-1)).toBeUndefined()
-    expect(log.toasts).toEqual(['LiteLLM key: not configured. Run /litellm for setup help.'])
+    expect(log.toasts).toEqual(['Not configured. Run /litellm for setup help.'])
   })
 })
 
@@ -159,7 +159,7 @@ describe('/litellm', () => {
     const { text } = await run($, '')
 
     expect(log.opens).toEqual(['litellm-key'])
-    expect(text).toBe('LiteLLM key: 25% · $12.50 of $50.00 · resets in 6d 12h (30d)')
+    expect(text).toBe('25% of budget · $12.50 of $50.00 · resets in 6d 12h (30d)')
   })
 
   test('falls back to text when nothing draws (headless)', async ($, on) => {
@@ -169,7 +169,7 @@ describe('/litellm', () => {
     const { text } = await run($, '')
 
     expect(log.opens).toHaveLength(0)
-    expect(text).toContain('LiteLLM key · prod-claude')
+    expect(text).toContain('prod-claude · sk-...7890')
   })
 
   test('says why the pane could not open', async ($, on) => {
@@ -216,7 +216,7 @@ describe('/litellm', () => {
 
     await start($, clock)
 
-    expect((await run($, 'close')).text).toBe('LiteLLM pane closed.')
+    expect((await run($, 'close')).text).toBe('Pane closed.')
     expect(log.closes).toEqual(['litellm-key'])
     expect((await run($, 'help')).text).toContain('/litellm refresh')
     expect((await run($, 'wat')).text).toContain('Unknown option "wat"')
@@ -265,7 +265,7 @@ describe('a slow or dead proxy', () => {
     const { text } = await running
 
     expect(log.opens).toEqual(['litellm-key'])
-    expect(text).toContain('reading')
+    expect(text).toContain('Reading the key')
   })
 
   test('a request that never answers is given up on after 4 seconds', async ($, on) => {
@@ -356,7 +356,7 @@ describe('options', () => {
 
     await start($, clock)
 
-    expect(log.toasts).toEqual(['LiteLLM: 25% of the key budget is used ($12.50 of $50.00)'])
+    expect(log.toasts).toEqual(['25% of the key budget is used ($12.50 of $50.00)'])
   })
 })
 
@@ -373,18 +373,18 @@ describe('warnings', () => {
 
     spend = 41
     await run($, 'refresh')
-    expect(log.toasts).toEqual(['LiteLLM: 82% of the key budget is used ($41.00 of $50.00)'])
+    expect(log.toasts).toEqual(['82% of the key budget is used ($41.00 of $50.00)'])
 
     await run($, 'refresh')
     expect(log.toasts).toHaveLength(1)
 
     spend = 48
     await run($, 'refresh')
-    expect(log.toasts.at(-1)).toBe('LiteLLM: 96% of the key budget is used ($48.00 of $50.00)')
+    expect(log.toasts.at(-1)).toBe('96% of the key budget is used ($48.00 of $50.00)')
 
     spend = 51
     await run($, 'refresh')
-    expect(log.toasts.at(-1)).toBe('LiteLLM: the key is over budget ($51.00 of $50.00)')
+    expect(log.toasts.at(-1)).toBe('The key is over budget ($51.00 of $50.00)')
     expect(log.toasts).toHaveLength(3)
   })
 
@@ -433,7 +433,7 @@ describe('warnings', () => {
     const soon = boot(on, { routes: { ...standardRoutes(), '/key/info': reply(200, keyBody({ expires: new Date(NOW + 2 * DAY).toISOString() })) } })
 
     await start($, soon.clock)
-    expect(soon.log.toasts).toEqual(['LiteLLM: the key expires in 2d'])
+    expect(soon.log.toasts).toEqual(['The key expires in 2d'])
   })
 
   test('a blocked key is announced once', async ($, on) => {
@@ -442,7 +442,7 @@ describe('warnings', () => {
     await start($, clock)
     await run($, 'refresh')
 
-    expect(log.toasts).toEqual(['LiteLLM: the key is revoked'])
+    expect(log.toasts).toEqual(['The key is revoked'])
   })
 })
 

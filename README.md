@@ -6,7 +6,7 @@ Este repositório é um marketplace (`cc-litellm`) com um plugin: [`litellm-key`
 
 ## O que você ganha
 
-- **Status line** sob o prompt, sempre visível: `⚠ litellm-key: 83% · $41.37 of $50.00 · resets in 9d 2h (30d)`
+- **Status line** sob o prompt, sempre visível: `⚠ litellm-key: 83% of budget · $41.37 of $50.00 · resets in 9d 2h (30d)`
 - **Painel `/litellm`** com barras de uso, orçamentos de usuário e time, limites, validade, modelos e gasto dos últimos 7 dias. Atualiza sozinho.
 - **Avisos** (toast) ao cruzar 80% (configurável), 95% e 100% do orçamento, quando a chave está para expirar (3 dias e 1 dia) e quando ela é bloqueada ou expira. Cada aviso aparece uma vez por janela de orçamento, mesmo entre sessões.
 - **Comandos** para ver tudo como texto, listar modelos e diagnosticar a configuração.

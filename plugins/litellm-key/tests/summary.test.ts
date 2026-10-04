@@ -79,7 +79,7 @@ describe('statusText', () => {
     const warn = await snapshotOf(withKey({ spend: 42 }))
     const over = await snapshotOf(withKey({ spend: 52 }))
 
-    expect(statusText(ok, null, NOW)).toBe('25% · $12.50 of $50.00 · resets in 6d 12h (30d)')
+    expect(statusText(ok, null, NOW)).toBe('25% of budget · $12.50 of $50.00 · resets in 6d 12h (30d)')
     expect(statusText(warn, null, NOW)).toContain('84%')
     expect(statusText(over, null, NOW)).toContain('over budget')
   })
@@ -109,7 +109,7 @@ describe('summaryText', () => {
   test('lays out budget, related budgets, facts and usage', async () => {
     const text = summaryText(await snapshotOf(), NOW, 80)
 
-    expect(text).toContain('LiteLLM key · prod-claude · sk-...7890 · litellm.test')
+    expect(text).toContain('prod-claude · sk-...7890 · litellm.test')
     expect(text).toMatch(/Budget\s+\$12\.50 \/ \$50\.00 \(25%\)/)
     expect(text).toMatch(/Team eng-platform\s+\$412\.00 \/ \$1,000\.00 \(41%\)/)
     expect(text).toMatch(/User jane@acme\.test\s+\$26\.10 \/ \$100\.00 \(26%\)/)
@@ -186,7 +186,7 @@ describe('meters and facts', () => {
   })
 
   test('oneLine and failureText', async () => {
-    expect(oneLine(await snapshotOf(), NOW)).toBe('LiteLLM key: 25% · $12.50 of $50.00 · resets in 6d 12h (30d)')
-    expect(failureText({ ...failure('auth', 401), hint: 'check it' })).toBe('LiteLLM: boom\ncheck it')
+    expect(oneLine(await snapshotOf(), NOW)).toBe('25% of budget · $12.50 of $50.00 · resets in 6d 12h (30d)')
+    expect(failureText({ ...failure('auth', 401), hint: 'check it' })).toBe('boom\ncheck it')
   })
 })

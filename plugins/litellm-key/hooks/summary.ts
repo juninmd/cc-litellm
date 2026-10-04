@@ -178,13 +178,13 @@ export const summaryText = (snapshot: Snapshot, now: number, warnPercent: number
   const width = Math.min(24, Math.max(...rows.map(row => row.label.length)))
 
   return [
-    `LiteLLM key · ${identity(snapshot)} · ${snapshot.host}`,
+    `${identity(snapshot)} · ${snapshot.host}`,
     ...rows.map(row => `${truncate(row.label, width).padEnd(width)}  ${row.text}`),
   ].join('\n')
 }
 
 export const failureText = (failure: Failure): string =>
-  `LiteLLM: ${failure.message}${failure.hint ? `\n${failure.hint}` : ''}`
+  `${failure.message}${failure.hint ? `\n${failure.hint}` : ''}`
 
 const shortFailure = (failure: Failure): string => {
   switch (failure.kind) {
@@ -225,7 +225,7 @@ export const statusText = (snapshot: Snapshot | null, failure: Failure | null, n
     parts.push(`${money(key.budget.spend)} spent`, 'no cap')
   } else {
     parts.push(
-      `${pct}%`,
+      `${pct}% of budget`,
       `${money(key.budget.spend)} of ${money(key.budget.limit)}`,
       pct >= 100 ? 'over budget' : resetText(key.budget, now),
     )
@@ -241,4 +241,4 @@ export const statusText = (snapshot: Snapshot | null, failure: Failure | null, n
 }
 
 export const oneLine = (snapshot: Snapshot, now: number): string =>
-  `LiteLLM key: ${statusText(snapshot, null, now) ?? 'no data'}`
+  statusText(snapshot, null, now) ?? 'no data'

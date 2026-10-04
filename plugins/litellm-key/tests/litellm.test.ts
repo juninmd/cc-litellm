@@ -493,6 +493,27 @@ describe('fetchSnapshot', () => {
     expect(JSON.stringify(result)).not.toContain(KEY)
   })
 
+  test('says what went wrong with a connection in plain words', async () => {
+    const engine = (detail: string) => `litellm-key: $.http.fetch(https://litellm.test/key/info) failed: ${detail}`
+    const cases: [string, string][] = [
+      [engine('ECONNREFUSED: ECONNREFUSED: Unable to connect. Is the computer able to access the url?'), 'connection refused'],
+      [engine('ENOTFOUND: getaddrinfo ENOTFOUND litellm.test'), 'host not found'],
+      [engine('ECONNRESET: socket hang up'), 'connection reset'],
+      [engine('UNABLE_TO_VERIFY_LEAF_SIGNATURE: certificate'), 'TLS certificate problem'],
+      ['no answer within 4s', 'no answer within 4s'],
+    ]
+
+    for (const [detail, expected] of cases) {
+      const http = async (): Promise<never> => {
+        throw new Error(detail)
+      }
+      const result = await fetchSnapshot(request(http))
+
+      expect(!result.ok && result.failure.message).toBe(`Could not reach litellm.test: ${expected}`)
+      expect(!result.ok && result.failure.hint).toContain('ANTHROPIC_BASE_URL')
+    }
+  })
+
   test('a 401 beats a later not-LiteLLM answer', async () => {
     const http = async (url: string) =>
       url.startsWith(`${BASE}/anthropic`)

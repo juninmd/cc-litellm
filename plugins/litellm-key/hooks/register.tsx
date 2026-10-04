@@ -130,19 +130,19 @@ const notify = async ($: EngineInterface, snapshot: Snapshot, now: number): Prom
         id: `budget:${who}:${key.budget.resetAt === null ? 'none' : Math.round(key.budget.resetAt / 60_000)}:${level}`,
         message:
           level >= 100
-            ? `LiteLLM: the key is over budget (${amounts})`
-            : `LiteLLM: ${pct}% of the key budget is used (${amounts})`,
+            ? `The key is over budget (${amounts})`
+            : `${pct}% of the key budget is used (${amounts})`,
       })
     }
   }
   if (key.status !== 'active') {
-    events.push({ id: `status:${who}:${key.status}`, message: `LiteLLM: the key is ${key.status}` })
+    events.push({ id: `status:${who}:${key.status}`, message: `The key is ${key.status}` })
   } else if (key.expiresAt !== null && key.expiresAt - now < 3 * DAY_MS) {
     const tier = key.expiresAt - now < DAY_MS ? '1d' : '3d'
 
     events.push({
       id: `expiry:${who}:${key.expiresAt}:${tier}`,
-      message: `LiteLLM: the key expires ${until(key.expiresAt, now)}`,
+      message: `The key expires ${until(key.expiresAt, now)}`,
     })
   }
   if (events.length === 0) {
@@ -180,8 +180,8 @@ const settle = async (
     toasted = failure.kind
     $.ui.toast(
       failure.kind === 'not-configured'
-        ? 'LiteLLM key: not configured. Run /litellm for setup help.'
-        : `LiteLLM key: ${truncate(failure.message, 90)}`,
+        ? 'Not configured. Run /litellm for setup help.'
+        : truncate(failure.message, 90),
       { timeoutMs: 8000 },
     )
   }
@@ -269,7 +269,7 @@ const report = async ($: EngineInterface, view: (snapshot: Snapshot, now: number
   const { snapshot, failure } = latest
 
   if (!snapshot) {
-    return failure ? failureText(failure) : 'LiteLLM key: reading… the answer shows up here and in the pane.'
+    return failure ? failureText(failure) : 'Reading the key from the proxy… the answer shows up here and in the pane.'
   }
 
   return `${view(snapshot, now)}${failure ? `\n(stale) ${failure.message}` : ''}`
@@ -288,7 +288,7 @@ const debugText = async ($: EngineInterface): Promise<string> => {
   const { snapshot, failure } = latest
   const surfaces = await $.session.surfaces()
   const lines = [
-    `LiteLLM key plugin · refresh every ${config.refreshSeconds}s · status line ${config.isStatusShown ? 'on' : 'off'} · related ${config.isRelatedShown ? 'on' : 'off'} · usage ${config.isUsageShown ? 'on' : 'off'}`,
+    `Refresh every ${config.refreshSeconds}s · status line ${config.isStatusShown ? 'on' : 'off'} · related ${config.isRelatedShown ? 'on' : 'off'} · usage ${config.isUsageShown ? 'on' : 'off'}`,
     diagnostics
       ? `Proxy    ${diagnostics.host} (tries ${diagnostics.roots.join(', ')}${pinnedRoot ? `; using ${pinnedRoot}` : ''})`
       : 'Proxy    not resolved',
@@ -365,7 +365,7 @@ export const register: Register = (on, options) => {
         case 'hide':
           await $.ui.close({ id: PANE })
 
-          return { text: 'LiteLLM pane closed.' }
+          return { text: 'Pane closed.' }
         case 'refresh':
         case 'reload':
         case 'r':
@@ -402,7 +402,7 @@ export const register: Register = (on, options) => {
           return { text: `Unknown option "${truncate(word, 30)}".\n${HELP}` }
       }
     } catch (error) {
-      return { text: `LiteLLM: unexpected error: ${truncate(redact(error instanceof Error ? error.message : String(error)), 160)}` }
+      return { text: `Unexpected error: ${truncate(redact(error instanceof Error ? error.message : String(error)), 160)}` }
     }
   })
 
