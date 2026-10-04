@@ -2,6 +2,15 @@
 
 <!-- Written by release-please from Conventional Commits (see RELEASING.md). Edit the release PR, not this file. -->
 
+## [0.4.0](https://github.com/juninmd/cc-litellm/compare/litellm-key--v0.3.0...litellm-key--v0.4.0) (2026-10-04)
+
+
+### Added
+
+* **litellm-key:** AAA pane, banner and status line on a ports-based split ([#1](https://github.com/juninmd/cc-litellm/issues/1)) ([e9dbfc0](https://github.com/juninmd/cc-litellm/commit/e9dbfc074641f77956228f8fae017de74358d0b0))
+* **litellm-key:** read member caps and organizations, edit keys, show model prices ([#7](https://github.com/juninmd/cc-litellm/issues/7)) ([7c33a13](https://github.com/juninmd/cc-litellm/commit/7c33a135cd929abfafcbac8665a60ea068562b8d))
+* **litellm-key:** runway forecast, top models and layout fixes (re-lands [#2](https://github.com/juninmd/cc-litellm/issues/2)) ([#3](https://github.com/juninmd/cc-litellm/issues/3)) ([d03088f](https://github.com/juninmd/cc-litellm/commit/d03088f7f0517b1246cb33c395300a287695331a))
+
 ## 0.3.0
 
 Homologated against a real LiteLLM v1.99.1 (Postgres, virtual keys, router fallbacks) and Claude Code 2.1.289.

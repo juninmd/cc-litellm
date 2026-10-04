@@ -1,6 +1,6 @@
 {
   "name": "litellm-key",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "See your LiteLLM virtual key inside Claude Code: budget, spend, limits, expiry, models and recent usage. Admins can also create and edit keys, grant extra budget and read router fallbacks.",
   "author": {
     "name": "juninmd"
