@@ -1,4 +1,5 @@
 const BLOCKS = '▁▂▃▄▅▆▇█'
+const EIGHTHS = ' ▏▎▍▌▋▊▉█'
 const DAY_MS = 86_400_000
 
 const group = (digits: string): string => digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
@@ -46,22 +47,27 @@ export const compact = (value: number): string => {
 export const percent = (used: number, limit: number | null): number | null =>
   limit === null || !(limit > 0) ? null : Math.round((used / limit) * 100)
 
-export const bar = (fraction: number, width: number): string => {
-  const clamped = Number.isFinite(fraction) ? Math.min(1, Math.max(0, fraction)) : 0
-  const filled = Math.round(clamped * width)
+/** The share of a cap that is used, null with no cap; a cap of $0 is used up from the first cent, as the banner reads it. */
+export const usedShare = (used: number, limit: number | null): number | null =>
+  limit === null ? null : (percent(used, limit) ?? 100)
 
-  return '█'.repeat(filled) + '░'.repeat(width - filled)
+/** A bar in eighths of a cell: `full` is the filled part, `track` the rest, so each can take its own color. */
+export const gauge = (fraction: number, width: number): { full: string; track: string } => {
+  const clamped = Number.isFinite(fraction) ? Math.min(1, Math.max(0, fraction)) : 0
+  const eighths = Math.round(clamped * width * 8)
+  const whole = Math.floor(eighths / 8)
+  const part = eighths % 8
+  const full = '█'.repeat(whole) + (part > 0 ? EIGHTHS.charAt(part) : '')
+
+  return { full, track: '░'.repeat(width - whole - (part > 0 ? 1 : 0)) }
 }
 
+/** One block per value, scaled to the biggest; a day with nothing is a dot, so "none" never looks like "a little". */
 export const sparkline = (values: readonly number[]): string => {
   const max = Math.max(0, ...values)
 
-  if (max <= 0) {
-    return BLOCKS.charAt(0).repeat(values.length)
-  }
-
   return values
-    .map(value => BLOCKS.charAt(Math.min(7, Math.max(0, Math.round((value / max) * 7)))))
+    .map(value => (value <= 0 ? '·' : BLOCKS.charAt(Math.min(7, Math.max(0, Math.round((value / max) * 7))))))
     .join('')
 }
 

@@ -6,7 +6,7 @@
   <a href="#install"><img alt="Плагин Claude Code" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=for-the-badge"></a>
   <img alt="LiteLLM v1.99.1" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20tested-6366f1?style=for-the-badge">
   <img alt="Claude Code 2.1.289" src="https://img.shields.io/badge/Claude%20Code-2.1.289%20tested-0ea5e9?style=for-the-badge">
-  <img alt="Пройдено тестов: 217" src="https://img.shields.io/badge/tests-217%20passing-22c55e?style=for-the-badge">
+  <img alt="Пройдено тестов: 232" src="https://img.shields.io/badge/tests-232%20passing-22c55e?style=for-the-badge">
   <img alt="Версия 0.3.0" src="https://img.shields.io/badge/version-0.3.0-f472b6?style=for-the-badge">
 </p>
 
@@ -153,7 +153,7 @@
 
 🔐 — команда администратора, см. ниже. В панели (фокус — кликом или `ctrl+x` `tab`): `r` обновляет, `c` копирует сводку, `q` закрывает, стрелки прокручивают. `Esc` тоже закрывает её при пустом промпте.
 
-Панель подстраивается под доступное место: рядом с диалогом (на весь экран, от 110 колонок) каждая шкала занимает две строки; над промптом, от 122 колонок, шкалы превращаются в таблицу; в более узких терминалах остаётся по две строки на шкалу или панель становится **компактной**, если включить `compact_pane`.
+Панель подстраивается под доступное место: рядом с диалогом (на весь экран, от 110 колонок) каждая шкала занимает две строки; над промптом, от 122 колонок, шкалы превращаются в таблицу; в более узких терминалах остаётся по две строки на шкалу или панель становится **компактной**, если включить `compact_pane`. Рядом с диалогом у панели появляются разделы с заголовками (`BUDGETS`, `KEY`, `LAST 7 DAYS`) и буква под каждым днём недели. Цвет никогда не бывает единственным сигналом: `▲` отмечает бюджет, близкий к лимиту, `✖` — исчерпанный, а день без расходов обозначается `·`, а не короткой полоской.
 
 <p align="center">
   <img src="../evidence/help.png" alt="/litellm help" width="92%">
@@ -299,7 +299,7 @@ claude plugin test plugins/litellm-key                  # tests (they use Claude
 tsc -p plugins/litellm-key                              # types (.claude-plugin/types appears on first load)
 ```
 
-Структура плагина: `hooks/register.tsx` подключает события, команды, таймеры и тосты; `hooks/litellm.ts` определяет учётные данные, читает и нормализует ответы; `hooks/admin*.ts` — админские команды (`admin.ts` — чтение с прокси, `admin-writes.ts` — запись на него, `admin-plan.ts` — предпросмотры и планы, `admin-commands.ts` — сам сценарий, `args.ts` — парсер аргументов); `hooks/exceeded.ts` и `hooks/band.tsx` — баннер превышения бюджета; `hooks/summary.ts` и `hooks/view.tsx` формируют текст и панель; в `hooks/format.ts` лежат чистые форматтеры; `types/index.d.ts` — контракт состояния.
+Структура плагина: `hooks/register.tsx` — единственный файл, который обращается к `$` Claude Code; он создаёт внедряемые порты (`hooks/ports.ts`) и подключает события, команды, таймеры и тосты. Всё остальное — обычные функции, принимающие эти порты, поэтому в тестах они работают без запуска движка. `hooks/session.ts` — цикл чтения (конфигурация, тикер, поставленное в очередь принудительное обновление); `hooks/credentials.ts` и `hooks/settings.ts` определяют ключ и параметры; `hooks/litellm.ts` читает прокси, `hooks/parsers.ts` и `hooks/json.ts` нормализуют ответы, а `hooks/failures.ts` называет причину сбоя; `hooks/alerts.ts` решает, какие показывать тосты. `hooks/commands.ts` — таблица команд `/litellm`, а `hooks/admin*.ts` — админские команды (`admin.ts` — чтение с прокси, `admin-targets.ts` — поиск ключа, пользователя и команды, `admin-writes.ts` — запись на него, `admin-plan.ts` — предпросмотры и планы, `admin-link.ts` — связь админского ключа с прокси, `admin-commands.ts` — сам сценарий, `args.ts` — парсер аргументов). `hooks/exceeded.ts` и `hooks/band.tsx` — баннер превышения бюджета; `hooks/summary.ts` формирует текст, `hooks/view.tsx` и `hooks/parts.tsx` — панель (индикатор, заголовки разделов, чип состояния, строки шкал); в `hooks/format.ts` лежат чистые форматтеры; `types/index.d.ts` — контракт состояния.
 
 ## Известные ограничения
 

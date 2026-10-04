@@ -1,6 +1,6 @@
 import type { Snapshot } from '../types'
-import { fetchSnapshot } from '../hooks/litellm'
 import type { Reply } from '../hooks/litellm'
+import { fetchSnapshot } from '../hooks/litellm'
 
 export const NOW = Date.parse('2026-10-03T12:00:00Z')
 export const KEY = 'sk-test-secret-1234567890'

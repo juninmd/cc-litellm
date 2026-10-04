@@ -4,17 +4,14 @@ import { money, until } from './format'
 /** Spent up means the proxy rejects requests; 99.6% rounds to 100% on screen, but it is not spent up. */
 export const isSpentUp = (spend: number, limit: number | null): limit is number => limit !== null && spend >= limit
 
-const over = (label: string, spend: number, limit: number | null, resetAt: number | null, now: number): string | null => {
-  if (!isSpentUp(spend, limit)) {
-    return null
-  }
-  const resets = resetAt === null ? null : until(resetAt, now)
+/** A budget that is spent up: what it is, how much of what, and when it resets. */
+export type Exceeded = { label: string; spend: number; limit: number; resets: string | null }
 
-  return `${label}: ${money(spend)} of ${money(limit)}${resets ? ` · resets ${resets}` : ''}`
-}
+const over = (label: string, spend: number, limit: number | null, resetAt: number | null, now: number): Exceeded | null =>
+  isSpentUp(spend, limit) ? { label, spend, limit, resets: resetAt === null ? null : until(resetAt, now) } : null
 
-/** Every budget that is spent up (the proxy rejects requests while one is), one line each; empty when all is normal. */
-export const exceededBudgets = (snapshot: Snapshot, now: number): string[] => {
+/** Every budget that is spent up (the proxy rejects requests while one is); empty when all is normal. */
+export const exceededItems = (snapshot: Snapshot, now: number): Exceeded[] => {
   const { key, team, user } = snapshot
 
   return [
@@ -23,5 +20,11 @@ export const exceededBudgets = (snapshot: Snapshot, now: number): string[] => {
     user && over(`user ${user.label}`, user.budget.spend, user.budget.limit, user.budget.resetAt, now),
     ...key.windows.map(window => over(`window ${window.duration}`, window.spend ?? 0, window.limit, window.resetAt, now)),
     ...key.modelBudgets.map(item => over(`model ${item.model}`, item.spend, item.limit, null, now)),
-  ].filter((line): line is string => typeof line === 'string')
+  ].filter((item): item is Exceeded => item !== null && item !== undefined)
 }
+
+export const exceededLine = (item: Exceeded): string =>
+  `${item.label}: ${money(item.spend)} of ${money(item.limit)}${item.resets ? ` · resets ${item.resets}` : ''}`
+
+/** The same budgets, one line each. */
+export const exceededBudgets = (snapshot: Snapshot, now: number): string[] => exceededItems(snapshot, now).map(exceededLine)

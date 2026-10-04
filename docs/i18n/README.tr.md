@@ -6,7 +6,7 @@
   <a href="#install"><img alt="Claude Code eklentisi" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=for-the-badge"></a>
   <img alt="LiteLLM v1.99.1" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20tested-6366f1?style=for-the-badge">
   <img alt="Claude Code 2.1.289" src="https://img.shields.io/badge/Claude%20Code-2.1.289%20tested-0ea5e9?style=for-the-badge">
-  <img alt="217 test geçiyor" src="https://img.shields.io/badge/tests-217%20passing-22c55e?style=for-the-badge">
+  <img alt="232 test geçiyor" src="https://img.shields.io/badge/tests-232%20passing-22c55e?style=for-the-badge">
   <img alt="Sürüm 0.3.0" src="https://img.shields.io/badge/version-0.3.0-f472b6?style=for-the-badge">
 </p>
 
@@ -153,7 +153,7 @@ Yukarıdakilerin hepsi, eklentinin yaptıklarını yansıtan gerçek LiteLLM v1.
 
 🔐 = yönetici komutu, aşağıya bakın. Panelde (tıklayarak veya `ctrl+x` `tab` ile odaklanın): `r` yeniler, `c` özeti kopyalar, `q` kapatır, ok tuşları kaydırır. `Esc` de boş bir prompt'ta paneli kapatır.
 
-Panel, mevcut alana uyum sağlar: konuşmanın yanında (tam ekran, 110 sütundan itibaren) her gösterge iki satır kaplar; prompt'un üzerinde, 122 sütundan itibaren göstergeler tabloya dönüşür; daha dar terminallerde gösterge başına iki satırı korur ya da `compact_pane` seçeneğini etkinleştirirseniz **kompakt** hâle gelir.
+Panel, mevcut alana uyum sağlar: konuşmanın yanında (tam ekran, 110 sütundan itibaren) her gösterge iki satır kaplar; prompt'un üzerinde, 122 sütundan itibaren göstergeler tabloya dönüşür; daha dar terminallerde gösterge başına iki satırı korur ya da `compact_pane` seçeneğini etkinleştirirseniz **kompakt** hâle gelir. Konuşmanın yanında panel, başlıklı bölümler (`BUDGETS`, `KEY`, `LAST 7 DAYS`) gösterir ve haftanın her gününün altına bir harf koyar. Renk hiçbir zaman tek sinyal değildir: `▲` üst sınırına yaklaşmış bir bütçeyi, `✖` tükenmiş bir bütçeyi işaretler; harcama olmayan gün kısa bir çubuk değil, bir `·` olarak görünür.
 
 <p align="center">
   <img src="../evidence/help.png" alt="/litellm help çıktısı" width="92%">
@@ -299,7 +299,7 @@ claude plugin test plugins/litellm-key                  # tests (they use Claude
 tsc -p plugins/litellm-key                              # types (.claude-plugin/types appears on first load)
 ```
 
-Eklentinin yapısı: `hooks/register.tsx` olayları, komutları, zamanlayıcıları ve toast'ları bağlar; `hooks/litellm.ts` kimlik bilgilerini çözer, yanıtları okur ve normalleştirir; `hooks/admin*.ts` yönetici komutlarıdır (`admin.ts` proxy okumaları, `admin-writes.ts` yazmaları, `admin-plan.ts` önizlemeler ve planlar, `admin-commands.ts` akış, `args.ts` argüman ayrıştırıcı); `hooks/exceeded.ts` ve `hooks/band.tsx` bütçe aşımı banner'ıdır; `hooks/summary.ts` ve `hooks/view.tsx` metni ve paneli oluşturur; `hooks/format.ts` saf biçimlendiricileri içerir; `types/index.d.ts` state sözleşmesidir.
+Eklentinin yapısı: `hooks/register.tsx`, Claude Code'un `$` nesnesine dokunan tek dosyadır; enjekte edilen portları (`hooks/ports.ts`) oluşturur ve olayları, komutları, zamanlayıcıları ve toast'ları bağlar. Geri kalan her şey bu portları alan düz fonksiyonlardır; bu yüzden motoru başlatmadan testte çalışırlar. `hooks/session.ts` okuma döngüsüdür (yapılandırma, ticker, kuyruğa alınmış zorunlu yenileme); `hooks/credentials.ts` ve `hooks/settings.ts` anahtarı ve seçenekleri çözer; `hooks/litellm.ts` proxy'yi okur, `hooks/parsers.ts` ve `hooks/json.ts` yanıtları normalleştirir, `hooks/failures.ts` neyin ters gittiğini adlandırır; `hooks/alerts.ts` toast'lara karar verir. `hooks/commands.ts` `/litellm` komut tablosudur, `hooks/admin*.ts` ise yönetici komutlarıdır (`admin.ts` proxy okumaları, `admin-targets.ts` anahtar, kullanıcı ve takım aramaları, `admin-writes.ts` yazmaları, `admin-plan.ts` önizlemeler ve planlar, `admin-link.ts` admin anahtarının proxy'ye bağlantısı, `admin-commands.ts` akış, `args.ts` argüman ayrıştırıcı). `hooks/exceeded.ts` ve `hooks/band.tsx` bütçe aşımı banner'ıdır; `hooks/summary.ts` metni, `hooks/view.tsx` ve `hooks/parts.tsx` paneli (kadran, bölüm başlıkları, durum çipi, gösterge satırları) oluşturur; `hooks/format.ts` saf biçimlendiricileri içerir; `types/index.d.ts` state sözleşmesidir.
 
 ## Bilinen sınırlar
 

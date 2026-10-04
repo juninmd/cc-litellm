@@ -6,7 +6,7 @@
   <a href="#install"><img alt="Plugin Claude Code" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=for-the-badge"></a>
   <img alt="LiteLLM v1.99.1" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20tested-6366f1?style=for-the-badge">
   <img alt="Claude Code 2.1.289" src="https://img.shields.io/badge/Claude%20Code-2.1.289%20tested-0ea5e9?style=for-the-badge">
-  <img alt="217 tests réussis" src="https://img.shields.io/badge/tests-217%20passing-22c55e?style=for-the-badge">
+  <img alt="232 tests réussis" src="https://img.shields.io/badge/tests-232%20passing-22c55e?style=for-the-badge">
   <img alt="Version 0.3.0" src="https://img.shields.io/badge/version-0.3.0-f472b6?style=for-the-badge">
 </p>
 
@@ -153,7 +153,7 @@ Tout ce qui précède, c'est la vraie interface d'administration de LiteLLM v1.9
 
 🔐 = commande admin, voir ci-dessous. Dans le volet (donnez-lui le focus par un clic ou `ctrl+x` `tab`) : `r` rafraîchit, `c` copie le résumé, `q` ferme, les flèches font défiler. `Esc` le ferme aussi lorsque le prompt est vide.
 
-Le volet s'adapte à l'espace disponible : à côté de la conversation (plein écran, à partir de 110 colonnes), chaque jauge occupe deux lignes ; au-dessus du prompt, à partir de 122 colonnes, les jauges deviennent un tableau ; dans les terminaux plus étroits, il garde deux lignes par jauge, ou devient **compact** si vous activez `compact_pane`.
+Le volet s'adapte à l'espace disponible : à côté de la conversation (plein écran, à partir de 110 colonnes), chaque jauge occupe deux lignes ; au-dessus du prompt, à partir de 122 colonnes, les jauges deviennent un tableau ; dans les terminaux plus étroits, il garde deux lignes par jauge, ou devient **compact** si vous activez `compact_pane`. À côté de la conversation, le volet affiche des sections titrées (`BUDGETS`, `KEY`, `LAST 7 DAYS`) et une lettre sous chaque jour de la semaine. La couleur n'est jamais le seul signal : `▲` signale un budget proche de son plafond, `✖` un budget épuisé, et un jour sans dépense est un `·`, jamais une barre courte.
 
 <p align="center">
   <img src="../evidence/help.png" alt="/litellm help" width="92%">
@@ -299,7 +299,7 @@ claude plugin test plugins/litellm-key                  # tests (they use Claude
 tsc -p plugins/litellm-key                              # types (.claude-plugin/types appears on first load)
 ```
 
-Structure du plugin : `hooks/register.tsx` câble les événements, les commandes, les minuteurs et les toasts ; `hooks/litellm.ts` résout les identifiants, lit et normalise les réponses ; `hooks/admin*.ts` sont les commandes admin (`admin.ts` pour les lectures du proxy, `admin-writes.ts` pour ses écritures, `admin-plan.ts` pour les aperçus et les plans, `admin-commands.ts` pour le flux, `args.ts` pour l'analyseur d'arguments) ; `hooks/exceeded.ts` et `hooks/band.tsx` forment la bannière de dépassement de budget ; `hooks/summary.ts` et `hooks/view.tsx` construisent le texte et le volet ; `hooks/format.ts` contient les formateurs purs ; `types/index.d.ts` est le contrat d'état.
+Structure du plugin : `hooks/register.tsx` est le seul fichier qui touche au `$` de Claude Code ; il construit les ports injectés (`hooks/ports.ts`) et câble les événements, les commandes, les minuteurs et les toasts. Tout le reste est constitué de fonctions simples qui reçoivent ces ports, ce qui leur permet de s'exécuter en test sans démarrer le moteur. `hooks/session.ts` est le cycle de lecture (configuration, ticker, rafraîchissement forcé mis en file d'attente) ; `hooks/credentials.ts` et `hooks/settings.ts` résolvent la clé et les options ; `hooks/litellm.ts` lit le proxy, `hooks/parsers.ts` et `hooks/json.ts` normalisent les réponses et `hooks/failures.ts` nomme ce qui a mal tourné ; `hooks/alerts.ts` décide des toasts. `hooks/commands.ts` est la table des commandes `/litellm` et `hooks/admin*.ts` les commandes admin (`admin.ts` pour les lectures du proxy, `admin-targets.ts` pour les recherches de clé, d'utilisateur et d'équipe, `admin-writes.ts` pour ses écritures, `admin-plan.ts` pour les aperçus et les plans, `admin-link.ts` pour le lien de la clé admin avec le proxy, `admin-commands.ts` pour le flux, `args.ts` pour l'analyseur d'arguments). `hooks/exceeded.ts` et `hooks/band.tsx` forment la bannière de dépassement de budget ; `hooks/summary.ts` construit le texte, `hooks/view.tsx` et `hooks/parts.tsx` le volet (cadran, titres de section, pastille d'état, lignes de jauge) ; `hooks/format.ts` contient les formateurs purs ; `types/index.d.ts` est le contrat d'état.
 
 ## Limites connues
 

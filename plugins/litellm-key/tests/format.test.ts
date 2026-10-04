@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import {
-  bar,
   compact,
   maskKey,
   money,
@@ -9,9 +8,11 @@ import {
   plural,
   redact,
   span,
+  gauge,
   sparkline,
   truncate,
   until,
+  usedShare,
   utcDay,
 } from '../hooks/format'
 
@@ -47,6 +48,12 @@ describe('numbers', () => {
     expect(percent(5, null)).toBeNull()
   })
 
+  test('usedShare reads a cap of $0 as used up, as the banner does, and no cap as none', () => {
+    expect(usedShare(26.1, 50)).toBe(52)
+    expect(usedShare(0, 0)).toBe(100)
+    expect(usedShare(5, null)).toBeNull()
+  })
+
   test('plural counts', () => {
     expect(plural(1, 'request')).toBe('1 request')
     expect(plural(3, 'request')).toBe('3 requests')
@@ -54,16 +61,22 @@ describe('numbers', () => {
 })
 
 describe('charts', () => {
-  test('bar fills in proportion and clamps', () => {
-    expect(bar(0.5, 10)).toBe('█████░░░░░')
-    expect(bar(2, 4)).toBe('████')
-    expect(bar(-1, 4)).toBe('░░░░')
-    expect(bar(Number.NaN, 4)).toBe('░░░░')
+  test('gauge fills in eighths of a cell and keeps the track apart', () => {
+    expect(gauge(0.5, 10)).toEqual({ full: '█████', track: '░░░░░' })
+    expect(gauge(0.3, 4)).toEqual({ full: '█▎', track: '░░' })
+    expect(gauge(0, 4)).toEqual({ full: '', track: '░░░░' })
+    expect(gauge(2, 4)).toEqual({ full: '████', track: '' })
+    expect(gauge(Number.NaN, 4)).toEqual({ full: '', track: '░░░░' })
+    expect(gauge(-1, 4)).toEqual({ full: '', track: '░░░░' })
+    expect(gauge(0.5, 0)).toEqual({ full: '', track: '' })
+    // a hair under the cap still rounds to a full bar, so the tone and the amounts are what tell it apart
+    expect(gauge(0.999, 10)).toEqual({ full: '██████████', track: '' })
   })
 
   test('sparkline scales to the biggest value', () => {
-    expect(sparkline([0, 0, 0])).toBe('▁▁▁')
-    expect(sparkline([0, 4, 8])).toBe('▁▅█')
+    expect(sparkline([0, 0, 0])).toBe('···')
+    // a day with nothing is a dot: "none" must never look like "a little"
+    expect(sparkline([0, 4, 8])).toBe('·▅█')
     expect(sparkline([])).toBe('')
   })
 })
