@@ -1,6 +1,8 @@
 {
   "name": "cc-litellm",
-  "owner": { "name": "juninmd" },
+  "owner": {
+    "name": "juninmd"
+  },
   "metadata": {
     "description": "Claude Code plugins for people who reach Claude through a LiteLLM proxy."
   },
@@ -10,9 +12,18 @@
       "source": "./plugins/litellm-key",
       "description": "See your LiteLLM virtual key inside Claude Code: budget, spend, limits, expiry, models and recent usage. Admins can also create keys, grant extra budget and read router fallbacks.",
       "version": "0.3.0",
-      "author": { "name": "juninmd" },
+      "author": {
+        "name": "juninmd"
+      },
       "category": "monitoring",
-      "keywords": ["litellm", "virtual-key", "budget", "spend", "status-line", "key-management"]
+      "keywords": [
+        "litellm",
+        "virtual-key",
+        "budget",
+        "spend",
+        "status-line",
+        "key-management"
+      ]
     }
   ]
 }

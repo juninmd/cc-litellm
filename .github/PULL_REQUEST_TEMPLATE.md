@@ -6,6 +6,7 @@
 
 <!-- CI runs these on every PR; tick what you ran yourself, and say so when one does not apply. -->
 
+- [ ] The PR title is a Conventional Commit (`feat(litellm-key): …`, `fix: …`): it becomes the commit on `main` and picks the next version (RELEASING.md)
 - [ ] `claude plugin test plugins/litellm-key`
 - [ ] `claude plugin validate plugins/litellm-key --strict`
 - [ ] `tsc -p plugins/litellm-key/.claude-plugin/types/tsconfig.json --noEmit`

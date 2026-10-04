@@ -1,0 +1,67 @@
+name: Release
+
+# Conventional commits on main keep one release PR up to date (version, CHANGELOG). Merging that PR tags
+# the release (litellm-key--vX.Y.Z, the name `claude plugin tag` uses) and publishes it. See RELEASING.md.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# One run at a time: two overlapping runs would race to open the same release PR.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: release-please
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # the release branch, the tag and the GitHub release
+      pull-requests: write # the release PR
+      issues: write # its labels (autorelease: pending / tagged)
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          # A PR opened with GITHUB_TOKEN does not start other workflows, so CI would not run on the release PR.
+          # RELEASE_PLEASE_TOKEN (a fine-grained PAT, see RELEASING.md) lifts that; without it the default token is used.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # The release exists the moment the PR merges: check it is the one the plugin tooling would have made.
+  verify-release:
+    name: verify the release
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.release-please.outputs.tag_name }}
+    steps:
+      - name: Tag, plugin.json and the marketplace entry agree
+        run: |
+          version="${TAG##*--v}"
+          fetch() { gh api "repos/${GITHUB_REPOSITORY}/contents/$1?ref=${TAG}" --jq .content | base64 -d; }
+          plugin="$(fetch plugins/litellm-key/.claude-plugin/plugin.json | jq -r .version)"
+          market="$(fetch .claude-plugin/marketplace.json | jq -r '.plugins[] | select(.name == "litellm-key") | .version')"
+          echo "tag=${TAG} plugin.json=${plugin} marketplace=${market}"
+          test "${TAG}" = "litellm-key--v${version}"
+          test "${plugin}" = "${version}"
+          test "${market}" = "${version}"
+
+      - name: The release is published, not a draft
+        run: |
+          gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" --json tagName,isDraft,url \
+            --jq '"\(.tagName) draft=\(.isDraft) \(.url)"'
+          test "$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft)" = "false"
