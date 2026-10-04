@@ -6,7 +6,8 @@
   <a href="#install"><img alt="Плагин Claude Code" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=for-the-badge"></a>
   <img alt="LiteLLM v1.99.1" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20tested-6366f1?style=for-the-badge">
   <img alt="Claude Code 2.1.289" src="https://img.shields.io/badge/Claude%20Code-2.1.289%20tested-0ea5e9?style=for-the-badge">
-  <img alt="Пройдено тестов: 232" src="https://img.shields.io/badge/tests-232%20passing-22c55e?style=for-the-badge">
+  <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/juninmd/cc-litellm/ci.yml?branch=main&style=for-the-badge&label=CI">
+  <img alt="License: MIT" src="https://img.shields.io/github/license/juninmd/cc-litellm?style=for-the-badge&color=22c55e">
   <img alt="Версия 0.3.0" src="https://img.shields.io/badge/version-0.3.0-f472b6?style=for-the-badge">
 </p>
 
@@ -297,6 +298,7 @@ claude plugin validate .                                # marketplace
 claude plugin validate plugins/litellm-key --strict     # plugin
 claude plugin test plugins/litellm-key                  # tests (they use Claude Code's engine)
 tsc -p plugins/litellm-key                              # types (.claude-plugin/types appears on first load)
+bash dev/check-file-size.sh                             # no source file over 300 lines
 ```
 
 Структура плагина: `hooks/register.tsx` — единственный файл, который обращается к `$` Claude Code; он создаёт внедряемые порты (`hooks/ports.ts`) и подключает события, команды, таймеры и тосты. Всё остальное — обычные функции, принимающие эти порты, поэтому в тестах они работают без запуска движка. `hooks/session.ts` — цикл чтения (конфигурация, тикер, поставленное в очередь принудительное обновление); `hooks/credentials.ts` и `hooks/settings.ts` определяют ключ и параметры; `hooks/litellm.ts` читает прокси, `hooks/parsers.ts` и `hooks/json.ts` нормализуют ответы, а `hooks/failures.ts` называет причину сбоя; `hooks/alerts.ts` решает, какие показывать тосты. `hooks/commands.ts` — таблица команд `/litellm`, а `hooks/admin*.ts` — админские команды (`admin.ts` — чтение с прокси, `admin-targets.ts` — поиск ключа, пользователя и команды, `admin-writes.ts` — запись на него, `admin-plan.ts` — предпросмотры и планы, `admin-link.ts` — связь админского ключа с прокси, `admin-commands.ts` — сам сценарий, `args.ts` — парсер аргументов). `hooks/exceeded.ts` и `hooks/band.tsx` — баннер превышения бюджета; `hooks/summary.ts` формирует текст, `hooks/view.tsx` и `hooks/parts.tsx` — панель (индикатор, заголовки разделов, чип состояния, строки шкал); в `hooks/format.ts` лежат чистые форматтеры; `types/index.d.ts` — контракт состояния.
@@ -309,6 +311,10 @@ tsc -p plugins/litellm-key                              # types (.claude-plugin/
 - Баннер превышения бюджета рисуется в терминале и в десктопном приложении (Claude Code предоставляет полосу только там); на остальных поверхностях об этом сообщают строка состояния и панель.
 - Значок `⚠` перед строкой состояния Claude Code рисует для каждой записи статуса любого плагина; он не означает, что с ключом проблема (это говорит текст).
 - API плагинов Claude Code находится в раннем доступе и может меняться между версиями.
+
+## Лицензия
+
+[MIT](../../LICENSE).
 
 ## Другие языки
 

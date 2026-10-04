@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The plugin API of Claude Code is early access: test against the build the README says it was checked with.
+  # Bump both on purpose (and the README badge with them); Dependabot does not see these two.
+  CLAUDE_CODE_VERSION: 2.1.289
+  TYPESCRIPT_VERSION: 7.0.2
+  DISABLE_AUTOUPDATER: "1"
+  DISABLE_TELEMETRY: "1"
+  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+
+jobs:
+  verify:
+    name: verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Install the tools
+        run: npm install --global --no-audit --no-fund "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" "typescript@${TYPESCRIPT_VERSION}"
+
+      - name: Validate the marketplace
+        run: claude plugin validate .
+
+      - name: Validate the plugin
+        run: claude plugin validate plugins/litellm-key --strict
+
+      - name: Test
+        run: claude plugin test plugins/litellm-key
+
+      # Loading the plugin is what makes the engine write .claude-plugin/types; no login is needed for that.
+      - name: Generate the types
+        run: |
+          timeout 120 claude --plugin-dir plugins/litellm-key -p "ok" > /dev/null 2>&1 || true
+          test -f plugins/litellm-key/.claude-plugin/types/tsconfig.json
+
+      - name: Type-check
+        run: tsc -p plugins/litellm-key/.claude-plugin/types/tsconfig.json --noEmit
+
+      - name: File size
+        run: bash dev/check-file-size.sh

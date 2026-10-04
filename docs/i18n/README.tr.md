@@ -6,7 +6,8 @@
   <a href="#install"><img alt="Claude Code eklentisi" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=for-the-badge"></a>
   <img alt="LiteLLM v1.99.1" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20tested-6366f1?style=for-the-badge">
   <img alt="Claude Code 2.1.289" src="https://img.shields.io/badge/Claude%20Code-2.1.289%20tested-0ea5e9?style=for-the-badge">
-  <img alt="232 test geçiyor" src="https://img.shields.io/badge/tests-232%20passing-22c55e?style=for-the-badge">
+  <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/juninmd/cc-litellm/ci.yml?branch=main&style=for-the-badge&label=CI">
+  <img alt="License: MIT" src="https://img.shields.io/github/license/juninmd/cc-litellm?style=for-the-badge&color=22c55e">
   <img alt="Sürüm 0.3.0" src="https://img.shields.io/badge/version-0.3.0-f472b6?style=for-the-badge">
 </p>
 
@@ -297,6 +298,7 @@ claude plugin validate .                                # marketplace
 claude plugin validate plugins/litellm-key --strict     # plugin
 claude plugin test plugins/litellm-key                  # tests (they use Claude Code's engine)
 tsc -p plugins/litellm-key                              # types (.claude-plugin/types appears on first load)
+bash dev/check-file-size.sh                             # no source file over 300 lines
 ```
 
 Eklentinin yapısı: `hooks/register.tsx`, Claude Code'un `$` nesnesine dokunan tek dosyadır; enjekte edilen portları (`hooks/ports.ts`) oluşturur ve olayları, komutları, zamanlayıcıları ve toast'ları bağlar. Geri kalan her şey bu portları alan düz fonksiyonlardır; bu yüzden motoru başlatmadan testte çalışırlar. `hooks/session.ts` okuma döngüsüdür (yapılandırma, ticker, kuyruğa alınmış zorunlu yenileme); `hooks/credentials.ts` ve `hooks/settings.ts` anahtarı ve seçenekleri çözer; `hooks/litellm.ts` proxy'yi okur, `hooks/parsers.ts` ve `hooks/json.ts` yanıtları normalleştirir, `hooks/failures.ts` neyin ters gittiğini adlandırır; `hooks/alerts.ts` toast'lara karar verir. `hooks/commands.ts` `/litellm` komut tablosudur, `hooks/admin*.ts` ise yönetici komutlarıdır (`admin.ts` proxy okumaları, `admin-targets.ts` anahtar, kullanıcı ve takım aramaları, `admin-writes.ts` yazmaları, `admin-plan.ts` önizlemeler ve planlar, `admin-link.ts` admin anahtarının proxy'ye bağlantısı, `admin-commands.ts` akış, `args.ts` argüman ayrıştırıcı). `hooks/exceeded.ts` ve `hooks/band.tsx` bütçe aşımı banner'ıdır; `hooks/summary.ts` metni, `hooks/view.tsx` ve `hooks/parts.tsx` paneli (kadran, bölüm başlıkları, durum çipi, gösterge satırları) oluşturur; `hooks/format.ts` saf biçimlendiricileri içerir; `types/index.d.ts` state sözleşmesidir.
@@ -309,6 +311,10 @@ Eklentinin yapısı: `hooks/register.tsx`, Claude Code'un `$` nesnesine dokunan 
 - Bütçe aşımı banner'ı terminal ve masaüstü yüzeylerinde çizilir (Claude Code bandı yalnızca orada sunar); diğerlerinde bunu durum satırı ve panel söyler.
 - Durum satırından önceki `⚠`, her eklenti durum girdisi için Claude Code tarafından çizilir; anahtarın sorunlu olduğu anlamına gelmez (bunu metin söyler).
 - Claude Code'un eklenti API'si erken erişimdedir ve sürümler arasında değişebilir.
+
+## Lisans
+
+[MIT](../../LICENSE).
 
 ## Diğer diller
 

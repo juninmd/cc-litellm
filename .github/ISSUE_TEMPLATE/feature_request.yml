@@ -1,0 +1,22 @@
+name: Feature request
+description: Something the plugin could show or do for a LiteLLM key
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you needed to know or do, and could not.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: How it could look or work. If it needs data, name the LiteLLM endpoint that has it.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do today instead
