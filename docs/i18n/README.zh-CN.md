@@ -6,7 +6,8 @@
   <a href="#install"><img alt="Claude Code 插件" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=for-the-badge"></a>
   <img alt="LiteLLM v1.99.1" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20tested-6366f1?style=for-the-badge">
   <img alt="Claude Code 2.1.289" src="https://img.shields.io/badge/Claude%20Code-2.1.289%20tested-0ea5e9?style=for-the-badge">
-  <img alt="232 项测试通过" src="https://img.shields.io/badge/tests-232%20passing-22c55e?style=for-the-badge">
+  <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/juninmd/cc-litellm/ci.yml?branch=main&style=for-the-badge&label=CI">
+  <img alt="License: MIT" src="https://img.shields.io/github/license/juninmd/cc-litellm?style=for-the-badge&color=22c55e">
   <img alt="版本 0.3.0" src="https://img.shields.io/badge/version-0.3.0-f472b6?style=for-the-badge">
 </p>
 
@@ -294,6 +295,7 @@ claude plugin validate .                                # marketplace
 claude plugin validate plugins/litellm-key --strict     # plugin
 claude plugin test plugins/litellm-key                  # tests (they use Claude Code's engine)
 tsc -p plugins/litellm-key                              # types (.claude-plugin/types appears on first load)
+bash dev/check-file-size.sh                             # no source file over 300 lines
 ```
 
 插件的结构：`hooks/register.tsx` 是唯一接触 Claude Code 的 `$` 的文件；它构建注入的端口（`hooks/ports.ts`），并把事件、命令、定时器和 toast 接起来。其余全是接收这些端口的普通函数，因此无需启动引擎即可在测试中运行。`hooks/session.ts` 是读取周期（配置、ticker、排队中的强制刷新）；`hooks/credentials.ts` 和 `hooks/settings.ts` 负责解析密钥和选项；`hooks/litellm.ts` 负责读取代理，`hooks/parsers.ts` 和 `hooks/json.ts` 负责规范化响应，`hooks/failures.ts` 负责说明出了什么问题；`hooks/alerts.ts` 决定何时弹出 toast。`hooks/commands.ts` 是 `/litellm` 的命令表，`hooks/admin*.ts` 是管理员命令（`admin.ts` 负责对代理的读取，`admin-targets.ts` 负责对密钥、用户和团队的查找，`admin-writes.ts` 负责写入，`admin-plan.ts` 负责预览和方案，`admin-link.ts` 负责管理员密钥与代理的关联，`admin-commands.ts` 是整体流程，`args.ts` 是参数解析器）；`hooks/exceeded.ts` 和 `hooks/band.tsx` 构成超预算横幅；`hooks/summary.ts` 构建文本，`hooks/view.tsx` 和 `hooks/parts.tsx` 构建面板（仪表、分区标题、状态标签、用量条行）；`hooks/format.ts` 放纯格式化函数；`types/index.d.ts` 是状态契约。
@@ -306,6 +308,10 @@ tsc -p plugins/litellm-key                              # types (.claude-plugin/
 - 超预算横幅绘制在终端和桌面端界面上（Claude Code 只在这两处提供该横条）；在其他界面上，由状态栏和面板来提示。
 - 状态栏前面的 `⚠` 是 Claude Code 为每个插件状态项统一绘制的；它并不表示密钥出了问题（要看后面的文字）。
 - Claude Code 的插件 API 处于早期访问阶段，不同版本之间可能会变化。
+
+## 许可证
+
+[MIT](../../LICENSE).
 
 ## 其他语言
 

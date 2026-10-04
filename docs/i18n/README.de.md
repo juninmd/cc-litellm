@@ -6,7 +6,8 @@
   <a href="#install"><img alt="Claude-Code-Plugin" src="https://img.shields.io/badge/Claude%20Code-plugin-d97757?style=for-the-badge"></a>
   <img alt="LiteLLM v1.99.1" src="https://img.shields.io/badge/LiteLLM-v1.99.1%20tested-6366f1?style=for-the-badge">
   <img alt="Claude Code 2.1.289" src="https://img.shields.io/badge/Claude%20Code-2.1.289%20tested-0ea5e9?style=for-the-badge">
-  <img alt="232 Tests bestanden" src="https://img.shields.io/badge/tests-232%20passing-22c55e?style=for-the-badge">
+  <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/juninmd/cc-litellm/ci.yml?branch=main&style=for-the-badge&label=CI">
+  <img alt="License: MIT" src="https://img.shields.io/github/license/juninmd/cc-litellm?style=for-the-badge&color=22c55e">
   <img alt="Version 0.3.0" src="https://img.shields.io/badge/version-0.3.0-f472b6?style=for-the-badge">
 </p>
 
@@ -294,6 +295,7 @@ claude plugin validate .                                # marketplace
 claude plugin validate plugins/litellm-key --strict     # plugin
 claude plugin test plugins/litellm-key                  # tests (they use Claude Code's engine)
 tsc -p plugins/litellm-key                              # types (.claude-plugin/types appears on first load)
+bash dev/check-file-size.sh                             # no source file over 300 lines
 ```
 
 Aufbau des Plugins: `hooks/register.tsx` ist die einzige Datei, die das `$` von Claude Code anfasst; sie baut die injizierten Ports (`hooks/ports.ts`) und verdrahtet Events, Befehle, Timer und Toasts. Alles andere sind reine Funktionen, die diese Ports entgegennehmen und deshalb im Test laufen, ohne die Engine zu starten. `hooks/session.ts` ist der Lesezyklus (Konfiguration, Ticker, vorgemerktes erzwungenes Aktualisieren); `hooks/credentials.ts` und `hooks/settings.ts` lösen den Key und die Optionen auf; `hooks/litellm.ts` liest den Proxy, `hooks/parsers.ts` und `hooks/json.ts` normalisieren die Antworten und `hooks/failures.ts` benennt, was schiefgelaufen ist; `hooks/alerts.ts` entscheidet über die Toasts. `hooks/commands.ts` ist die Befehlstabelle von `/litellm` und `hooks/admin*.ts` die Admin-Befehle (`admin.ts` die Lesezugriffe auf den Proxy, `admin-targets.ts` die Suchen nach Key, User und Team, `admin-writes.ts` seine Schreibzugriffe, `admin-plan.ts` die Vorschauen und Pläne, `admin-link.ts` die Verbindung des Admin-Keys zum Proxy, `admin-commands.ts` der Ablauf, `args.ts` der Argument-Parser). `hooks/exceeded.ts` und `hooks/band.tsx` sind das Banner bei Budgetüberschreitung; `hooks/summary.ts` baut den Text, `hooks/view.tsx` und `hooks/parts.tsx` das Panel (Gauge, Abschnittstitel, Status-Chip, Balkenzeilen); `hooks/format.ts` enthält die reinen Formatierer; `types/index.d.ts` ist der State-Vertrag.
@@ -306,6 +308,10 @@ Aufbau des Plugins: `hooks/register.tsx` ist die einzige Datei, die das `$` von 
 - Das Banner bei Budgetüberschreitung wird auf Terminal- und Desktop-Oberflächen gezeichnet (nur dort bietet Claude Code das Band an); auf anderen sagen es Statuszeile und Panel.
 - Das `⚠` vor der Statuszeile zeichnet Claude Code bei jedem Statuseintrag eines Plugins; es bedeutet nicht, dass der Key in Schwierigkeiten ist (das sagt der Text).
 - Die Plugin-API von Claude Code ist Early Access und kann sich zwischen Versionen ändern.
+
+## Lizenz
+
+[MIT](../../LICENSE).
 
 ## Weitere Sprachen
 

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a vulnerability (private)
+    url: https://github.com/juninmd/cc-litellm/security/advisories/new
+    about: Anything that could leak or misuse a key goes here, not in a public issue.
