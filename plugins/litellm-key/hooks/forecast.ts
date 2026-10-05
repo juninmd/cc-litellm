@@ -1,6 +1,7 @@
 import type { Budget, Session } from '../types'
 import { percent } from './format'
 
+const HOUR_MS = 3_600_000
 const DAY_MS = 86_400_000
 const UNITS: Record<string, number> = {
   s: 1000,
@@ -83,6 +84,35 @@ export const forecast = (budget: Budget, now: number, recentPerDay: number | nul
   }
 
   return null
+}
+
+export type Allowance = {
+  /** What the budget can spend a day from now to its reset and still stay under the cap. */
+  perDay: number
+  /** The same per hour, for when less than a day is left and a day is too big a unit. */
+  perHour: number
+  /** Time left to the reset. */
+  ms: number
+}
+
+/**
+ * What a budget can spend from now to its reset to last that long. Null without a cap, a reset still to come, room left
+ * under the cap, or at least an hour to spread it over: in the last minutes before a reset any figure is absurd.
+ */
+export const allowance = (budget: Budget, now: number): Allowance | null => {
+  const { limit, spend, resetAt } = budget
+
+  if (limit === null || !Number.isFinite(limit) || !Number.isFinite(spend) || !(limit > spend) || resetAt === null) {
+    return null
+  }
+  const ms = resetAt - now
+
+  if (!(ms >= HOUR_MS)) {
+    return null
+  }
+  const perMs = (limit - spend) / ms
+
+  return { perDay: perMs * DAY_MS, perHour: perMs * HOUR_MS, ms }
 }
 
 export const beginSession = (at: number, spend: number): Session => ({ since: at, spend: 0, last: spend })

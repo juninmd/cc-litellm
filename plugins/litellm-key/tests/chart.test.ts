@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import type { UsageDay } from '../types'
-import { plot } from '../hooks/chart'
+import { metricText, plot } from '../hooks/chart'
 import { utcDay } from '../hooks/format'
 import { NOW } from './support'
 
@@ -112,5 +112,58 @@ describe('plot', () => {
         }
       }
     }
+  })
+})
+
+describe('plot by metric', () => {
+  /** A day each, ending on the day of NOW, that did `requests` requests of 1000 tokens each and spent a dollar. */
+  const busy = (requests: readonly number[]): UsageDay[] =>
+    requests.map((count, at) => ({
+      ...day(utcDay(NOW, requests.length - 1 - at), 1),
+      requests: count,
+      tokens: count * 1000,
+    }))
+  const week = busy([0, 12, 40, 0, 25, 90, 60])
+
+  test('draws spend unless told otherwise', () => {
+    expect(plot(week, 76, 6, 'spend')).toEqual(plot(week, 76, 6))
+    expect(plot(week, 76, 6)?.ticks).toEqual({ top: '$1.00', bottom: '$0' })
+  })
+
+  test('counts requests, with plain numbers on the axis and under the bars', () => {
+    const drawn = plot(week, 76, 6, 'requests')
+
+    expect(drawn?.ticks).toEqual({ top: '90', bottom: '0' })
+    expect(drawn?.amounts).toEqual(['·', '12', '40', '·', '25', '90', '60'])
+    expect(drawn?.gutter).toBe(3)
+  })
+
+  test('counts tokens, in the short form', () => {
+    const drawn = plot(week, 76, 6, 'tokens')
+
+    expect(drawn?.ticks).toEqual({ top: '90k', bottom: '0' })
+    expect(drawn?.amounts).toEqual(['·', '12k', '40k', '·', '25k', '90k', '60k'])
+  })
+
+  test('draws the tallest day to the top row, whatever it counts', () => {
+    const top = plot(week, 76, 6, 'requests')?.bars[0] ?? ''
+
+    expect(top.slice(50, 60)).toBe('  ██████  ')
+    expect(top.slice(60, 70)).toBe('          ')
+  })
+
+  test('keeps a day with nothing to count blank, and the axis on one line when nothing was counted', () => {
+    const drawn = plot(busy([0, 0, 0]), 40, 3, 'requests')
+
+    expect(drawn?.ticks).toEqual({ top: '0', bottom: '0' })
+    expect(drawn?.bars.every(row => row.trim() === '')).toBe(true)
+  })
+
+  test('metricText says an amount of each metric in few cells', () => {
+    expect(metricText(1234, 'spend')).toBe('$1.2k')
+    expect(metricText(1234, 'requests')).toBe('1.2k')
+    expect(metricText(2_500_000, 'tokens')).toBe('2.5M')
+    expect(metricText(0, 'spend')).toBe('$0')
+    expect(metricText(0, 'requests')).toBe('0')
   })
 })

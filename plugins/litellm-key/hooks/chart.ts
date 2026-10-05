@@ -1,8 +1,13 @@
-import type { UsageDay } from '../types'
-import { columnChart, shortDate, shortMoney, weekday } from './format'
+import type { MetricName, UsageDay } from '../types'
+import { columnChart, compact, shortDate, shortMoney, weekday } from './format'
+import { metricOf } from './usage'
 
 const MAX_SLOT = 10
 const MAX_BAR = 6
+
+/** An amount of what the chart counts, in a few cells: money for spend, a short count for requests and tokens. */
+export const metricText = (value: number, metric: MetricName): string =>
+  metric === 'spend' ? shortMoney(value) : compact(value)
 
 export type DayLabel = { text: string; date: string; isToday: boolean }
 
@@ -27,16 +32,22 @@ export type Plot = {
 }
 
 /**
- * Lays out one bar per day in `columns` cells, `height` rows tall. Null when the days are too many for the room, so the
- * caller can fall back to a line.
+ * Lays out one bar per day in `columns` cells, `height` rows tall, counting `metric` (spend, unless told otherwise).
+ * Null when the days are too many for the room, so the caller can fall back to a line.
  */
-export const plot = (days: readonly UsageDay[], columns: number, height: number): Plot | null => {
+export const plot = (
+  days: readonly UsageDay[],
+  columns: number,
+  height: number,
+  metric: MetricName = 'spend',
+): Plot | null => {
   if (days.length === 0 || height < 1) {
     return null
   }
-  const values = days.map(day => day.spend)
+  const values = days.map(day => metricOf(day, metric))
   const most = Math.max(0, ...values)
-  const top = most > 0 ? shortMoney(most) : '$0'
+  const zero = metricText(0, metric)
+  const top = most > 0 ? metricText(most, metric) : zero
   const gutter = top.length + 1
   const slot = Math.min(MAX_SLOT, Math.floor((columns - gutter) / days.length))
 
@@ -55,13 +66,13 @@ export const plot = (days: readonly UsageDay[], columns: number, height: number)
     bars,
     gutter,
     width,
-    ticks: { top, bottom: '$0' },
+    ticks: { top, bottom: zero },
     slot,
     days:
       slot >= 4
         ? days.map((day, at) => ({ text: weekday(day.date), date: day.date, isToday: at === days.length - 1 }))
         : null,
-    amounts: slot >= 6 ? days.map(day => (day.spend > 0 ? shortMoney(day.spend) : '·')) : null,
+    amounts: slot >= 6 ? values.map(value => (value > 0 ? metricText(value, metric) : '·')) : null,
     ends:
       slot < 4 && first && last
         ? `${shortDate(first.date)}${' '.repeat(Math.max(1, width - shortDate(first.date).length - shortDate(last.date).length))}${shortDate(last.date)}`

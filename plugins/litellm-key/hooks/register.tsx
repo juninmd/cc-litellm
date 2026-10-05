@@ -1,12 +1,17 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, PluginOptions, Register, Timer } from 'claude-code'
 
-import type { Failure, Session, Snapshot, ViewName } from '../types'
+import type { Failure, MetricName, Session, Snapshot, ViewName } from '../types'
+import { closest, parseDay, rangeIn, splitArgs, strayNumber } from './args'
 import { advanceSession, beginSession } from './forecast'
-import { clock, maskKey, money, percent, redact, span, truncate, until } from './format'
+import { clock, isoDay, maskKey, money, percent, plural, redact, span, truncate, until } from './format'
 import type { EnvName, Reply, Sources } from './litellm'
-import { fetchSnapshot, isObject, resolveCredentials, withoutCredentials } from './litellm'
+import { fetchSnapshot, isObject, probeEndpoints, resolveCredentials, withoutCredentials } from './litellm'
+import type { ReportOptions } from './reports'
+import { checkVerdict, compareReport, dayReport, jsonReport, paceReport, pingReport } from './reports'
 import {
+  NO_HISTORY,
+  dailyOver,
   detailsText,
   failureText,
   keyPace,
@@ -15,9 +20,10 @@ import {
   oneLine,
   statusText,
   summaryText,
+  usageCsv,
   usageReport,
 } from './summary'
-import { RANGES } from './usage'
+import { COMPARABLE, METRICS, RANGES } from './usage'
 import { dashboard } from './view'
 
 const PANE = 'litellm-key'
@@ -27,17 +33,20 @@ const MIN_TICK_GAP_MS = 10_000
 const MIN_TURN_GAP_MS = 20_000
 const FRESH_MS = 15_000
 const SLOW_MS = 10 * 60_000
+// With a daily alert set the history is what the alert watches, so it is read more often.
+const WATCHED_SLOW_MS = 3 * 60_000
 const DAY_MS = 86_400_000
 const REMEMBERED = 60
 const TRANSIENT = ['network', 'http', 'rate-limit']
 
 // The shape tag makes a reload of this code that changed the snapshot read the old one as absent, not as garbage.
-const snapshotState = atom({ plugin: 'litellm-key', key: 'snapshot' } as const, null, { shape: 'snapshot-v2' })
+const snapshotState = atom({ plugin: 'litellm-key', key: 'snapshot' } as const, null, { shape: 'snapshot-v3' })
 const failureState = atom({ plugin: 'litellm-key', key: 'failure' } as const, null)
 const loadingState = atom({ plugin: 'litellm-key', key: 'isLoading' } as const, false)
 const viewState = atom({ plugin: 'litellm-key', key: 'view' } as const, 'overview')
 const rangeState = atom({ plugin: 'litellm-key', key: 'range' } as const, 7)
 const sortState = atom({ plugin: 'litellm-key', key: 'sort' } as const, 'spend')
+const metricState = atom({ plugin: 'litellm-key', key: 'metric' } as const, 'spend')
 const filterState = atom({ plugin: 'litellm-key', key: 'filter' } as const, '')
 const dayState = atom({ plugin: 'litellm-key', key: 'day' } as const, null)
 const sessionState = atom({ plugin: 'litellm-key', key: 'session' } as const, null)
@@ -51,11 +60,43 @@ const HELP = [
   '/litellm tab <name>       open the pane on overview, usage, models or details',
   '/litellm refresh          read the key again now',
   '/litellm info             print the full summary here',
+  '/litellm status           print the status line as text',
+  '/litellm pace             where the budget is heading, and what it can spend a day',
   '/litellm usage [7|14|30]  print the spend per day, as a table',
-  '/litellm models           list the models this key can call',
+  '/litellm compare [7|14]   what changed against the days before, model by model',
+  '/litellm day [when]       one day by model: today, yesterday, 2026-10-03, 10-03, mon',
+  '/litellm models [text]    list the models this key can call (only those with the text)',
+  '/litellm check [warn%]    OK, WARNING, CRITICAL or UNKNOWN: the exit code of a -p run too',
+  '/litellm json             everything as JSON, for scripts',
+  '/litellm csv [7|14|30]    the days as CSV',
+  '/litellm copy [what]      copy a report: overview, usage, models, details, pace, compare, csv, json',
+  '/litellm share [what]     hand a report to Claude, to ask about it',
+  '/litellm ping             try every endpoint the plugin reads, with times',
   '/litellm debug            show where the URL and the key come from',
   '/litellm close            close the pane',
 ].join('\n')
+
+// What a typo of a subcommand is held against: the names, not their aliases.
+const WORDS = [
+  'tab',
+  'refresh',
+  'info',
+  'status',
+  'pace',
+  'usage',
+  'compare',
+  'day',
+  'models',
+  'check',
+  'json',
+  'csv',
+  'copy',
+  'share',
+  'ping',
+  'debug',
+  'close',
+  'help',
+]
 
 const VIEWS: readonly ViewName[] = ['overview', 'usage', 'models', 'details']
 
@@ -69,6 +110,9 @@ const configOf = (options: PluginOptions) => ({
   key: text(options.litellm_key),
   refreshSeconds: Math.round(bounded(options.refresh_seconds, 60, 15, 3600)),
   warnPercent: Math.round(bounded(options.warn_percent, 80, 1, 99)),
+  // Whole cents, and zero for off.
+  dailyAlert: Math.round(bounded(options.daily_alert, 0, 0, 1_000_000) * 100) / 100,
+  isToastShown: options.show_toasts !== false,
   isStatusShown: options.show_status_line !== false,
   isRelatedShown: options.show_related !== false,
   isUsageShown: options.show_usage !== false,
@@ -133,20 +177,41 @@ let told: string[] = []
 let tracked: { id: string; session: Session } | null = null
 let latest: { snapshot: Snapshot | null; failure: Failure | null } = { snapshot: null, failure: null }
 
+/** One request, timed, and given up on after REQUEST_MS. */
 const fetchWithin = async ($: EngineInterface, url: string, headers: Record<string, string>): Promise<Reply> => {
   let timer: Timer | undefined
   const late = new Promise<never>((_, reject) => {
     timer = $.clock.after(REQUEST_MS, () => reject(new Error(`no answer within ${REQUEST_MS / 1000}s`)))
   })
+  const started = await $.clock.now()
 
   try {
-    return await Promise.race([$.http.fetch(url, { headers }), late])
+    const { status, text } = await Promise.race([$.http.fetch(url, { headers }), late])
+
+    return { status, text, ms: (await $.clock.now()) - started }
   } finally {
     timer?.cancel()
   }
 }
 
+/** What the status line says, as the options of the person have it. */
+const statusOptions = () => ({
+  bar: config.isStatusBar,
+  forecast: config.isForecastShown,
+  dailyAlert: config.dailyAlert,
+})
+
+/** What the reports say beyond the reading: the session, the pace and the daily alert, as the options have them. */
+const reportOptions = (): ReportOptions => ({
+  session: tracked?.session ?? null,
+  isForecast: config.isForecastShown,
+  dailyAlert: config.dailyAlert,
+})
+
 const notify = async ($: EngineInterface, snapshot: Snapshot, now: number): Promise<void> => {
+  if (!config.isToastShown) {
+    return
+  }
   const { key } = snapshot
   const who = key.keyName ?? snapshot.keyHint
   const pct = percent(key.budget.spend, key.budget.limit)
@@ -182,6 +247,15 @@ const notify = async ($: EngineInterface, snapshot: Snapshot, now: number): Prom
     events.push({
       id: `expiry:${who}:${key.expiresAt}:${tier}`,
       message: `The key expires ${until(key.expiresAt, now)}`,
+    })
+  }
+  const daily = dailyOver(snapshot, now, config.dailyAlert)
+
+  if (daily !== null) {
+    // Once a day, and again the day after: the alert is part of the id, so a new limit is a new warning.
+    events.push({
+      id: `daily:${isoDay(now)}:${config.dailyAlert}`,
+      message: `Today's spend is ${money(daily)}, over your daily alert of ${money(config.dailyAlert)}`,
     })
   }
   if (events.length === 0) {
@@ -226,11 +300,7 @@ const settle = async (
   latest = { snapshot: shown, failure }
   await update($, snapshotState, () => shown)
   await update($, failureState, () => failure)
-  $.ui.status(
-    config.isStatusShown
-      ? statusText(shown, failure, now, { bar: config.isStatusBar, forecast: config.isForecastShown })
-      : undefined,
-  )
+  $.ui.status(config.isStatusShown ? statusText(shown, failure, now, statusOptions()) : undefined)
 
   if (failure === null && shown) {
     await track($, shown)
@@ -238,12 +308,14 @@ const settle = async (
     toasted = null
   } else if (failure && !TRANSIENT.includes(failure.kind) && toasted !== failure.kind) {
     toasted = failure.kind
-    $.ui.toast(
-      failure.kind === 'not-configured'
-        ? 'Not configured. Run /litellm for setup help.'
-        : truncate(failure.message, 90),
-      { timeoutMs: 8000 },
-    )
+    if (config.isToastShown) {
+      $.ui.toast(
+        failure.kind === 'not-configured'
+          ? 'Not configured. Run /litellm for setup help.'
+          : truncate(failure.message, 90),
+        { timeoutMs: 8000 },
+      )
+    }
   }
 }
 
@@ -270,7 +342,10 @@ const run = async ($: EngineInterface, mode: Mode): Promise<void> => {
     const { credentials } = resolved
     const held = latest.snapshot
     const previous = held && held.host === credentials.host && held.keyHint === maskKey(credentials.key) ? held : null
-    const isSlow = mode === 'force' || previous === null || now - lastSlowAt >= SLOW_MS
+    const isSlow =
+      mode === 'force' ||
+      previous === null ||
+      now - lastSlowAt >= (config.dailyAlert > 0 ? WATCHED_SLOW_MS : SLOW_MS)
 
     secret = credentials.key
     diagnostics = {
@@ -323,15 +398,22 @@ const reload = ($: EngineInterface, mode: Mode): void => {
   load($, mode).catch(() => undefined)
 }
 
-const report = async ($: EngineInterface, view: (snapshot: Snapshot, now: number) => string): Promise<string> => {
+const NOT_READ = 'Reading the key from the proxy… the answer shows up here and in the pane.'
+
+type Current = { snapshot: Snapshot; failure: Failure | null; now: number }
+
+/** What the plugin last read, with when it is now; or what to say instead when there is nothing to show. */
+const current = async ($: EngineInterface): Promise<Current | string> => {
   const now = await $.clock.now()
   const { snapshot, failure } = latest
 
-  if (!snapshot) {
-    return failure ? failureText(failure) : 'Reading the key from the proxy… the answer shows up here and in the pane.'
-  }
+  return snapshot ? { snapshot, failure, now } : failure ? failureText(failure) : NOT_READ
+}
 
-  return `${view(snapshot, now)}${failure ? `\n(stale) ${failure.message}` : ''}`
+const report = async ($: EngineInterface, view: (snapshot: Snapshot, now: number) => string): Promise<string> => {
+  const got = await current($)
+
+  return typeof got === 'string' ? got : `${view(got.snapshot, got.now)}${got.failure ? `\n(stale) ${got.failure.message}` : ''}`
 }
 
 const ensureFresh = async ($: EngineInterface): Promise<void> => {
@@ -364,13 +446,242 @@ const textOf = (tab: ViewName, range: number): ((snapshot: Snapshot, now: number
   }
 }
 
+const TAB_WHAT: Record<ViewName, string> = {
+  overview: 'the summary',
+  usage: 'the usage report',
+  models: 'the model list',
+  details: 'the key details',
+}
+
+const REPORTS = 'overview, usage, models, details, pace, compare, csv, json'
+
+/** A report the person can name, to copy it or hand it to Claude: how it is made and what to call it. */
+type Named = { build: (snapshot: Snapshot, now: number) => string; what: string }
+
+/** `name` as a report (none given: the tab that is showing); null for a name that is no report. */
+const namedReport = (name: string, tab: ViewName, range: number): Named | null => {
+  switch (name.toLowerCase()) {
+    case '':
+      return { build: textOf(tab, range), what: TAB_WHAT[tab] }
+    case 'overview':
+    case 'info':
+    case 'summary':
+      return { build: summaryOf, what: TAB_WHAT.overview }
+    case 'usage':
+      return { build: snapshot => usageReport(snapshot, range), what: TAB_WHAT.usage }
+    case 'models':
+      return { build: snapshot => modelsReport(snapshot, range), what: TAB_WHAT.models }
+    case 'details':
+      return { build: (snapshot, now) => detailsText(snapshot, now, config.refreshSeconds), what: TAB_WHAT.details }
+    case 'pace':
+      return { build: (snapshot, now) => paceReport(snapshot, now, reportOptions()), what: 'the pace report' }
+    case 'compare':
+      return {
+        build: snapshot => compareReport(snapshot, COMPARABLE.includes(range) ? range : 7),
+        what: 'the comparison',
+      }
+    case 'csv':
+      return { build: snapshot => usageCsv(snapshot, range), what: `${range} days as CSV` }
+    case 'json':
+      return {
+        build: (snapshot, now) => jsonReport(snapshot, now, config.warnPercent, reportOptions()),
+        what: 'the JSON',
+      }
+    default:
+      return null
+  }
+}
+
+/** The report a person named with `/litellm copy` or `/litellm share`, made from what was last read. */
+const requested = async (
+  $: EngineInterface,
+  words: readonly string[],
+  fallback: ViewName | null,
+): Promise<{ named: Named; text: string; snapshot: Snapshot } | string> => {
+  const name = words[0] ?? ''
+  const range = rangeIn(words.slice(1), RANGES, await read($, rangeState))
+  const named = namedReport(name, fallback ?? 'overview', range)
+
+  if (named === null) {
+    return `Unknown report "${truncate(name, 30)}". The reports are ${REPORTS}.`
+  }
+  await ensureFresh($)
+  const got = await current($)
+
+  return typeof got === 'string' ? got : { named, snapshot: got.snapshot, text: named.build(got.snapshot, got.now) }
+}
+
+const copyCommand = async ($: EngineInterface, words: readonly string[]): Promise<{ text: string }> => {
+  const found = await requested($, words, await read($, viewState))
+
+  if (typeof found === 'string') {
+    return { text: found }
+  }
+  const result = await $.ui.copy({ text: found.text })
+  const lines = plural(found.text.split('\n').length, 'line')
+
+  return {
+    text: result.isCopied
+      ? `Copied ${found.named.what} (${lines}).`
+      : `Could not copy ${found.named.what} (${result.reason}). Use /litellm ${words[0] || 'info'} to print it instead.`,
+  }
+}
+
+/** Puts a report in front of Claude, out of the person's sight, so that what comes next can be asked about it. */
+const shareCommand = async (
+  $: EngineInterface,
+  words: readonly string[],
+): Promise<{ text: string; context?: readonly string[] }> => {
+  const found = await requested($, words, null)
+
+  if (typeof found === 'string') {
+    return { text: found }
+  }
+  const { named, snapshot, text } = found
+
+  return {
+    text: `Shared ${named.what} with Claude. Ask it about your spend, budget or usage.`,
+    context: [
+      `The user ran /litellm share. Below is ${named.what} for their LiteLLM virtual key, read from ${snapshot.host} at ${clock(snapshot.fetchedAt)}. It holds no secrets. Use it when they ask about their spend, budget or usage.\n\n${text}`,
+    ],
+  }
+}
+
+/** The days of the history that `/litellm day` can name, and what it answers to a name that is none. */
+const dayCommand = async ($: EngineInterface, word: string): Promise<{ text: string }> => {
+  await ensureFresh($)
+
+  return {
+    text: await report($, snapshot => {
+      const days = snapshot.usage?.days.map(item => item.date) ?? []
+      const date = parseDay(word, days)
+
+      if (snapshot.usage === null) {
+        return NO_HISTORY
+      }
+
+      return date === null
+        ? `No day "${truncate(word, 20)}" in the history of ${days.length} days. Try today, yesterday, a date such as ${days[days.length - 1] ?? '2026-10-03'} or ${(days[days.length - 1] ?? '2026-10-03').slice(5)}, or a weekday such as mon.`
+        : dayReport(snapshot, date)
+    }),
+  }
+}
+
+/** `/litellm check`: the verdict and the exit code a `claude -p` run ends with, so a script can act on it. */
+const checkCommand = async (
+  $: EngineInterface,
+  word: string | undefined,
+): Promise<{ text: string; exitCode: number }> => {
+  const warn = word === undefined ? config.warnPercent : Number.parseInt(word, 10)
+
+  if (!(warn >= 1 && warn <= 99)) {
+    return { text: 'Usage: /litellm check [warn%], with the percentage from 1 to 99.', exitCode: 3 }
+  }
+  await ensureFresh($)
+  const verdict = checkVerdict(latest.snapshot, latest.failure, await $.clock.now(), warn, reportOptions())
+
+  return { text: verdict.text, exitCode: verdict.exitCode }
+}
+
+/** `/litellm json`: the reading as JSON and nothing else, even an error, for a script to parse. */
+const jsonCommand = async ($: EngineInterface): Promise<{ text: string; exitCode?: number }> => {
+  await ensureFresh($)
+  const got = await current($)
+
+  if (typeof got === 'string') {
+    const { failure } = latest
+
+    return {
+      text: JSON.stringify(
+        {
+          schema: 1,
+          error: failure
+            ? { kind: failure.kind, message: failure.message, hint: failure.hint }
+            : { kind: 'pending', message: got },
+        },
+        null,
+        2,
+      ),
+      exitCode: 3,
+    }
+  }
+
+  return {
+    text: jsonReport(got.snapshot, got.now, config.warnPercent, {
+      ...reportOptions(),
+      stale: got.failure?.message ?? null,
+    }),
+  }
+}
+
+/** `/litellm csv`: the days as CSV and nothing else, to be redirected into a file. */
+const csvCommand = async ($: EngineInterface, words: readonly string[]): Promise<{ text: string; exitCode?: number }> => {
+  await ensureFresh($)
+  const got = await current($)
+
+  if (typeof got === 'string') {
+    return { text: got, exitCode: 3 }
+  }
+
+  return got.snapshot.usage === null
+    ? { text: NO_HISTORY, exitCode: 3 }
+    : { text: usageCsv(got.snapshot, rangeIn(words, RANGES, 7)) }
+}
+
+/** `/litellm ping`: every endpoint the plugin reads, asked once, with its status and its time. */
+const pingCommand = async ($: EngineInterface): Promise<{ text: string }> => {
+  // A reading first, to know the user and the team to ask about; if it fails, the rest is asked all the same.
+  await ensureFresh($)
+  const now = await $.clock.now()
+  const resolved = resolveCredentials(await sourcesOf($, config), now)
+
+  if (!resolved.ok) {
+    return { text: failureText(resolved.failure) }
+  }
+  const { credentials } = resolved
+  const root =
+    pinnedRoot !== null && credentials.roots.includes(pinnedRoot) ? pinnedRoot : (credentials.roots[0] ?? '')
+  const probes = await probeEndpoints({
+    credentials,
+    root,
+    http: (url, headers) => fetchWithin($, url, headers),
+    snapshot: latest.snapshot,
+    now,
+  })
+
+  return { text: pingReport(credentials.host, withoutCredentials(root), probes) }
+}
+
+/** `/litellm models [text]`: the names the key can call, or just the ones that hold `text`. */
+const modelsCommand = async ($: EngineInterface, words: readonly string[]): Promise<{ text: string }> => {
+  await ensureFresh($)
+  const needle = words.join(' ').toLowerCase()
+
+  return {
+    text: await report($, snapshot => {
+      const names = snapshot.models ?? snapshot.key.models
+      const shown = needle === '' ? names : names.filter(name => name.toLowerCase().includes(needle))
+
+      if (names.length === 0) {
+        return `Models: ${modelsText(snapshot)}`
+      }
+
+      return needle === ''
+        ? `Models (${names.length}): ${names.join(', ')}`
+        : shown.length === 0
+          ? `No model of ${names.length} has "${truncate(needle, 30)}" in its name.`
+          : `Models (${shown.length} of ${names.length} have "${truncate(needle, 30)}"): ${shown.join(', ')}`
+    }),
+  }
+}
+
 const loadPrefs = async ($: EngineInterface): Promise<void> => {
   const stored: unknown = await $.store.get('prefs').catch(() => undefined)
 
   if (!isObject(stored)) {
     return
   }
-  const { range, sort } = stored
+  const { range, sort, metric } = stored
 
   if (typeof range === 'number' && RANGES.includes(range)) {
     await update($, rangeState, () => range)
@@ -378,12 +689,21 @@ const loadPrefs = async ($: EngineInterface): Promise<void> => {
   if (sort === 'spend' || sort === 'name') {
     await update($, sortState, () => sort)
   }
+  const picked = METRICS.find(item => item === metric)
+
+  if (picked !== undefined) {
+    await update($, metricState, () => picked)
+  }
 }
 
 /** What the person chose is kept for next time; a store that fails only loses that. */
 const savePrefs = async ($: EngineInterface): Promise<void> => {
   await $.store
-    .set('prefs', { range: await read($, rangeState), sort: await read($, sortState) })
+    .set('prefs', {
+      range: await read($, rangeState),
+      sort: await read($, sortState),
+      metric: await read($, metricState),
+    })
     .catch(() => undefined)
 }
 
@@ -449,12 +769,19 @@ const debugText = async ($: EngineInterface): Promise<string> => {
   const on = (flag: boolean): string => (flag ? 'on' : 'off')
   const tries = (diagnostics?.roots ?? []).map(withoutCredentials)
   const using = pinnedRoot ? `; using ${withoutCredentials(pinnedRoot)}` : ''
+  const server = [
+    snapshot?.proxy?.version ? `LiteLLM v${snapshot.proxy.version}` : null,
+    snapshot?.proxy?.db ? `database ${snapshot.proxy.db.toLowerCase()}` : null,
+    snapshot?.latencyMs ? `${Math.round(snapshot.latencyMs)} ms to read /key/info` : null,
+  ].filter(Boolean)
   const lines = [
     `Refresh every ${config.refreshSeconds}s · status line ${on(config.isStatusShown)} (bar ${on(config.isStatusBar)}) · related ${on(config.isRelatedShown)} · usage ${on(config.isUsageShown)} · forecast ${on(config.isForecastShown)} · compact pane ${on(config.isCompact)}`,
-    `Pane     ${await read($, viewState)} tab · ${await read($, rangeState)} days · sorted by ${await read($, sortState)}`,
+    `Alerts   toasts ${on(config.isToastShown)} · warn at ${config.warnPercent}% · daily alert ${config.dailyAlert > 0 ? money(config.dailyAlert) : 'off'}`,
+    `Pane     ${await read($, viewState)} tab · ${await read($, rangeState)} days · sorted by ${await read($, sortState)} · chart ${await read($, metricState)}`,
     diagnostics
       ? `Proxy    ${diagnostics.host} (tries ${tries.join(', ')}${using})`
       : 'Proxy    not resolved',
+    ...(server.length > 0 ? [`Server   ${server.join(' · ')}`] : []),
     diagnostics ? `Key      ${diagnostics.keyHint} from ${diagnostics.keySource}` : 'Key      not resolved',
     failure
       ? `Result   failed (${failure.kind}${failure.status === null ? '' : ` ${failure.status}`}): ${failure.message}`
@@ -469,6 +796,10 @@ const debugText = async ($: EngineInterface): Promise<string> => {
   return lines.join('\n')
 }
 
+/** A line for a number that was asked for and is no range the plugin reads, once the report is shown anyway. */
+const strayNote = (stray: string | null, shown: number): string =>
+  stray === null ? '' : `\n(${stray} is not a range the plugin reads: 7, 14 or 30. This is ${shown} days.)`
+
 const viewNamed = (word: string): ViewName | null =>
   VIEWS.find((view, at) => view === word.toLowerCase() || String(at + 1) === word) ?? null
 
@@ -481,8 +812,8 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'litellm',
-      description: 'Show your LiteLLM virtual key: budget, limits, models and usage',
-      argumentHint: '[tab|refresh|info|usage|models|debug|close|help]',
+      description: 'Show your LiteLLM virtual key: budget, pace, limits, models and usage',
+      argumentHint: '[tab|pace|usage|compare|day|models|check|json|copy|ping|debug|help]',
     })
     ticker?.cancel()
     ticker = $.clock.every(config.refreshSeconds * 1000, () => {
@@ -523,7 +854,8 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', { command: 'litellm' }, async ($, e) => {
-    const [word = '', argument = ''] = e.args.trim().split(/\s+/)
+    const { word, rest } = splitArgs(e.args)
+    const [argument = ''] = rest
 
     try {
       switch (word.toLowerCase()) {
@@ -559,25 +891,60 @@ export const register: Register = (on, options) => {
           await ensureFresh($)
 
           return { text: await report($, summaryOf) }
-        case 'usage': {
-          const days = Number(argument)
-
-          await ensureFresh($)
-
-          return { text: await report($, snapshot => usageReport(snapshot, RANGES.includes(days) ? days : 7)) }
-        }
-        case 'models':
+        case 'status':
+        case 'line':
           await ensureFresh($)
 
           return {
-            text: await report($, snapshot => {
-              const names = snapshot.models ?? snapshot.key.models
-
-              return names.length === 0
-                ? `Models: ${modelsText(snapshot)}`
-                : `Models (${names.length}): ${names.join(', ')}`
-            }),
+            text: await report($, (snapshot, now) => statusText(snapshot, null, now, statusOptions()) ?? 'no data'),
           }
+        case 'pace':
+        case 'forecast':
+        case 'runway':
+          await ensureFresh($)
+
+          return { text: await report($, (snapshot, now) => paceReport(snapshot, now, reportOptions())) }
+        case 'usage': {
+          const days = rangeIn(rest, RANGES, 7)
+          const stray = strayNumber(rest, RANGES)
+
+          await ensureFresh($)
+
+          return {
+            text: await report($, snapshot => `${usageReport(snapshot, days)}${strayNote(stray, days)}`),
+          }
+        }
+        case 'compare':
+        case 'movers': {
+          const days = rangeIn(rest, RANGES, 7)
+          const stray = strayNumber(rest, RANGES)
+
+          if (!COMPARABLE.includes(days)) {
+            return { text: `Comparing ${days} days takes ${days * 2} days of history, and the plugin reads 30. Use 7 or 14.` }
+          }
+          await ensureFresh($)
+
+          return {
+            text: await report($, snapshot => `${compareReport(snapshot, days)}${strayNote(stray, days)}`),
+          }
+        }
+        case 'day':
+          return await dayCommand($, argument)
+        case 'models':
+          return await modelsCommand($, rest)
+        case 'check':
+          return await checkCommand($, rest[0])
+        case 'json':
+          return await jsonCommand($)
+        case 'csv':
+          return await csvCommand($, rest)
+        case 'copy':
+          return await copyCommand($, rest)
+        case 'share':
+          return await shareCommand($, rest)
+        case 'ping':
+        case 'health':
+          return await pingCommand($)
         case 'debug':
         case 'diag':
         case 'doctor':
@@ -588,12 +955,16 @@ export const register: Register = (on, options) => {
         case '-h':
         case '--help':
           return { text: HELP }
-        default:
-          return { text: `Unknown option "${truncate(word, 30)}".\n${HELP}` }
+        default: {
+          const guess = closest(word, WORDS)
+
+          return { text: `Unknown option "${truncate(word, 30)}".${guess === null ? '' : ` Did you mean "${guess}"?`}\n${HELP}` }
+        }
       }
     } catch (error) {
       return {
         text: `Unexpected error: ${truncate(redact(error instanceof Error ? error.message : String(error)), 160)}`,
+        exitCode: 3,
       }
     }
   })
@@ -606,6 +977,7 @@ export const register: Register = (on, options) => {
     const tab = await read($, viewState)
     const range = await read($, rangeState)
     const sort = await read($, sortState)
+    const metric = await read($, metricState)
     const filter = await read($, filterState)
     const day = await read($, dayState)
     const session = await read($, sessionState)
@@ -625,10 +997,12 @@ export const register: Register = (on, options) => {
       isForecast: config.isForecastShown,
       isUsageShown: config.isUsageShown,
       warnPercent: config.warnPercent,
+      dailyAlert: config.dailyAlert,
       refreshSeconds: config.refreshSeconds,
       tab,
       range,
       sort,
+      metric,
       filter,
       day,
       session,
@@ -661,6 +1035,9 @@ export const register: Register = (on, options) => {
       },
       onSort: next => {
         void update($, sortState, () => next).then(() => savePrefs($))
+      },
+      onMetric: next => {
+        void update($, metricState, () => next).then(() => savePrefs($))
       },
       onFilter: text => {
         void update($, filterState, () => text)

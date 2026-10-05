@@ -71,7 +71,7 @@ export const overviewTab = (ui: Ui, props: DashboardProps, snapshot: Snapshot, l
   // The time of the budget's period sits right under the budget: a bar longer than the time bar is spending too fast.
   const list = clock === null ? spend : [...spend.slice(0, 1), clock, ...spend.slice(1)]
   const rows = facts(snapshot, now, { session: props.session, isForecast }).filter(row => row.label !== 'Status')
-  const warnings = alerts(snapshot, now, warnPercent, isForecast)
+  const warnings = alerts(snapshot, now, warnPercent, isForecast, { dailyAlert: props.dailyAlert })
   const longest = Math.max(...list.map(item => item.label.length))
   // Compact: labels take about a quarter of the width (10 to 22 cells), so the amounts keep the rest of the line.
   const labelWidth = isCompact

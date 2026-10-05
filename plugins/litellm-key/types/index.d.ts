@@ -80,6 +80,13 @@ export type Usage = {
   days: UsageDay[]
 }
 
+/** What the proxy says about itself on its health endpoint, in the words it uses. */
+export type ProxyInfo = {
+  version: string | null
+  /** `connected`, or whatever the proxy says when it has no database. */
+  db: string | null
+}
+
 export type Snapshot = {
   fetchedAt: number
   host: string
@@ -92,6 +99,10 @@ export type Snapshot = {
   team: Related | null
   models: string[] | null
   usage: Usage | null
+  /** Read now and then, and only when the proxy answers: nothing here is worth a note when it does not. */
+  proxy: ProxyInfo | null
+  /** How long `/key/info` took to answer, when the reading could tell. */
+  latencyMs: number | null
   notes: string[]
 }
 
@@ -118,6 +129,9 @@ export type ViewName = 'overview' | 'usage' | 'models' | 'details'
 
 export type SortName = 'spend' | 'name'
 
+/** What the chart of the Usage tab counts per day. */
+export type MetricName = 'spend' | 'requests' | 'tokens'
+
 /** What this key spent while Claude Code has been running, counted from the first reading. */
 export type Session = {
   /** When the first reading was taken. */
@@ -137,6 +151,7 @@ declare module 'claude-code' {
       view: ViewName
       range: number
       sort: SortName
+      metric: MetricName
       filter: string
       /** The day picked under the chart of the Usage tab, as `YYYY-MM-DD`. */
       day: string | null

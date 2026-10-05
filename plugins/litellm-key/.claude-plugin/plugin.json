@@ -1,11 +1,11 @@
 {
   "name": "litellm-key",
-  "version": "0.3.0",
-  "description": "See your LiteLLM virtual key inside Claude Code: budget, spend pace, limits, expiry, models and usage, in tabs.",
+  "version": "0.4.0",
+  "description": "See your LiteLLM virtual key inside Claude Code: budget, spend pace and allowance, limits, expiry, models and usage, in tabs, with commands for scripts.",
   "author": { "name": "juninmd" },
   "homepage": "https://github.com/juninmd/cc-litellm",
   "repository": "https://github.com/juninmd/cc-litellm",
-  "keywords": ["litellm", "virtual-key", "budget", "spend", "forecast", "usage", "status-line"],
+  "keywords": ["litellm", "virtual-key", "budget", "spend", "forecast", "usage", "status-line", "monitoring"],
   "types": "./types/index.d.ts",
   "userConfig": {
     "litellm_url": {
@@ -26,6 +26,14 @@
       "default": 60,
       "min": 15,
       "max": 3600
+    },
+    "daily_alert": {
+      "type": "number",
+      "title": "Daily spend alert ($)",
+      "description": "Warn once today's spend on the key reaches this many dollars (toast once a day, the status line and the pane). 0 turns it off. Needs the usage history; with it on, the history is read every 3 minutes.",
+      "default": 0,
+      "min": 0,
+      "max": 1000000
     },
     "warn_percent": {
       "type": "number",
@@ -51,6 +59,12 @@
       "type": "boolean",
       "title": "Usage history",
       "description": "Also read /user/daily/activity for the last 30 days of spend, requests and tokens, by day and by model (beta endpoint).",
+      "default": true
+    },
+    "show_toasts": {
+      "type": "boolean",
+      "title": "Warning toasts",
+      "description": "Show the toasts that warn about the budget, the pace, the daily alert, an expiring key and a proxy that fails. Off keeps the warnings to the status line, the pane and /litellm check.",
       "default": true
     },
     "status_bar": {

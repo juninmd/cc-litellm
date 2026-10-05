@@ -1,6 +1,6 @@
 import type { Budget, Failure, ModelBudget, Session, Snapshot, SortName } from '../types'
 import type { Forecast } from './forecast'
-import { forecast, parseDuration } from './forecast'
+import { allowance, forecast, parseDuration } from './forecast'
 import {
   ago,
   clock,
@@ -15,11 +15,12 @@ import {
   shortDate,
   span,
   sparkline,
+  times,
   truncate,
   until,
   weekday,
 } from './format'
-import { byName, recentDaily, usageOver, usageTrend } from './usage'
+import { byName, isSpike, recentDaily, todayOf, usageOver, usageTrend } from './usage'
 import type { UsageTotals } from './usage'
 
 export type Tone = 'ok' | 'warn' | 'error'
@@ -43,6 +44,13 @@ export type StatusOptions = {
   bar?: boolean
   /** Say when the budget runs out if the pace holds, while that is before it resets. */
   forecast?: boolean
+  /** Say so once today's spend reaches this much (the `daily_alert` option); zero or less leaves it out. */
+  dailyAlert?: number
+}
+
+export type AlertOptions = {
+  /** Warn once today's spend reaches this much (the `daily_alert` option); zero or less leaves it out. */
+  dailyAlert?: number
 }
 
 export type ModelRow = {
@@ -66,9 +74,14 @@ export type ModelList = {
   hasUsage: boolean
 }
 
-const SOON_MS = 3 * 86_400_000
+const DAY_MS = 86_400_000
+const SOON_MS = 3 * DAY_MS
 const STATUS_BAR_CELLS = 6
 const RECENT_NOTE = 'at the recent daily average'
+// Fewest requests of the last week that make their average price worth building a count of what is left on.
+const HEADROOM_MIN_REQUESTS = 10
+// A rate needs time to say anything: an hour of a session is a rate, five minutes of it is a burst.
+const SESSION_RATE_MIN_MS = 30 * 60_000
 
 const toneOf = (pct: number | null, warnPercent: number): Tone =>
   pct === null ? 'ok' : pct >= 100 ? 'error' : pct >= warnPercent ? 'warn' : 'ok'
@@ -290,11 +303,117 @@ const modelsFact = (snapshot: Snapshot): string => {
     : `${list.total} · ${names(list.rows.slice(0, 2))}, +${list.total - 2}`
 }
 
+/**
+ * What a budget can spend a day from now to its reset and still last that long, set against the pace it keeps. Said per
+ * hour once less than a day is left. Null when there is no room left, no reset to reach, or too little time to say.
+ */
+const allowanceText = (budget: Budget, pace: Forecast | null, now: number): { text: string; tone: Tone } | null => {
+  const room = allowance(budget, now)
+
+  if (room === null) {
+    return null
+  }
+  const isHourly = room.ms < DAY_MS
+  const per = (day: number): string => (isHourly ? `${money(day / 24)}/h` : `${money(day)}/day`)
+
+  if (pace === null) {
+    return { text: `${per(room.perDay)} to last until the reset`, tone: 'ok' }
+  }
+  const when = pace.basis === 'window' ? 'now' : 'lately'
+  const base = `${per(room.perDay)} to last · ${when} ${per(pace.perDay)}`
+
+  if (pace.beforeReset && pace.perDay > room.perDay) {
+    const cut = Math.min(99, Math.max(1, Math.round((1 - room.perDay / pace.perDay) * 100)))
+
+    return { text: `${base} (cut ${cut}%)`, tone: 'warn' }
+  }
+
+  return { text: base, tone: 'ok' }
+}
+
+/** The rows that say where a budget is heading: its pace, when it runs out, what it can spend a day to last. */
+export const paceRows = (budget: Budget, pace: Forecast | null, now: number): Row[] => {
+  const rows: Row[] = []
+
+  if (pace !== null) {
+    rows.push({
+      label: 'Pace',
+      text:
+        pace.basis === 'window'
+          ? `${money(pace.perDay)}/day · on pace for ${money(pace.projected)} (${pace.projectedPct}%) at the reset`
+          : `${money(pace.perDay)}/day lately`,
+      tone: (pace.projectedPct ?? 0) >= 100 ? 'warn' : 'ok',
+    })
+    const out = runsOutText(budget, pace, now)
+
+    if (out !== null) {
+      rows.push({ label: 'Runs out', text: out, tone: 'warn' })
+    }
+  }
+  const room = allowanceText(budget, pace, now)
+
+  if (room !== null) {
+    rows.push({ label: 'Allowance', text: room.text, tone: room.tone })
+  }
+
+  return rows
+}
+
+/**
+ * How many more requests the cap holds at what a request cost over the last week. Said only with a cap, some room under
+ * it and a week that had enough requests for their average price to mean something.
+ */
+export const headroomText = (snapshot: Snapshot): string | null => {
+  const { budget } = snapshot.key
+  const { usage } = snapshot
+
+  if (budget.limit === null || usage === null || !(budget.limit > budget.spend)) {
+    return null
+  }
+  const week = usageOver(usage, 7)
+
+  if (week.requests < HEADROOM_MIN_REQUESTS || !(week.spend > 0)) {
+    return null
+  }
+  const left = Math.floor(((budget.limit - budget.spend) * week.requests) / week.spend)
+
+  return `about ${count(left)} more requests at ${eachText(week.spend, week.requests)} each (7-day average)`
+}
+
+/** What today has cost, against the usual day: a day well above it is marked. Null while today did nothing. */
+export const todayRow = (snapshot: Snapshot, now: number): Row | null => {
+  const today = todayOf(snapshot.usage, now)
+
+  if (today === null || (today.spend <= 0 && today.requests <= 0)) {
+    return null
+  }
+  const usual = snapshot.usage ? recentDaily(snapshot.usage) : null
+  const parts = [money(today.spend), plural(today.requests, 'request')]
+
+  if (usual !== null && today.spend > 0) {
+    parts.push(`${times(today.spend / usual)} the usual day (${money(usual)})`)
+  }
+
+  return {
+    label: 'Today',
+    text: parts.join(' · '),
+    tone: usual !== null && isSpike(today.spend, usual) ? 'warn' : 'ok',
+  }
+}
+
 export type Extras = {
   /** What was spent since Claude Code started, when the readings say. */
   session?: Session | null
   /** Leave the pace out (the `show_forecast` option). */
   isForecast?: boolean
+}
+
+/** What the session spent, and how fast, once it has run long enough to have a rate. */
+const sessionText = (session: Session, now: number): string => {
+  const hours = (now - session.since) / 3_600_000
+  const rate = session.spend > 0 && now - session.since >= SESSION_RATE_MIN_MS ? ` · ${money(session.spend / hours)}/h` : ''
+
+  return `${session.spend > 0 ? `+${money(session.spend)}` : 'nothing spent'} since ${clock(session.since).slice(0, 5)} (${ago(session.since, now)})${rate}`
 }
 
 export const facts = (snapshot: Snapshot, now: number, extras: Extras = {}): Row[] => {
@@ -306,18 +425,13 @@ export const facts = (snapshot: Snapshot, now: number, extras: Extras = {}): Row
     }
   }
   const expires = key.expiresAt === null ? null : until(key.expiresAt, now)
-  const pace = extras.isForecast === false ? null : keyPace(snapshot, now)
+  const isForecast = extras.isForecast !== false
+  const pace = isForecast ? keyPace(snapshot, now) : null
 
   add('Status', key.status, key.status === 'active' ? 'ok' : 'error')
-  if (pace !== null) {
-    add(
-      'Pace',
-      pace.basis === 'window'
-        ? `${money(pace.perDay)}/day · on pace for ${money(pace.projected)} (${pace.projectedPct}%) at the reset`
-        : `${money(pace.perDay)}/day lately`,
-      (pace.projectedPct ?? 0) >= 100 ? 'warn' : 'ok',
-    )
-    add('Runs out', runsOutText(key.budget, pace, now), 'warn')
+  if (isForecast) {
+    rows.push(...paceRows(key.budget, pace, now))
+    add('Headroom', headroomText(snapshot))
   }
   add('Soft limit', key.budget.softLimit === null ? null : `alerts at ${money(key.budget.softLimit)}`)
   add('Limits', limitsText(snapshot))
@@ -330,14 +444,14 @@ export const facts = (snapshot: Snapshot, now: number, extras: Extras = {}): Row
   if (key.lifetimeSpend !== null && key.lifetimeSpend > key.budget.spend + 0.005) {
     add('Lifetime', `${money(key.lifetimeSpend)} across budget resets`)
   }
+  const today = todayRow(snapshot, now)
+
+  if (today !== null) {
+    add(today.label, today.text, today.tone)
+  }
   add('Last 7 days', usageText(snapshot))
   if (extras.session) {
-    const { session } = extras
-
-    add(
-      'Session',
-      `${session.spend > 0 ? `+${money(session.spend)}` : 'nothing spent'} since ${clock(session.since).slice(0, 5)} (${ago(session.since, now)})`,
-    )
+    add('Session', sessionText(extras.session, now))
   }
 
   return rows
@@ -350,8 +464,24 @@ export const identity = (snapshot: Snapshot): string => {
   return key.alias ? `${name} · ${key.keyName ?? snapshot.keyHint}` : name
 }
 
+/**
+ * Today's spend, when it has reached the daily alert the person set. Null with no alert set, no history for today, or a
+ * day that stayed under it.
+ */
+export const dailyOver = (snapshot: Snapshot, now: number, dailyAlert: number | undefined): number | null => {
+  const today = todayOf(snapshot.usage, now)
+
+  return dailyAlert !== undefined && dailyAlert > 0 && today !== null && today.spend >= dailyAlert ? today.spend : null
+}
+
 /** What needs a look right now, the worst first: a key that is not active, caps near or past, a pace that will not last. */
-export const alerts = (snapshot: Snapshot, now: number, warnPercent: number, isForecast = true): Alert[] => {
+export const alerts = (
+  snapshot: Snapshot,
+  now: number,
+  warnPercent: number,
+  isForecast = true,
+  options: AlertOptions = {},
+): Alert[] => {
   const { key } = snapshot
   const errors: Alert[] = []
   const warnings: Alert[] = []
@@ -386,6 +516,11 @@ export const alerts = (snapshot: Snapshot, now: number, warnPercent: number, isF
 
       add('warn', `At this pace ${subject} runs out in ${span(pace.emptyAt - now)}, before it resets`)
     }
+  }
+  const over = dailyOver(snapshot, now, options.dailyAlert)
+
+  if (over !== null && options.dailyAlert !== undefined) {
+    add('warn', `Today's spend is ${money(over)}, over your daily alert of ${money(options.dailyAlert)}`)
   }
 
   return [...errors, ...warnings]
@@ -469,6 +604,11 @@ export const statusText = (
       runsOut,
     )
   }
+  const daily = dailyOver(snapshot, now, options.dailyAlert)
+
+  if (daily !== null && options.dailyAlert !== undefined) {
+    parts.push(`today ${money(daily)} (alert ${money(options.dailyAlert)})`)
+  }
   if (expiresSoon && key.expiresAt !== null) {
     parts.push(`expires ${until(key.expiresAt, now)}`)
   }
@@ -524,7 +664,7 @@ const trendText = (snapshot: Snapshot, range: number): string | null => {
 }
 
 /** What one request cost, with the third decimal that cents would round away. */
-const eachText = (spend: number, requests: number): string => {
+export const eachText = (spend: number, requests: number): string => {
   const each = spend / requests
 
   return each >= 1 || each < 0.001 ? money(each) : `$${each.toFixed(3)}`
@@ -611,12 +751,14 @@ export const dayDetail = (snapshot: Snapshot, date: string): DayDetail | null =>
   }
 }
 
+export const NO_HISTORY = 'No usage history: the proxy did not answer /user/daily/activity, or the key has no user.'
+
 /** The usage report as text: one line per day and the totals, aligned in columns. */
 export const usageReport = (snapshot: Snapshot, range: number): string => {
   const { usage } = snapshot
 
   if (!usage) {
-    return 'No usage history: the proxy did not answer /user/daily/activity, or the key has no user.'
+    return NO_HISTORY
   }
   const totals = usageOver(usage, range)
   const lines = [
@@ -750,6 +892,17 @@ export const details = (snapshot: Snapshot, now: number, refreshSeconds: number)
   })
   group('Connection', add => {
     add('Proxy', snapshot.root)
+    add(
+      'LiteLLM',
+      [
+        snapshot.proxy?.version ? `v${snapshot.proxy.version}` : null,
+        snapshot.proxy?.db ? `database ${snapshot.proxy.db.toLowerCase()}` : null,
+      ]
+        .filter(Boolean)
+        .join(' · ') || null,
+      snapshot.proxy?.db && /\bnot\b|\bdown\b|error/i.test(snapshot.proxy.db) ? 'warn' : 'ok',
+    )
+    add('Latency', snapshot.latencyMs === null ? null : `${Math.round(snapshot.latencyMs)} ms to read /key/info`)
     add('Auth', `via ${snapshot.keySource} (${snapshot.keyHint})`)
     add('Read', `${clock(snapshot.fetchedAt)} (${ago(snapshot.fetchedAt, now)}) · every ${refreshSeconds}s`)
     add('Models', allowed.length === 0 ? 'all proxy models' : plural(allowed.length, 'model'))

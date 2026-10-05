@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import type { Budget } from '../types'
-import { advanceSession, beginSession, forecast, parseDuration } from '../hooks/forecast'
+import { advanceSession, allowance, beginSession, forecast, parseDuration } from '../hooks/forecast'
 import { NOW, near } from './support'
 
 const DAY = 86_400_000
@@ -125,6 +125,48 @@ describe('forecast', () => {
     expect(forecast(budget({ spend: 0 }), NOW, 2)).toBeNull()
     expect(forecast(budget({ duration: null, resetAt: null }), NOW)).toBeNull()
     expect(forecast(budget({ duration: null, resetAt: null }), NOW, 0)).toBeNull()
+  })
+})
+
+describe('allowance', () => {
+  test('spreads what is left over the time to the reset', () => {
+    const room = allowance(budget(), NOW)
+
+    // $29 left for 9 days.
+    near(room?.perDay, 29 / 9)
+    near(room?.perHour, 29 / 9 / 24)
+    expect(room?.ms).toBe(9 * DAY)
+  })
+
+  test('is the same whatever the pace was: it only needs a cap and a reset', () => {
+    expect(allowance(budget({ spend: 0 }), NOW)?.perDay).toBeGreaterThan(0)
+    near(allowance(budget({ spend: 0, duration: null }), NOW)?.perDay, 50 / 9)
+  })
+
+  test('counts a short window by the hour', () => {
+    const room = allowance(budget({ spend: 4, limit: 5, duration: '1h', resetAt: NOW + 2 * 3_600_000 }), NOW)
+
+    near(room?.perHour, 0.5)
+    near(room?.perDay, 12)
+  })
+
+  test('has nothing to say in the last hour before the reset, where any figure would be absurd', () => {
+    expect(allowance(budget({ resetAt: NOW + 3_600_000 - 1 }), NOW)).toBeNull()
+    expect(allowance(budget({ resetAt: NOW + 3_600_000 }), NOW)?.ms).toBe(3_600_000)
+  })
+
+  test('has nothing to say once the cap is reached, or without a cap or a reset still to come', () => {
+    expect(allowance(budget({ spend: 50 }), NOW)).toBeNull()
+    expect(allowance(budget({ spend: 55 }), NOW)).toBeNull()
+    expect(allowance(budget({ limit: null }), NOW)).toBeNull()
+    expect(allowance(budget({ limit: 0 }), NOW)).toBeNull()
+    expect(allowance(budget({ resetAt: null }), NOW)).toBeNull()
+    expect(allowance(budget({ resetAt: NOW - 1000 }), NOW)).toBeNull()
+  })
+
+  test('has nothing to say about numbers that are not numbers', () => {
+    expect(allowance(budget({ spend: Number.NaN }), NOW)).toBeNull()
+    expect(allowance(budget({ limit: Number.POSITIVE_INFINITY }), NOW)).toBeNull()
   })
 })
 

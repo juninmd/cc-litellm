@@ -2,29 +2,35 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import type { Failure } from '../types'
 import {
+  NO_HISTORY,
   alerts,
   budgetBrief,
   budgetText,
+  dailyOver,
   dayDetail,
   details,
   detailsText,
   failureText,
   facts,
+  headroomText,
   meters,
   modelList,
   modelsReport,
   modelsText,
   oneLine,
+  paceRows,
   statusText,
   summaryText,
   timeMeter,
+  todayRow,
   tokensText,
   usageCsv,
   usageFacts,
   usageReport,
 } from '../hooks/summary'
+import type { Row } from '../hooks/summary'
 import { usageOver } from '../hooks/usage'
-import { KEY, NOW, reply, snapshotOf, standardRoutes, withKey } from './support'
+import { KEY, NOW, activity, health, reply, snapshotOf, standardRoutes, withKey } from './support'
 
 const DAY = 86_400_000
 
@@ -651,5 +657,235 @@ describe('dayDetail', () => {
   test('has nothing for a day outside the history, or without a history', async () => {
     expect(dayDetail(await snapshotOf(), '2026-01-01')).toBeNull()
     expect(dayDetail({ ...(await snapshotOf()), usage: null }, '2026-10-03')).toBeNull()
+  })
+})
+
+describe('allowance and headroom', () => {
+  const row = (rows: Row[], label: string) => rows.find(item => item.label === label)
+
+  test('says what the budget can spend a day to last until the reset, beside what it spends now', async () => {
+    const rows = facts(await snapshotOf(), NOW)
+
+    expect(row(rows, 'Allowance')).toEqual({
+      label: 'Allowance',
+      text: '$5.77/day to last · now $0.53/day',
+      tone: 'ok',
+    })
+  })
+
+  test('says how much to cut when the pace will not last, and marks it', async () => {
+    const rows = facts(await snapshotOf(withKey({ spend: 42 })), NOW)
+
+    expect(row(rows, 'Allowance')).toEqual({
+      label: 'Allowance',
+      text: '$1.23/day to last · now $1.79/day (cut 31%)',
+      tone: 'warn',
+    })
+  })
+
+  test('counts by the hour once less than a day is left', async () => {
+    const snapshot = await snapshotOf(
+      withKey({ spend: 4, max_budget: 5, budget_duration: '1d', budget_reset_at: new Date(NOW + 5 * 3_600_000).toISOString() }),
+    )
+
+    expect(row(facts(snapshot, NOW), 'Allowance')?.text).toBe('$0.20/h to last · now $0.21/h (cut 5%)')
+  })
+
+  test('still says it without a pace to set it against', async () => {
+    const snapshot = await snapshotOf(withKey({ spend: 0 }))
+
+    expect(row(facts(snapshot, NOW), 'Allowance')?.text).toBe('$7.69/day to last until the reset')
+  })
+
+  test('says what the recent days spent when the window has no pace of its own', async () => {
+    const rows = facts(await snapshotOf(withKey({ spend: 40, budget_reset_at: new Date(NOW + 29 * DAY).toISOString() })), NOW)
+
+    expect(row(rows, 'Allowance')?.text).toBe('$0.34/day to last · lately $1.83/day (cut 81%)')
+  })
+
+  test('has no allowance once the cap is reached, without a reset, or with the pace off', async () => {
+    expect(row(facts(await snapshotOf(withKey({ spend: 55 })), NOW), 'Allowance')).toBeUndefined()
+    expect(row(facts(await snapshotOf(withKey({ budget_reset_at: null, budget_duration: null })), NOW), 'Allowance')).toBeUndefined()
+    expect(row(facts(await snapshotOf(), NOW, { isForecast: false }), 'Allowance')).toBeUndefined()
+  })
+
+  test('paceRows has the same three rows for any budget, and none for one with no cap', async () => {
+    const snapshot = await snapshotOf(withKey({ spend: 42 }))
+    const rows = paceRows(snapshot.key.budget, null, NOW)
+
+    expect(rows.map(item => item.label)).toEqual(['Allowance'])
+    expect(paceRows({ ...snapshot.key.budget, limit: null }, null, NOW)).toEqual([])
+  })
+
+  test('counts the requests the cap still holds at what a request cost this week', async () => {
+    // $14.20 over 150 requests is $0.095 each; $37.50 is left.
+    expect(headroomText(await snapshotOf())).toBe('about 396 more requests at $0.095 each (7-day average)')
+    expect(row(facts(await snapshotOf(), NOW), 'Headroom')?.text).toBe('about 396 more requests at $0.095 each (7-day average)')
+  })
+
+  test('only counts them with a cap, room under it, and a week that had requests enough', async () => {
+    const quiet = await snapshotOf({ ...standardRoutes(), '/user/daily/activity': activity([0, 0, 0, 0, 0, 0, 0.5]) })
+
+    expect(headroomText(quiet)).toBeNull()
+    expect(headroomText(await snapshotOf(withKey({ max_budget: null })))).toBeNull()
+    expect(headroomText(await snapshotOf(withKey({ spend: 51 })))).toBeNull()
+    expect(headroomText({ ...(await snapshotOf()), usage: null })).toBeNull()
+  })
+
+  test('leaves headroom out with the pace off', async () => {
+    expect(row(facts(await snapshotOf(), NOW, { isForecast: false }), 'Headroom')).toBeUndefined()
+  })
+})
+
+describe('today', () => {
+  test('says what today cost against the usual day, and marks one far above it', async () => {
+    // $8.70 against the $1.83 of the full days before it.
+    expect(todayRow(await snapshotOf(), NOW)).toEqual({
+      label: 'Today',
+      text: '$8.70 · 90 requests · 4.7× the usual day ($1.83)',
+      tone: 'warn',
+    })
+  })
+
+  test('is quiet about a day in line with the usual one', async () => {
+    const calm = await snapshotOf({ ...standardRoutes(), '/user/daily/activity': activity([4, 4, 4, 4, 4, 4, 4, 5]) })
+
+    expect(todayRow(calm, NOW)).toEqual({
+      label: 'Today',
+      text: '$5.00 · 50 requests · 1.3× the usual day ($4.00)',
+      tone: 'ok',
+    })
+  })
+
+  test('has no average to compare with while no full day spent anything', async () => {
+    const first = await snapshotOf({ ...standardRoutes(), '/user/daily/activity': activity([0, 0, 0, 2]) })
+
+    expect(todayRow(first, NOW)).toEqual({ label: 'Today', text: '$2.00 · 20 requests', tone: 'ok' })
+  })
+
+  test('has no row for a day that did nothing, or for a history that stops before today', async () => {
+    const idle = await snapshotOf({ ...standardRoutes(), '/user/daily/activity': activity([4, 4, 4, 0]) })
+
+    expect(todayRow(idle, NOW)).toBeNull()
+    expect(todayRow(await snapshotOf(), NOW + DAY)).toBeNull()
+    expect(todayRow({ ...(await snapshotOf()), usage: null }, NOW)).toBeNull()
+  })
+
+  test('sits in the facts before the last week', async () => {
+    const labels = facts(await snapshotOf(), NOW).map(item => item.label)
+
+    expect(labels.indexOf('Today')).toBeGreaterThan(-1)
+    expect(labels.indexOf('Today')).toBe(labels.indexOf('Last 7 days') - 1)
+  })
+})
+
+describe('the session rate', () => {
+  test('says how fast the session spends once it has run for half an hour', async () => {
+    const snapshot = await snapshotOf()
+    const text = (since: number, spend: number) =>
+      facts(snapshot, NOW, { session: { since, spend, last: 12.5 } }).find(item => item.label === 'Session')?.text
+
+    expect(text(NOW - 3_600_000, 2)).toBe('+$2.00 since 11:00 (1h ago) · $2.00/h')
+    expect(text(NOW - 1_800_000, 1.5)).toBe('+$1.50 since 11:30 (30m ago) · $3.00/h')
+  })
+
+  test('says nothing of a rate before that, or when nothing was spent', async () => {
+    const snapshot = await snapshotOf()
+    const text = (since: number, spend: number) =>
+      facts(snapshot, NOW, { session: { since, spend, last: 12.5 } }).find(item => item.label === 'Session')?.text
+
+    expect(text(NOW - 1_740_000, 1)).toBe('+$1.00 since 11:31 (29m ago)')
+    expect(text(NOW - 7_200_000, 0)).toBe('nothing spent since 10:00 (2h ago)')
+  })
+})
+
+describe('the daily alert', () => {
+  test('is today\'s spend once it has reached the alert', async () => {
+    const snapshot = await snapshotOf()
+
+    expect(dailyOver(snapshot, NOW, 5)).toBe(8.7)
+    expect(dailyOver(snapshot, NOW, 8.7)).toBe(8.7)
+    expect(dailyOver(snapshot, NOW, 8.71)).toBeNull()
+  })
+
+  test('is off at zero, unset, without history, or for a day that is over', async () => {
+    const snapshot = await snapshotOf()
+
+    expect(dailyOver(snapshot, NOW, 0)).toBeNull()
+    expect(dailyOver(snapshot, NOW, undefined)).toBeNull()
+    expect(dailyOver({ ...snapshot, usage: null }, NOW, 5)).toBeNull()
+    expect(dailyOver(snapshot, NOW + DAY, 5)).toBeNull()
+  })
+
+  test('is a warning in the alerts, and nothing when it is not set', async () => {
+    const snapshot = await snapshotOf()
+
+    expect(alerts(snapshot, NOW, 80, true, { dailyAlert: 5 })).toEqual([
+      { tone: 'warn', text: "Today's spend is $8.70, over your daily alert of $5.00" },
+    ])
+    expect(alerts(snapshot, NOW, 80, true, { dailyAlert: 10 })).toEqual([])
+    expect(alerts(snapshot, NOW, 80, true, { dailyAlert: 0 })).toEqual([])
+    expect(alerts(snapshot, NOW, 80)).toEqual([])
+  })
+
+  test('comes after what is broken and what is near the cap', async () => {
+    const list = alerts(await snapshotOf(withKey({ spend: 42, status: 'revoked' })), NOW, 80, true, { dailyAlert: 5 })
+
+    expect(list.map(item => item.tone)).toEqual(['error', 'warn', 'warn', 'warn'])
+    expect(list.at(-1)?.text).toContain('daily alert')
+  })
+
+  test('is said in the status line too, once reached', async () => {
+    const snapshot = await snapshotOf()
+
+    expect(statusText(snapshot, null, NOW, { dailyAlert: 5 })).toBe(
+      '25% of budget · $12.50 of $50.00 · resets in 6d 12h (30d) · today $8.70 (alert $5.00)',
+    )
+    expect(statusText(snapshot, null, NOW, { dailyAlert: 10 })).toBe('25% of budget · $12.50 of $50.00 · resets in 6d 12h (30d)')
+    expect(statusText(snapshot, null, NOW)).toBe('25% of budget · $12.50 of $50.00 · resets in 6d 12h (30d)')
+  })
+
+  test('is said in the status line of a key with no cap too', async () => {
+    const snapshot = await snapshotOf(withKey({ max_budget: null }))
+
+    expect(statusText(snapshot, null, NOW, { dailyAlert: 5 })).toBe('$12.50 spent · no cap · today $8.70 (alert $5.00)')
+  })
+})
+
+describe('the proxy in the details', () => {
+  const connection = (snapshot: Awaited<ReturnType<typeof snapshotOf>>) =>
+    Object.fromEntries((details(snapshot, NOW, 60).find(group => group.title === 'Connection')?.rows ?? []).map(item => [item.label, item]))
+
+  test('names the LiteLLM version and the database when the proxy says so, and the time it took to answer', async () => {
+    const snapshot = await snapshotOf({ ...standardRoutes(), '/health/readiness': health('1.77.0', 'connected') })
+    const rows = connection({ ...snapshot, latencyMs: 142.4 })
+
+    expect(rows.LiteLLM).toEqual({ label: 'LiteLLM', text: 'v1.77.0 · database connected', tone: 'ok' })
+    expect(rows.Latency?.text).toBe('142 ms to read /key/info')
+  })
+
+  test('warns about a database that is not there', async () => {
+    const snapshot = await snapshotOf({ ...standardRoutes(), '/health/readiness': health('1.77.0', 'Not connected') })
+
+    expect(connection(snapshot).LiteLLM?.tone).toBe('warn')
+  })
+
+  test('has neither row when the proxy told nothing', async () => {
+    const rows = connection(await snapshotOf())
+
+    expect(rows.LiteLLM).toBeUndefined()
+    expect(rows.Latency).toBeUndefined()
+  })
+
+  test('says it in the written details too', async () => {
+    const snapshot = await snapshotOf({ ...standardRoutes(), '/health/readiness': health() })
+
+    expect(detailsText(snapshot, NOW, 60)).toMatch(/LiteLLM +v1\.77\.0 · database connected/)
+  })
+})
+
+describe('no history', () => {
+  test('says one thing everywhere', async () => {
+    expect(usageReport({ ...(await snapshotOf()), usage: null }, 7)).toBe(NO_HISTORY)
   })
 })

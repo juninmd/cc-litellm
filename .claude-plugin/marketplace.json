@@ -8,11 +8,11 @@
     {
       "name": "litellm-key",
       "source": "./plugins/litellm-key",
-      "description": "See your LiteLLM virtual key inside Claude Code: budget, spend pace, limits, expiry, models and usage, in tabs.",
-      "version": "0.3.0",
+      "description": "See your LiteLLM virtual key inside Claude Code: budget, spend pace and allowance, limits, expiry, models and usage, in tabs, with commands for scripts.",
+      "version": "0.4.0",
       "author": { "name": "juninmd" },
       "category": "monitoring",
-      "keywords": ["litellm", "virtual-key", "budget", "spend", "forecast", "usage", "status-line"]
+      "keywords": ["litellm", "virtual-key", "budget", "spend", "forecast", "usage", "status-line", "monitoring"]
     }
   ]
 }

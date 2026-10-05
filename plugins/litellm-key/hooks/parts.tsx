@@ -1,6 +1,6 @@
 import type { Elements, RenderElement, UiPressArgument } from 'claude-code'
 
-import type { Failure, Session, Snapshot, SortName, ViewName } from '../types'
+import type { Failure, MetricName, Session, Snapshot, SortName, ViewName } from '../types'
 import { gauge, percent, share, truncate } from './format'
 import type { Row, Tone } from './summary'
 import { RANGES, nextRange } from './usage'
@@ -32,11 +32,15 @@ export type DashboardProps = {
   /** Whether the usage history is read at all (the `show_usage` option). */
   isUsageShown: boolean
   warnPercent: number
+  /** What today may spend before it is flagged (the `daily_alert` option); zero leaves it out. */
+  dailyAlert: number
   refreshSeconds: number
   tab: ViewName
   /** Days of usage the Usage and Models tabs show: 7, 14 or 30. */
   range: number
   sort: SortName
+  /** What the chart of the Usage tab counts per day. */
+  metric: MetricName
   filter: string
   /** The day picked under the chart, as `YYYY-MM-DD`. */
   day: string | null
@@ -48,6 +52,7 @@ export type DashboardProps = {
   onTab: (tab: ViewName) => void
   onRange: (range: number) => void
   onSort: (sort: SortName) => void
+  onMetric: (metric: MetricName) => void
   onFilter: (text: string) => void
   onDay: (date: string) => void
   /** Moves the keyboard to the filter field. */

@@ -4,16 +4,20 @@ import {
   candidateRoots,
   date,
   fetchSnapshot,
+  parseHealth,
   parseKey,
   parseModels,
   parseTeam,
   parseUsage,
   parseUser,
+  probeEndpoints,
   resolveCredentials,
   withoutCredentials,
 } from '../hooks/litellm'
 import type { Credentials, FetchRequest, Sources } from '../hooks/litellm'
-import { BASE, HASH, KEY, NOW, keyBody, reply, router, standardRoutes } from './support'
+import type { Snapshot } from '../types'
+import type { Route } from './support'
+import { BASE, HASH, KEY, NOW, health, keyBody, reply, router, standardRoutes } from './support'
 
 const sources = (patch: Partial<Sources> = {}): Sources => ({
   url: null,
@@ -574,7 +578,7 @@ describe('fetchSnapshot', () => {
     const { http, calls } = router(standardRoutes())
 
     await fetchSnapshot(request(http, { wantRelated: false, wantUsage: false }))
-    expect(calls.map(call => call.url.replace(BASE, ''))).toEqual(['/key/info', '/v1/models'])
+    expect(calls.map(call => call.url.replace(BASE, ''))).toEqual(['/key/info', '/v1/models', '/health/readiness'])
   })
 
   test('a key without a user has no history and no user budget', async () => {
@@ -714,5 +718,202 @@ describe('fetchSnapshot', () => {
     )
 
     expect(!result.ok && result.failure.kind).toBe('auth')
+  })
+})
+
+describe('parseHealth', () => {
+  test('reads the version and the database from what the proxy says', () => {
+    expect(parseHealth({ status: 'healthy', db: 'connected', litellm_version: '1.77.0' })).toEqual({
+      version: '1.77.0',
+      db: 'connected',
+    })
+    expect(parseHealth({ db: 'Not connected' })).toEqual({ version: null, db: 'Not connected' })
+    expect(parseHealth({ version: '1.2.3' })).toEqual({ version: '1.2.3', db: null })
+  })
+
+  test('has nothing for an answer that says neither, or is not an object', () => {
+    expect(parseHealth({ status: 'healthy' })).toBeNull()
+    expect(parseHealth("I'm alive!")).toBeNull()
+    expect(parseHealth(null)).toBeNull()
+    expect(parseHealth([])).toBeNull()
+  })
+
+  test('cleans what it reads of control characters', () => {
+    expect(parseHealth({ litellm_version: '\u001b[31m1.77.0\u0007' })?.version).toBe('1.77.0')
+  })
+})
+
+describe('the proxy and the time it took', () => {
+  const read = async (routes = standardRoutes(), patch: Partial<FetchRequest> = {}) => {
+    const result = await fetchSnapshot(request(router(routes).http, patch))
+
+    if (!result.ok) {
+      throw new Error(result.failure.message)
+    }
+
+    return result.snapshot
+  }
+
+  test('reads what the health endpoint says, on a slow read', async () => {
+    const snapshot = await read({ ...standardRoutes(), '/health/readiness': health('1.77.0', 'connected') })
+
+    expect(snapshot.proxy).toEqual({ version: '1.77.0', db: 'connected' })
+  })
+
+  test('asks with the key like everything else, and nowhere but the proxy', async () => {
+    const { http, calls } = router({ ...standardRoutes(), '/health/readiness': health() })
+
+    await fetchSnapshot(request(http))
+    const asked = calls.find(call => call.url.endsWith('/health/readiness'))
+
+    expect(asked?.headers.authorization).toBe(`Bearer ${KEY}`)
+    expect(asked?.url.startsWith(BASE)).toBe(true)
+  })
+
+  test('says nothing when it will not say, not even a note', async () => {
+    for (const answer of [reply(404, { detail: 'Not Found' }), reply(401, { detail: 'no' }), reply(500, 'x'), reply(200, '{"status":"healthy"}')]) {
+      const snapshot = await read({ ...standardRoutes(), '/health/readiness': answer })
+
+      expect(snapshot.proxy).toBeNull()
+      expect(snapshot.notes).toEqual([])
+    }
+  })
+
+  test('keeps what it knew between slow reads, and when the read fails', async () => {
+    const first = await read({ ...standardRoutes(), '/health/readiness': health('1.77.0') })
+    const quick = router({ ...standardRoutes(), '/health/readiness': health('9.9.9') })
+    const next = await fetchSnapshot(request(quick.http, { refreshSlow: false, previous: first }))
+    const down = await read({ ...standardRoutes(), '/health/readiness': reply(500, 'x') }, { previous: first })
+
+    expect(quick.calls.some(call => call.url.endsWith('/health/readiness'))).toBe(false)
+    expect(next.ok && next.snapshot.proxy?.version).toBe('1.77.0')
+    expect(down.proxy?.version).toBe('1.77.0')
+  })
+
+  test('takes the time /key/info took from the answer that said it', async () => {
+    const { http } = router(standardRoutes())
+    const timed = (ms: number | undefined) => async (url: string, headers: Record<string, string>) => ({ ...(await http(url, headers)), ms })
+
+    const slow = await fetchSnapshot(request(timed(142)))
+    const instant = await fetchSnapshot(request(timed(0)))
+    const unknown = await fetchSnapshot(request(timed(undefined)))
+
+    expect(slow.ok && slow.snapshot.latencyMs).toBe(142)
+    expect(instant.ok && instant.snapshot.latencyMs).toBeNull()
+    expect(unknown.ok && unknown.snapshot.latencyMs).toBeNull()
+  })
+
+  test('takes the time anew on every read', async () => {
+    const { http } = router(standardRoutes())
+    const first = await fetchSnapshot(request(async (url, headers) => ({ ...(await http(url, headers)), ms: 90 })))
+    const next = await fetchSnapshot(
+      request(http, { previous: first.ok ? first.snapshot : null, refreshSlow: false }),
+    )
+
+    expect(first.ok && first.snapshot.latencyMs).toBe(90)
+    expect(next.ok && next.snapshot.latencyMs).toBeNull()
+  })
+})
+
+describe('probeEndpoints', () => {
+  const asked = async (routes: Record<string, Route> = { ...standardRoutes(), '/health/readiness': health() }, withSnapshot = true) => {
+    const { http, calls } = router(routes)
+    const snapshot: Snapshot | null = withSnapshot ? await readSnapshot(routes) : null
+    const probes = await probeEndpoints({ credentials: credentials(), root: BASE, http, snapshot, now: NOW })
+
+    return { probes, calls }
+  }
+  const readSnapshot = async (routes: Record<string, Route>) => {
+    const result = await fetchSnapshot(request(router(routes).http))
+
+    if (!result.ok) {
+      throw new Error(result.failure.message)
+    }
+
+    return result.snapshot
+  }
+
+  test('asks every endpoint the plugin reads, and says what each answered', async () => {
+    const { probes } = await asked()
+
+    expect(probes.map(probe => [probe.path, probe.status, probe.ok, probe.detail])).toEqual([
+      ['/key/info', 200, true, 'active'],
+      ['/user/info', 200, true, 'has a budget'],
+      ['/team/info', 200, true, 'has a budget'],
+      ['/v1/models', 200, true, '3 models'],
+      ['/user/daily/activity', 200, true, '3 active days'],
+      ['/health/readiness', 200, true, 'v1.77.0 · database connected'],
+    ])
+  })
+
+  test('asks about the user and the team the last reading knew, with the key, to the root it was given', async () => {
+    const { calls } = await asked()
+
+    expect(calls.map(call => call.url.replace(BASE, '').split('?')[0])).toEqual([
+      '/key/info',
+      '/user/info',
+      '/team/info',
+      '/v1/models',
+      '/user/daily/activity',
+      '/health/readiness',
+    ])
+    expect(calls.find(call => call.url.includes('/user/info'))?.url).toContain('user_id=jane')
+    expect(calls.find(call => call.url.includes('/user/daily/activity'))?.url).toContain(`api_key=${HASH}`)
+    expect(calls.every(call => call.headers.authorization === `Bearer ${KEY}`)).toBe(true)
+  })
+
+  test('only asks what it can with nothing read before', async () => {
+    const { probes } = await asked(undefined, false)
+
+    expect(probes.map(probe => probe.path)).toEqual(['/key/info', '/v1/models', '/health/readiness'])
+  })
+
+  test('says why an endpoint did not answer, with what to make of it', async () => {
+    const { probes } = await asked({
+      ...standardRoutes(),
+      '/user/daily/activity': reply(404, { detail: 'Not Found' }),
+      '/team/info': reply(403, { detail: 'not allowed' }),
+    })
+    const byPath = Object.fromEntries(probes.map(probe => [probe.path, probe]))
+
+    expect(byPath['/user/daily/activity']).toMatchObject({ status: 404, ok: false })
+    expect(byPath['/user/daily/activity']?.detail).toBe('Not Found · the usage history is a beta endpoint, missing from some LiteLLM versions')
+    expect(byPath['/team/info']?.detail).toBe('not allowed · the team budget is optional: turn show_related off to stop asking')
+    expect(byPath['/health/readiness']?.ok).toBe(false)
+  })
+
+  test('leaves the hint out of a server error, which is not the endpoint\'s fault', async () => {
+    const { probes } = await asked({ ...standardRoutes(), '/v1/models': reply(502, 'bad gateway') })
+
+    expect(probes.find(probe => probe.path === '/v1/models')?.detail).toBe('bad gateway')
+  })
+
+  test('turns a connection that fails into a row, in plain words', async () => {
+    const down = async (url: string): Promise<never> => {
+      throw new Error(`connect ECONNREFUSED ${url}`)
+    }
+    const probes = await probeEndpoints({ credentials: credentials(), root: BASE, http: down, snapshot: null, now: NOW })
+
+    expect(probes.every(probe => probe.status === null && !probe.ok)).toBe(true)
+    expect(probes[0]?.detail).toBe('connection refused')
+  })
+
+  test('says how long each answer took, when it was timed', async () => {
+    const { http } = router({ ...standardRoutes(), '/health/readiness': health() })
+    const timed = async (url: string, headers: Record<string, string>) => ({ ...(await http(url, headers)), ms: url.endsWith('/key/info') ? 141.6 : 0 })
+    const probes = await probeEndpoints({ credentials: credentials(), root: BASE, http: timed, snapshot: null, now: NOW })
+
+    expect(probes[0]?.ms).toBe(142)
+    expect(probes[1]?.ms).toBeNull()
+  })
+
+  test('never lets the key into what it says', async () => {
+    const { probes } = await asked({
+      ...standardRoutes(),
+      '/v1/models': reply(401, { error: { message: `bad key ${KEY}`, type: 'auth_error', param: 'None', code: '401' } }),
+    })
+
+    expect(JSON.stringify(probes)).not.toContain(KEY)
+    expect(probes.find(probe => probe.path === '/v1/models')?.detail).toContain('sk-…7890')
   })
 })

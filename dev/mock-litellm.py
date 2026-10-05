@@ -10,8 +10,10 @@ Try the plugin without a real proxy:
 Scenarios: healthy, warning (default), over, expiring, blocked, nocap. Flags change one
 thing on top of a scenario: --spend, --max-budget, --expires-hours, --blocked, --delay
 (seconds before /key/info answers), --fail-after (answer 502 after that many reads),
---models (how many models the proxy lists, to try the filter) and --no-usage (answer 404
-to /user/daily/activity, as a proxy without the beta endpoint does).
+--models (how many models the proxy lists, to try the filter), --no-usage (answer 404
+to /user/daily/activity, as a proxy without the beta endpoint does), --no-health (answer
+404 to /health/readiness) and --today (how much the last day of usage, today, spent: try
+the daily alert, or a day far above the usual one).
 
 The last 30 days of usage are made up but add up: the days of the current budget window
 sum to the spend of the scenario, and the days before it to what earlier windows spent.
@@ -133,6 +135,8 @@ def daily_activity(config):
     results = []
     for index, (weight, scale) in enumerate(zip(WEIGHTS, scales)):
         spend = round(weight * scale, 4)
+        if index == len(WEIGHTS) - 1 and config.get("today") is not None:
+            spend = round(config["today"], 4)
         if spend == 0:
             continue
         back = len(WEIGHTS) - 1 - index
@@ -162,7 +166,11 @@ def daily_activity(config):
     return {"results": results, "metadata": {"total_spend": sum(r["metrics"]["spend"] for r in results)}}
 
 
-def handler(config, delay, fail_after, model_count, has_usage):
+def health():
+    return {"status": "healthy", "db": "connected", "cache": None, "litellm_version": "1.77.0", "success_callbacks": []}
+
+
+def handler(config, delay, fail_after, model_count, has_usage, has_health):
     reads = {"key": 0}
 
     class Handler(BaseHTTPRequestHandler):
@@ -207,6 +215,8 @@ def handler(config, delay, fail_after, model_count, has_usage):
             }
             if has_usage:
                 routes["/user/daily/activity"] = lambda: daily_activity(config)
+            if has_health:
+                routes["/health/readiness"] = health
             if path in routes:
                 return self.reply(200, routes[path]())
             return self.reply(404, {"detail": "Not Found"})
@@ -230,6 +240,8 @@ if __name__ == "__main__":
     parser.add_argument("--fail-after", type=int)
     parser.add_argument("--models", type=int, default=len(CORE_MODELS), help="how many models /v1/models lists")
     parser.add_argument("--no-usage", action="store_true", help="answer 404 to /user/daily/activity")
+    parser.add_argument("--no-health", action="store_true", help="answer 404 to /health/readiness")
+    parser.add_argument("--today", type=float, help="what the last day of usage (today) spent")
     args = parser.parse_args()
 
     config = {"max_budget": 50.0, "expires_hours": 960.0, "blocked": False, **SCENARIOS[args.scenario]}
@@ -241,7 +253,10 @@ if __name__ == "__main__":
         config["expires_hours"] = args.expires_hours
     if args.blocked:
         config["blocked"] = True
+    if args.today is not None:
+        config["today"] = args.today
     print(f"mock LiteLLM ({args.scenario}) on http://127.0.0.1:{args.port}  key: {KEY}", flush=True)
     ThreadingHTTPServer(
-        ("127.0.0.1", args.port), handler(config, args.delay, args.fail_after, args.models, not args.no_usage)
+        ("127.0.0.1", args.port),
+        handler(config, args.delay, args.fail_after, args.models, not args.no_usage, not args.no_health),
     ).serve_forever()

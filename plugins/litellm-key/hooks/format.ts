@@ -275,6 +275,15 @@ export const change = (current: number, previous: number): Change | null => {
   return { pct: Math.abs(pct), direction: pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat' }
 }
 
+/** How many times one amount is another, to a tenth under ten: "0.4×", "4.7×", "12×". */
+export const times = (ratio: number): string => {
+  if (!Number.isFinite(ratio)) {
+    return '—'
+  }
+
+  return `${ratio >= 10 ? Math.round(ratio) : ratio.toFixed(1).replace(/\.0$/, '')}×`
+}
+
 export const maskKey = (key: string): string => {
   const trimmed = key.trim()
 

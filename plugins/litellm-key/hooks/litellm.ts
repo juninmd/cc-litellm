@@ -7,6 +7,7 @@ import type {
   KeyStatus,
   Limits,
   ModelBudget,
+  ProxyInfo,
   Related,
   Snapshot,
   Usage,
@@ -15,7 +16,8 @@ import type {
 import { clean, maskKey, redact, truncate, utcDay } from './format'
 import { USAGE_DAYS } from './usage'
 
-export type Reply = { status: number; text: string }
+/** What the proxy answered, and how long it took when the caller timed it. */
+export type Reply = { status: number; text: string; ms?: number }
 export type Http = (url: string, headers: Record<string, string>) => Promise<Reply>
 
 export type EnvName =
@@ -495,6 +497,17 @@ export const parseTeam = (body: unknown): Related | null => {
   return budget.limit === null ? null : { id, label: str(info.team_alias) ?? id, budget }
 }
 
+/** What `/health/readiness` says of the proxy: its version and how it stands with its database. */
+export const parseHealth = (body: unknown): ProxyInfo | null => {
+  if (!isObject(body)) {
+    return null
+  }
+  const version = str(body.litellm_version) ?? str(body.version)
+  const db = str(body.db)
+
+  return version === null && db === null ? null : { version, db }
+}
+
 export const parseModels = (body: unknown): string[] | null => {
   if (!isObject(body) || !Array.isArray(body.data)) {
     return null
@@ -581,6 +594,22 @@ const describeError = (error: unknown, key: string): string => {
   return known ? known[1] : truncate(redact(bare, [key]), 160)
 }
 
+/** The days of history to ask for, oldest first and today last, as the proxy counts them (UTC). */
+const usageDays = (now: number): string[] =>
+  Array.from({ length: USAGE_DAYS }, (_, at) => utcDay(now, USAGE_DAYS - 1 - at))
+
+/** The query for the daily activity of the key (by its hash), or of its user when the proxy did not give the hash. */
+const usageQueryOf = (key: Pick<KeyInfo, 'userId' | 'keyHash'>, days: readonly string[]): string =>
+  [
+    `start_date=${days[0] ?? ''}`,
+    `end_date=${days[days.length - 1] ?? ''}`,
+    `user_id=${encodeURIComponent(key.userId ?? '')}`,
+    key.keyHash ? `api_key=${key.keyHash}` : '',
+    'page_size=1000',
+  ]
+    .filter(Boolean)
+    .join('&')
+
 export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => {
   const { credentials, http, now, pinnedRoot } = request
   const { key, headers } = credentials
@@ -590,7 +619,7 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
       ? [pinnedRoot, ...credentials.roots.filter(root => root !== pinnedRoot)]
       : credentials.roots
   const mismatches: Failure[] = []
-  let found: { root: string; body: Json; info: Json } | null = null
+  let found: { root: string; body: Json; info: Json; ms: number | null } | null = null
   let rejected: Failure | null = null
 
   for (const root of roots) {
@@ -609,7 +638,8 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
     const json = parse(reply.text)
 
     if (reply.status === 200 && isObject(json) && isObject(json.info)) {
-      found = { root, body: json, info: json.info }
+      // A reading that took no time at all is a clock that did not move, not a proxy that answered at once.
+      found = { root, body: json, info: json.info, ms: reply.ms !== undefined && reply.ms > 0 ? reply.ms : null }
       break
     }
     if (looksLikeLiteLLM(reply.status, json)) {
@@ -643,7 +673,7 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
         failure('network', 'No LiteLLM endpoint answered.', now),
     }
   }
-  const { root, body, info } = found
+  const { root, body, info, ms } = found
   const keyInfo = parseKey(body, info, now)
   const get = async (path: string): Promise<unknown> => {
     const reply = await http(`${root}${path}`, headers)
@@ -664,20 +694,19 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
       return undefined
     }
   }
-  const days = Array.from({ length: USAGE_DAYS }, (_, at) => utcDay(now, USAGE_DAYS - 1 - at))
-  const [first = '', last = ''] = [days[0], days[USAGE_DAYS - 1]]
-  const usageQuery = [
-    `start_date=${first}`,
-    `end_date=${last}`,
-    `user_id=${encodeURIComponent(keyInfo.userId ?? '')}`,
-    keyInfo.keyHash ? `api_key=${keyInfo.keyHash}` : '',
-    'page_size=1000',
-  ]
-    .filter(Boolean)
-    .join('&')
+  // What the proxy says of itself is a courtesy: when it will not say, nothing is worth a note.
+  const quiet = async <T>(run: () => Promise<T>): Promise<T | undefined> => {
+    try {
+      return await run()
+    } catch {
+      return undefined
+    }
+  }
+  const days = usageDays(now)
+  const usageQuery = usageQueryOf(keyInfo, days)
   const { previous, refreshSlow, wantRelated } = request
   const wantUsage = request.wantUsage && keyInfo.userId !== null
-  const [user, team, models, usage] = await Promise.all([
+  const [user, team, models, usage, proxy] = await Promise.all([
     wantRelated && keyInfo.userId
       ? attempt('user budget', async () => parseUser(await get(`/user/info?user_id=${encodeURIComponent(keyInfo.userId ?? '')}`)))
       : Promise.resolve(null),
@@ -692,6 +721,9 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
       : refreshSlow
         ? attempt('usage history', async () => parseUsage(await get(`/user/daily/activity?${usageQuery}`), days))
         : Promise.resolve(previous?.usage ?? null),
+    refreshSlow
+      ? quiet(async () => parseHealth(await get('/health/readiness')))
+      : Promise.resolve(previous?.proxy ?? null),
   ])
 
   const kept = <T>(read: T | undefined, before: T | null | undefined): T | null =>
@@ -712,7 +744,125 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
       team: kept(team, previous?.team?.id === keyInfo.teamId ? previous?.team : null),
       models: kept(models, previous?.models),
       usage: kept(usage, previous?.usage),
+      proxy: kept(proxy, previous?.proxy),
+      latencyMs: ms,
       notes,
     }),
   }
+}
+
+/** One endpoint asked on purpose, to say which of the plugin's reads work and how fast. */
+export type Probe = {
+  path: string
+  /** Null when no answer came: the connection failed or timed out. */
+  status: number | null
+  ms: number | null
+  ok: boolean
+  /** What came back, in a few words: a count, a version, or why it did not. */
+  detail: string
+}
+
+export type ProbeRequest = {
+  credentials: Credentials
+  /** The proxy root that answers. */
+  root: string
+  /** Times each answer (`ms`) and gives up on one that never comes. */
+  http: Http
+  /** What was read last: it names the user and the team to ask about. */
+  snapshot: Snapshot | null
+  now: number
+}
+
+const PROBE_HINTS: Record<string, string> = {
+  '/user/daily/activity': 'the usage history is a beta endpoint, missing from some LiteLLM versions',
+  '/user/info': 'the user budget is optional: turn show_related off to stop asking',
+  '/team/info': 'the team budget is optional: turn show_related off to stop asking',
+  '/health/readiness': 'optional: only the version and database state of the proxy',
+  '/v1/models': 'the model list is optional: the key still works without it',
+}
+
+type Target = { path: string; query?: string; sum: (json: unknown) => string }
+
+/**
+ * Asks each endpoint the plugin reads, once and in parallel, for a status, a time and a word on what came back. Never
+ * throws: a failure is a row. Only what the last reading already knows (the user, the team) can be asked about.
+ */
+export const probeEndpoints = async (request: ProbeRequest): Promise<Probe[]> => {
+  const { credentials, root, http, snapshot, now } = request
+  const { key, headers } = credentials
+  const userId = snapshot?.key.userId ?? null
+  const teamId = snapshot?.key.teamId ?? null
+  const targets: Target[] = [
+    { path: '/key/info', sum: json => (isObject(json) && isObject(json.info) ? (str(json.info.status) ?? 'ok') : 'ok') },
+    ...(userId === null
+      ? []
+      : [
+          {
+            path: '/user/info',
+            query: `user_id=${encodeURIComponent(userId)}`,
+            sum: (json: unknown) => (parseUser(json) ? 'has a budget' : 'no budget cap'),
+          },
+        ]),
+    ...(teamId === null
+      ? []
+      : [
+          {
+            path: '/team/info',
+            query: `team_id=${encodeURIComponent(teamId)}&key_limit=1`,
+            sum: (json: unknown) => (parseTeam(json) ? 'has a budget' : 'no budget cap'),
+          },
+        ]),
+    { path: '/v1/models', sum: json => `${parseModels(json)?.length ?? 0} models` },
+    ...(snapshot === null || userId === null
+      ? []
+      : [
+          {
+            path: '/user/daily/activity',
+            query: usageQueryOf(snapshot.key, usageDays(now)),
+            sum: (json: unknown) => {
+              const used = parseUsage(json, usageDays(now))?.days.filter(day => day.requests > 0 || day.spend > 0)
+
+              return used === undefined ? 'unreadable' : `${used.length} active days`
+            },
+          },
+        ]),
+    {
+      path: '/health/readiness',
+      sum: json => {
+        const info = parseHealth(json)
+
+        return info === null
+          ? 'no version'
+          : [info.version ? `v${info.version}` : null, info.db ? `database ${info.db.toLowerCase()}` : null].filter(Boolean).join(' · ')
+      },
+    },
+  ]
+
+  return Promise.all(
+    targets.map(async (target): Promise<Probe> => {
+      const url = `${root}${target.path}${target.query ? `?${target.query}` : ''}`
+
+      try {
+        const reply = await http(url, headers)
+        const json = parse(reply.text)
+        const ms = reply.ms !== undefined && reply.ms > 0 ? Math.round(reply.ms) : null
+
+        if (reply.status === 200) {
+          return { path: target.path, status: 200, ms, ok: true, detail: target.sum(json) }
+        }
+        const why = truncate(redact(messageOf(json, reply.text).replace(/\s+/g, ' '), [key]), 60)
+        const hint = PROBE_HINTS[target.path]
+
+        return {
+          path: target.path,
+          status: reply.status,
+          ms,
+          ok: false,
+          detail: hint !== undefined && reply.status < 500 ? `${why} · ${hint}` : why,
+        }
+      } catch (error) {
+        return { path: target.path, status: null, ms: null, ok: false, detail: describeError(error, key) }
+      }
+    }),
+  )
 }

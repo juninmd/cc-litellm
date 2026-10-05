@@ -1,10 +1,16 @@
-import type { Usage, UsageDay, UsageModel } from '../types'
+import type { MetricName, Usage, UsageDay, UsageModel } from '../types'
 import type { Change } from './format'
-import { change } from './format'
+import { change, isoDay } from './format'
 
 /** How many days of history the proxy is asked for; the pane shows the last 7, 14 or all 30 of them. */
 export const USAGE_DAYS = 30
 export const RANGES: readonly number[] = [7, 14, 30]
+/** Ranges that can be set against the same number of days before them: the history holds 30, and today is left out. */
+export const COMPARABLE: readonly number[] = [7, 14]
+export const METRICS: readonly MetricName[] = ['spend', 'requests', 'tokens']
+// A day is a spike once it passes this many times the usual day, and by enough money for that to mean something.
+const SPIKE_TIMES = 3
+const SPIKE_MIN_EXTRA = 1
 
 export type UsageTotals = {
   days: UsageDay[]
@@ -32,6 +38,28 @@ const sum = (days: readonly UsageDay[], pick: (day: UsageDay) => number): number
 
 /** Alphabetical order, for a sort that needs a name to break a tie. */
 export const byName = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
+
+/** The next metric after `metric` in spend, requests, tokens and back to spend. */
+export const nextMetric = (metric: MetricName): MetricName => {
+  const at = METRICS.indexOf(metric)
+
+  return METRICS[(at + 1) % METRICS.length] ?? 'spend'
+}
+
+/** What a day counts for a metric: the number the chart draws a bar for. */
+export const metricOf = (day: UsageDay, metric: MetricName): number =>
+  metric === 'requests' ? day.requests : metric === 'tokens' ? day.tokens : day.spend
+
+/** The day still going: the last of the history, when it is the day `now` falls on (UTC, as the proxy counts). */
+export const todayOf = (usage: Usage | null, now: number): UsageDay | null => {
+  const last = usage?.days[usage.days.length - 1]
+
+  return last !== undefined && last.date === isoDay(now) ? last : null
+}
+
+/** Whether a day's spend is far above the usual one. A cent against a tenth of a cent is no spike. */
+export const isSpike = (spend: number, usual: number): boolean =>
+  usual > 0 && spend >= usual * SPIKE_TIMES && spend - usual >= SPIKE_MIN_EXTRA
 
 /** The next range after `range` in 7, 14, 30 and back to 7; a range nobody knows starts over at 7. */
 export const nextRange = (range: number): number => {
@@ -94,6 +122,63 @@ export const usageTrend = (usage: Usage, count: number): Trend | null => {
   const moved = change(current, previous)
 
   return moved === null ? null : { current, previous, change: moved }
+}
+
+/** How one model moved between two stretches of days. */
+export type Mover = {
+  model: string
+  current: number
+  previous: number
+  /** How far it moved; null when it spent nothing before (it is new) or nothing now (it is gone). */
+  change: Change | null
+  isNew: boolean
+  isGone: boolean
+}
+
+export type Comparison = {
+  count: number
+  current: UsageTotals
+  previous: UsageTotals
+  /** Every model that spent in either stretch, the one that moved most (in money) first. */
+  movers: Mover[]
+}
+
+/**
+ * The `count` full days up to yesterday set against the `count` before them, as a whole and model by model: what changed,
+ * and who changed it. Null when the history is too short for both stretches or the earlier one spent nothing.
+ */
+export const usageCompare = (usage: Usage, count: number): Comparison | null => {
+  const done = usage.days.slice(0, -1)
+
+  if (done.length < count * 2) {
+    return null
+  }
+  const current = usageOver({ days: done.slice(-count) }, count)
+  const previous = usageOver({ days: done.slice(-count * 2, -count) }, count)
+
+  if (!(previous.spend > 0)) {
+    return null
+  }
+  const then = new Map(previous.models.map(item => [item.model, item.spend]))
+  const now = new Map(current.models.map(item => [item.model, item.spend]))
+  const movers = [...new Set([...then.keys(), ...now.keys()])]
+    .map(model => {
+      const after = now.get(model) ?? 0
+      const before = then.get(model) ?? 0
+
+      return {
+        model,
+        current: after,
+        previous: before,
+        change: change(after, before),
+        isNew: before <= 0 && after > 0,
+        isGone: after <= 0 && before > 0,
+      }
+    })
+    .filter(item => item.current > 0 || item.previous > 0)
+    .sort((a, b) => Math.abs(b.current - b.previous) - Math.abs(a.current - a.previous) || byName(a.model, b.model))
+
+  return { count, current, previous, movers }
 }
 
 /**

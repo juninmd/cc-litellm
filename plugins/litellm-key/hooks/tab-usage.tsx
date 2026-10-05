@@ -1,17 +1,39 @@
 import type { RenderElement } from 'claude-code'
 
-import type { Snapshot } from '../types'
+import type { MetricName, Snapshot } from '../types'
 import { plot } from './chart'
 import { money, plural, sparkline, truncate } from './format'
 import type { DashboardProps, Layout, Ui } from './parts'
 import { factRows, heading, noteLines, rangeSelector, shareText } from './parts'
 import { dayDetail, usageCsv, usageFacts } from './summary'
-import { usageOver } from './usage'
+import type { Mover } from './usage'
+import { COMPARABLE, metricOf, nextMetric, usageCompare, usageOver } from './usage'
 
 const CHART_ROWS = 6
 const COMPACT_CHART_ROWS = 4
 // Models listed under the chart before the rest are left to the Models tab.
 const TOP_MODELS = 6
+// Body columns from which the heading of the models has room to say what the arrows measure.
+const ARROWS_NOTE_MIN = 70
+
+const TITLES: Record<MetricName, string> = {
+  spend: 'Spend per day',
+  requests: 'Requests per day',
+  tokens: 'Tokens per day',
+}
+
+/** What a model did against the days before, to sit after its spend: an arrow and a percentage, or "new". */
+const moverText = (mover: Mover | undefined): string => {
+  if (mover === undefined) {
+    return ''
+  }
+  if (mover.isNew) {
+    return ' new'
+  }
+  const moved = mover.change
+
+  return moved === null || moved.direction === 'flat' ? '' : ` ${moved.direction === 'up' ? '▲' : '▼'} ${moved.pct}%`
+}
 
 /** Why there is no history to draw, in the words of the one thing that can be done about it. */
 const noHistory = (snapshot: Snapshot, props: DashboardProps): string =>
@@ -98,7 +120,10 @@ export const usageTab = (ui: Ui, props: DashboardProps, snapshot: Snapshot, layo
     )
   }
   const totals = usageOver(usage, props.range)
-  const drawn = plot(totals.days, columns, isCompact ? COMPACT_CHART_ROWS : CHART_ROWS)
+  const drawn = plot(totals.days, columns, isCompact ? COMPACT_CHART_ROWS : CHART_ROWS, props.metric)
+  // Only a stretch the history can be set against the one before it says which models moved.
+  const diff = COMPARABLE.includes(props.range) ? usageCompare(usage, props.range) : null
+  const movers = new Map((diff?.movers ?? []).map(item => [item.model, item]))
   // A day picked while another range was showing may lie outside this one.
   const picked =
     props.day !== null && totals.days.some(item => item.date === props.day) ? dayDetail(snapshot, props.day) : null
@@ -106,16 +131,25 @@ export const usageTab = (ui: Ui, props: DashboardProps, snapshot: Snapshot, layo
   const labelWidth = Math.max(8, ...rows.map(row => row.label.length))
   const longest = Math.max(1, ...totals.models.map(item => item.model.length))
   const nameWidth = Math.min(26, longest, Math.max(10, Math.floor(columns * 0.3)))
-  const barWidth = Math.max(6, Math.min(24, columns - nameWidth - 2 - 7 - 22))
+  const barWidth = Math.max(6, Math.min(24, columns - nameWidth - 2 - 7 - 26))
 
   return (
     <Box flexDirection="column">
       <Box justifyContent="space-between" flexWrap="wrap" columnGap={2}>
         <Text bold>
-          Spend per day <Text dimColor>(UTC)</Text>
+          {TITLES[props.metric]} <Text dimColor>(UTC)</Text>
         </Text>
         <Box gap={2}>
           {rangeSelector(ui, props)}
+          <Button
+            key="metric"
+            label={`chart: ${props.metric}`}
+            hotkey="m"
+            plain
+            onPress={() => {
+              props.onMetric(nextMetric(props.metric))
+            }}
+          />
           <Button
             key="csv"
             label="CSV"
@@ -131,7 +165,7 @@ export const usageTab = (ui: Ui, props: DashboardProps, snapshot: Snapshot, layo
         {drawn ? (
           bars(ui, drawn, props)
         ) : (
-          <Text color="suggestion">{sparkline(totals.days.map(day => day.spend))}</Text>
+          <Text color="suggestion">{sparkline(totals.days.map(day => metricOf(day, props.metric)))}</Text>
         )}
       </Box>
       {drawn?.days && (
@@ -161,7 +195,11 @@ export const usageTab = (ui: Ui, props: DashboardProps, snapshot: Snapshot, layo
       </Box>
       {totals.models.length > 0 && (
         <Box flexDirection="column" marginTop={1}>
-          {heading(ui, `By model, last ${props.range} days`, columns)}
+          {heading(
+            ui,
+            `By model, last ${props.range} days${diff !== null && columns >= ARROWS_NOTE_MIN ? ` · ▲▼ vs the ${props.range} before` : ''}`,
+            columns,
+          )}
           {totals.models.slice(0, TOP_MODELS).map(item => (
             <Box>
               <Box width={nameWidth + 2} flexShrink={0}>
@@ -172,7 +210,7 @@ export const usageTab = (ui: Ui, props: DashboardProps, snapshot: Snapshot, layo
               </Box>
               <Box flexShrink={1}>
                 <Text dimColor wrap="truncate-end">
-                  {money(item.spend)} · {plural(item.requests, 'request')}
+                  {`${money(item.spend)}${moverText(movers.get(item.model))} · ${plural(item.requests, 'request')}`}
                 </Text>
               </Box>
             </Box>
