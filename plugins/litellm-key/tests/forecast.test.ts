@@ -1,0 +1,142 @@
+import { describe, expect, test } from 'claude-code/testing'
+
+import type { Budget } from '../types'
+import { advanceSession, beginSession, forecast, parseDuration } from '../hooks/forecast'
+import { NOW, near } from './support'
+
+const DAY = 86_400_000
+
+const budget = (extra: Partial<Budget> = {}): Budget => ({
+  spend: 21,
+  limit: 50,
+  softLimit: null,
+  duration: '30d',
+  resetAt: NOW + 9 * DAY,
+  ...extra,
+})
+
+describe('parseDuration', () => {
+  test('reads the periods LiteLLM writes', () => {
+    expect(parseDuration('30s')).toBe(30_000)
+    expect(parseDuration('45m')).toBe(2_700_000)
+    expect(parseDuration('24h')).toBe(DAY)
+    expect(parseDuration('30d')).toBe(30 * DAY)
+    expect(parseDuration('1w')).toBe(7 * DAY)
+    expect(parseDuration('1mo')).toBe(30 * DAY)
+  })
+
+  test('tells a month from a minute, ignores case and padding, and takes fractions', () => {
+    expect(parseDuration('2MO')).toBe(60 * DAY)
+    expect(parseDuration('2m')).toBe(120_000)
+    expect(parseDuration(' 2d ')).toBe(2 * DAY)
+    expect(parseDuration('1.5h')).toBe(5_400_000)
+  })
+
+  test('says nothing about what it does not know', () => {
+    for (const text of ['', 'soon', '10', '5y', '0d', '-3d', 'd', null, undefined]) {
+      expect(parseDuration(text)).toBeNull()
+    }
+  })
+})
+
+describe('forecast', () => {
+  test('projects a window from what it has spent so far', () => {
+    const pace = forecast(budget(), NOW)
+
+    // 21 of 30 days gone, $21 spent: $1 a day, $30 by the reset, the cap is nowhere near.
+    expect(pace?.basis).toBe('window')
+    near(pace?.perDay, 1)
+    near(pace?.projected, 30)
+    expect(pace?.projectedPct).toBe(60)
+    expect(pace?.beforeReset).toBe(false)
+    near(pace?.emptyAt, NOW + 29 * DAY, 500)
+  })
+
+  test('says when the cap is reached ahead of the reset', () => {
+    const pace = forecast(budget({ spend: 42 }), NOW)
+
+    near(pace?.perDay, 2)
+    expect(pace?.projectedPct).toBe(120)
+    expect(pace?.beforeReset).toBe(true)
+    near(pace?.emptyAt, NOW + 4 * DAY, 500)
+  })
+
+  test('is empty already once the cap is passed', () => {
+    const pace = forecast(budget({ spend: 55 }), NOW)
+
+    expect(pace?.emptyAt).toBe(NOW)
+    expect(pace?.beforeReset).toBe(true)
+  })
+
+  test('works on short windows too', () => {
+    const pace = forecast(budget({ spend: 4, limit: 5, duration: '1h', resetAt: NOW + 30 * 60_000 }), NOW)
+
+    expect(pace?.projectedPct).toBe(160)
+    expect(pace?.beforeReset).toBe(true)
+    near(pace?.emptyAt, NOW + 7.5 * 60_000, 500)
+  })
+
+  test('waits for the window to have some history before it trusts a rate', () => {
+    const early = budget({ resetAt: NOW + 29 * DAY })
+
+    expect(forecast(early, NOW)).toBeNull()
+    expect(forecast(budget({ duration: '1h', resetAt: NOW + 55 * 60_000 }), NOW)).toBeNull()
+  })
+
+  test('falls back to the recent daily spend when the window cannot say', () => {
+    const early = forecast(budget({ resetAt: NOW + 29 * DAY }), NOW, 2)
+    const open = forecast(budget({ duration: null, resetAt: null, spend: 10 }), NOW, 4)
+
+    // $29 left at $2 a day: 14.5 days, which is before a reset 29 days off.
+    expect(early?.basis).toBe('recent')
+    expect(early?.perDay).toBe(2)
+    expect(early?.projected).toBeNull()
+    expect(early?.beforeReset).toBe(true)
+    near(early?.emptyAt, NOW + 14.5 * DAY, 500)
+    // No reset to be before: it only says when.
+    expect(open?.beforeReset).toBe(false)
+    near(open?.emptyAt, NOW + 10 * DAY, 500)
+  })
+
+  test('ignores a reset that is already past and a period it cannot read', () => {
+    expect(forecast(budget({ resetAt: NOW - 1000 }), NOW)).toBeNull()
+    expect(forecast(budget({ duration: 'weekly' }), NOW)).toBeNull()
+    expect(forecast(budget({ resetAt: NOW - 1000 }), NOW, 3)?.basis).toBe('recent')
+  })
+
+  test('has nothing to say about numbers that are not numbers', () => {
+    expect(forecast(budget({ spend: Number.POSITIVE_INFINITY }), NOW, 2)).toBeNull()
+    expect(forecast(budget({ spend: Number.NaN }), NOW, 2)).toBeNull()
+    expect(forecast(budget({ limit: Number.POSITIVE_INFINITY }), NOW, 2)).toBeNull()
+    expect(forecast(budget({ limit: Number.NaN }), NOW, 2)).toBeNull()
+  })
+
+  test('has nothing to say without a cap, a spend or a rate', () => {
+    expect(forecast(budget({ limit: null }), NOW, 2)).toBeNull()
+    expect(forecast(budget({ limit: 0 }), NOW, 2)).toBeNull()
+    expect(forecast(budget({ spend: 0 }), NOW, 2)).toBeNull()
+    expect(forecast(budget({ duration: null, resetAt: null }), NOW)).toBeNull()
+    expect(forecast(budget({ duration: null, resetAt: null }), NOW, 0)).toBeNull()
+  })
+})
+
+describe('session', () => {
+  test('starts at nothing, counting from the first reading', () => {
+    expect(beginSession(NOW, 12.5)).toEqual({ since: NOW, spend: 0, last: 12.5 })
+  })
+
+  test('adds what each new reading shows', () => {
+    const first = beginSession(NOW, 12.5)
+    const next = advanceSession(first, 13.25)
+
+    expect(next).toEqual({ since: NOW, spend: 0.75, last: 13.25 })
+    expect(advanceSession(next, 13.25)).toEqual(next)
+    near(advanceSession(next, 14.25).spend, 1.75)
+  })
+
+  test('counts all of a reading that fell below the last one: the budget reset in between', () => {
+    const before = { since: NOW, spend: 3, last: 49 }
+
+    expect(advanceSession(before, 1.5)).toEqual({ since: NOW, spend: 4.5, last: 1.5 })
+  })
+})

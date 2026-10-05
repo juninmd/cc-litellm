@@ -1,5 +1,25 @@
-import type { Budget, Failure, Snapshot } from '../types'
-import { clock, compact, money, percent, plural, sparkline, truncate, until } from './format'
+import type { Budget, Failure, ModelBudget, Session, Snapshot, SortName } from '../types'
+import type { Forecast } from './forecast'
+import { forecast, parseDuration } from './forecast'
+import {
+  ago,
+  clock,
+  compact,
+  count,
+  isoDay,
+  miniBar,
+  money,
+  percent,
+  plural,
+  shortDate,
+  span,
+  sparkline,
+  truncate,
+  until,
+  weekday,
+} from './format'
+import { byName, recentDaily, usageOver, usageTrend } from './usage'
+import type { UsageTotals } from './usage'
 
 export type Tone = 'ok' | 'warn' | 'error'
 export type Meter = {
@@ -10,10 +30,44 @@ export type Meter = {
   /** The same reading cut to one short line: the amounts and the reset, no percentage, no "left" or "over", no period. */
   brief: string
   tone: Tone
+  /** Where the spend is heading, for the budgets that have a reset to be measured against. */
+  forecast: Forecast | null
 }
 export type Row = { label: string; text: string; tone: Tone }
+export type Alert = { tone: 'warn' | 'error'; text: string }
+export type Detail = { title: string; rows: Row[] }
+
+export type StatusOptions = {
+  /** Draw a small meter in front of the percentage. */
+  bar?: boolean
+  /** Say when the budget runs out if the pace holds, while that is before it resets. */
+  forecast?: boolean
+}
+
+export type ModelRow = {
+  model: string
+  spend: number
+  requests: number
+  tokens: number
+  /** Share of the range's spend; null while nothing was spent in it. */
+  share: number | null
+  /** A cap for this model on the key, when it has one. */
+  budget: ModelBudget | null
+}
+
+export type ModelList = {
+  rows: ModelRow[]
+  /** How many models there are before the filter is applied. */
+  total: number
+  /** The key may call every model the proxy serves, and the proxy did not list them. */
+  isOpen: boolean
+  /** Whether the usage history says anything about the models. */
+  hasUsage: boolean
+}
 
 const SOON_MS = 3 * 86_400_000
+const STATUS_BAR_CELLS = 6
+const RECENT_NOTE = 'at the recent daily average'
 
 const toneOf = (pct: number | null, warnPercent: number): Tone =>
   pct === null ? 'ok' : pct >= 100 ? 'error' : pct >= warnPercent ? 'warn' : 'ok'
@@ -55,8 +109,21 @@ export const budgetBrief = (budget: Budget, now: number): string =>
     .filter(Boolean)
     .join(' · ')
 
-export const meters = (snapshot: Snapshot, now: number, warnPercent: number): Meter[] => {
+const isOver = (budget: Budget): boolean => budget.limit !== null && budget.spend >= budget.limit
+
+/**
+ * Where the key's own budget is heading. What the key spent lately only stands in for the pace of the window when the
+ * history is the key's (it has a hash), not every key of the user.
+ */
+export const keyPace = (snapshot: Snapshot, now: number): Forecast | null => {
+  const { key, usage } = snapshot
+
+  return forecast(key.budget, now, usage !== null && key.keyHash !== null ? recentDaily(usage) : null)
+}
+
+export const meters = (snapshot: Snapshot, now: number, warnPercent: number, isForecast = true): Meter[] => {
   const { key, team, user } = snapshot
+  const ownPace = isForecast ? keyPace(snapshot, now) : null
   const list: Meter[] = [
     {
       label: 'Budget',
@@ -65,13 +132,17 @@ export const meters = (snapshot: Snapshot, now: number, warnPercent: number): Me
       text: budgetText(key.budget, now),
       brief: budgetBrief(key.budget, now),
       tone: toneOf(percent(key.budget.spend, key.budget.limit), warnPercent),
+      forecast: ownPace,
     },
   ]
 
   for (const window of key.windows) {
     const spend = window.spend ?? 0
     const reset = window.resetAt === null ? null : until(window.resetAt, now)
-    const text = [`${window.spend === null ? '?' : money(spend)} / ${money(window.limit)}`, reset ? `resets ${reset}` : null]
+    const text = [
+      `${window.spend === null ? '?' : money(spend)} / ${money(window.limit)}`,
+      reset ? `resets ${reset}` : null,
+    ]
       .filter(Boolean)
       .join(' · ')
 
@@ -82,6 +153,7 @@ export const meters = (snapshot: Snapshot, now: number, warnPercent: number): Me
       text,
       brief: text,
       tone: toneOf(percent(spend, window.limit), warnPercent),
+      forecast: null,
     })
   }
   for (const item of key.modelBudgets) {
@@ -95,11 +167,17 @@ export const meters = (snapshot: Snapshot, now: number, warnPercent: number): Me
         text,
         brief: text,
         tone: toneOf(percent(item.spend, item.limit), warnPercent),
+        forecast: null,
       })
     }
   }
-  for (const [label, related] of [['Team', team], ['User', user]] as const) {
+  for (const [label, related] of [
+    ['Team', team],
+    ['User', user],
+  ] as const) {
     if (related) {
+      const ahead = isForecast ? forecast(related.budget, now) : null
+
       list.push({
         label: `${label} ${related.label}`,
         used: related.budget.spend,
@@ -107,11 +185,33 @@ export const meters = (snapshot: Snapshot, now: number, warnPercent: number): Me
         text: budgetText(related.budget, now),
         brief: budgetBrief(related.budget, now),
         tone: toneOf(percent(related.budget.spend, related.budget.limit), warnPercent),
+        forecast: ahead,
       })
     }
   }
 
   return list
+}
+
+/**
+ * How far into its period the key's budget is, as a meter to set beside the budget's own: a budget further along than
+ * the time is on course to pass its cap. Null without a cap, or without a period and a reset to measure it by.
+ */
+export const timeMeter = (snapshot: Snapshot, now: number): Meter | null => {
+  const { budget } = snapshot.key
+  const length = parseDuration(budget.duration)
+
+  if (budget.limit === null || length === null || budget.resetAt === null || budget.resetAt <= now) {
+    return null
+  }
+  const elapsed = Math.min(length, Math.max(0, now - (budget.resetAt - length)))
+  const days = Math.ceil(length / 86_400_000)
+  const today = Math.min(days, Math.floor(elapsed / 86_400_000) + 1)
+  // Whole days to count in for a period of days; a short one is told in the units it is made of.
+  const where = length >= 2 * 86_400_000 ? `day ${today} of ${days}` : `${span(elapsed)} of ${span(length)}`
+  const text = `${where} (${percent(elapsed, length)}%) · ${span(budget.resetAt - now)} left`
+
+  return { label: 'Time', used: elapsed, limit: length, text, brief: text, tone: 'ok', forecast: null }
 }
 
 const limitsText = (snapshot: Snapshot): string | null => {
@@ -145,16 +245,58 @@ const usageText = (snapshot: Snapshot): string | null => {
   if (!usage) {
     return null
   }
+  const week = usageOver(usage, 7)
 
   return [
-    sparkline(usage.days.map(day => day.spend)),
-    money(usage.spend),
-    plural(usage.requests, 'request'),
-    `${compact(usage.tokens)} tokens`,
+    sparkline(week.days.map(day => day.spend)),
+    money(week.spend),
+    plural(week.requests, 'request'),
+    `${compact(week.tokens)} tokens`,
   ].join(' · ')
 }
 
-export const facts = (snapshot: Snapshot, now: number): Row[] => {
+/** When the budget runs out at this pace, said for a line of its own; null when that is not worth a line. */
+const runsOutText = (budget: Budget, pace: Forecast, now: number): string | null => {
+  if (isOver(budget)) {
+    return null
+  }
+  const wait = `in ${span(pace.emptyAt - now)}`
+
+  if (pace.basis === 'window') {
+    return pace.beforeReset && budget.resetAt !== null
+      ? `${wait} · ${span(budget.resetAt - pace.emptyAt)} before the reset`
+      : null
+  }
+
+  return pace.beforeReset || pace.emptyAt - now < 30 * 86_400_000 ? `${wait} ${RECENT_NOTE}` : null
+}
+
+/**
+ * The models on one line: the names while there are few. With many, how many (those the proxy lists and those the
+ * history saw), and the ones that spent most lately, which say more than the first few of an alphabetical list.
+ */
+const modelsFact = (snapshot: Snapshot): string => {
+  const list = modelList(snapshot, 7, 'spend', '')
+
+  if (list.total <= 4) {
+    return `${modelsText(snapshot)}${snapshot.models ? ` (${snapshot.models.length})` : ''}`
+  }
+  const names = (rows: readonly ModelRow[]): string => rows.map(row => row.model).join(', ')
+  const top = list.rows.filter(row => row.spend > 0).slice(0, 2)
+
+  return top.length > 0
+    ? `${list.total} · most used: ${names(top)}`
+    : `${list.total} · ${names(list.rows.slice(0, 2))}, +${list.total - 2}`
+}
+
+export type Extras = {
+  /** What was spent since Claude Code started, when the readings say. */
+  session?: Session | null
+  /** Leave the pace out (the `show_forecast` option). */
+  isForecast?: boolean
+}
+
+export const facts = (snapshot: Snapshot, now: number, extras: Extras = {}): Row[] => {
   const { key } = snapshot
   const rows: Row[] = []
   const add = (label: string, text: string | null, tone: Tone = 'ok'): void => {
@@ -163,8 +305,19 @@ export const facts = (snapshot: Snapshot, now: number): Row[] => {
     }
   }
   const expires = key.expiresAt === null ? null : until(key.expiresAt, now)
+  const pace = extras.isForecast === false ? null : keyPace(snapshot, now)
 
   add('Status', key.status, key.status === 'active' ? 'ok' : 'error')
+  if (pace !== null) {
+    add(
+      'Pace',
+      pace.basis === 'window'
+        ? `${money(pace.perDay)}/day · on pace for ${money(pace.projected)} (${pace.projectedPct}%) at the reset`
+        : `${money(pace.perDay)}/day lately`,
+      (pace.projectedPct ?? 0) >= 100 ? 'warn' : 'ok',
+    )
+    add('Runs out', runsOutText(key.budget, pace, now), 'warn')
+  }
   add('Soft limit', key.budget.softLimit === null ? null : `alerts at ${money(key.budget.softLimit)}`)
   add('Limits', limitsText(snapshot))
   add(
@@ -172,11 +325,19 @@ export const facts = (snapshot: Snapshot, now: number): Row[] => {
     expires,
     key.expiresAt === null ? 'ok' : key.expiresAt < now ? 'error' : key.expiresAt - now < SOON_MS ? 'warn' : 'ok',
   )
-  add('Models', `${modelsText(snapshot)}${snapshot.models ? ` (${snapshot.models.length})` : ''}`)
+  add('Models', modelsFact(snapshot))
   if (key.lifetimeSpend !== null && key.lifetimeSpend > key.budget.spend + 0.005) {
     add('Lifetime', `${money(key.lifetimeSpend)} across budget resets`)
   }
   add('Last 7 days', usageText(snapshot))
+  if (extras.session) {
+    const { session } = extras
+
+    add(
+      'Session',
+      `${session.spend > 0 ? `+${money(session.spend)}` : 'nothing spent'} since ${clock(session.since).slice(0, 5)} (${ago(session.since, now)})`,
+    )
+  }
 
   return rows
 }
@@ -188,10 +349,51 @@ export const identity = (snapshot: Snapshot): string => {
   return key.alias ? `${name} · ${key.keyName ?? snapshot.keyHint}` : name
 }
 
-export const summaryText = (snapshot: Snapshot, now: number, warnPercent: number): string => {
+/** What needs a look right now, the worst first: a key that is not active, caps near or past, a pace that will not last. */
+export const alerts = (snapshot: Snapshot, now: number, warnPercent: number, isForecast = true): Alert[] => {
+  const { key } = snapshot
+  const errors: Alert[] = []
+  const warnings: Alert[] = []
+  const add = (tone: Alert['tone'], text: string): void => {
+    const bucket = tone === 'error' ? errors : warnings
+
+    bucket.push({ tone, text })
+  }
+
+  if (key.status !== 'active') {
+    add('error', `The key is ${key.status}`)
+  } else if (key.expiresAt !== null && key.expiresAt - now < SOON_MS) {
+    add(
+      key.expiresAt <= now ? 'error' : 'warn',
+      `The key ${key.expiresAt <= now ? 'expired' : 'expires'} ${until(key.expiresAt, now)}`,
+    )
+  }
+  for (const meter of meters(snapshot, now, warnPercent, isForecast)) {
+    const pct = percent(meter.used, meter.limit)
+    const name = meter.label === 'Budget' ? 'Key budget' : meter.label
+    const amounts = `${money(meter.used)} of ${money(meter.limit)}`
+
+    if (pct !== null && meter.tone === 'error') {
+      add('error', `${name} is over its cap: ${amounts}`)
+    } else if (pct !== null && meter.tone === 'warn') {
+      add('warn', `${name} is at ${pct}%: ${amounts}`)
+    }
+    const { forecast: pace } = meter
+
+    if (pace !== null && pace.basis === 'window' && pace.beforeReset && meter.tone !== 'error') {
+      const subject = meter.label === 'Budget' ? 'the key budget' : meter.label
+
+      add('warn', `At this pace ${subject} runs out in ${span(pace.emptyAt - now)}, before it resets`)
+    }
+  }
+
+  return [...errors, ...warnings]
+}
+
+export const summaryText = (snapshot: Snapshot, now: number, warnPercent: number, extras: Extras = {}): string => {
   const rows = [
-    ...meters(snapshot, now, warnPercent),
-    ...facts(snapshot, now),
+    ...meters(snapshot, now, warnPercent, extras.isForecast !== false),
+    ...facts(snapshot, now, extras),
     { label: 'Updated', text: `${clock(snapshot.fetchedAt)} · via ${snapshot.keySource}` },
     ...snapshot.notes.map(note => ({ label: 'Note', text: note })),
   ]
@@ -203,8 +405,7 @@ export const summaryText = (snapshot: Snapshot, now: number, warnPercent: number
   ].join('\n')
 }
 
-export const failureText = (failure: Failure): string =>
-  `${failure.message}${failure.hint ? `\n${failure.hint}` : ''}`
+export const failureText = (failure: Failure): string => `${failure.message}${failure.hint ? `\n${failure.hint}` : ''}`
 
 const shortFailure = (failure: Failure): string => {
   switch (failure.kind) {
@@ -227,7 +428,12 @@ const shortFailure = (failure: Failure): string => {
   }
 }
 
-export const statusText = (snapshot: Snapshot | null, failure: Failure | null, now: number): string | undefined => {
+export const statusText = (
+  snapshot: Snapshot | null,
+  failure: Failure | null,
+  now: number,
+  options: StatusOptions = {},
+): string | undefined => {
   if (failure?.kind === 'not-configured') {
     return undefined
   }
@@ -244,10 +450,22 @@ export const statusText = (snapshot: Snapshot | null, failure: Failure | null, n
   } else if (pct === null) {
     parts.push(`${money(key.budget.spend)} spent`, 'no cap')
   } else {
+    const pace = options.forecast ? keyPace(snapshot, now) : null
+    const runsOut =
+      pace !== null && pace.basis === 'window' && pace.beforeReset && pct < 100
+        ? `empty in ${span(pace.emptyAt - now)}`
+        : null
+
+    const meter =
+      options.bar && key.budget.limit !== null
+        ? `${miniBar(key.budget.spend / key.budget.limit, STATUS_BAR_CELLS)} `
+        : ''
+
     parts.push(
-      `${pct}% of budget`,
+      `${meter}${pct}% of budget`,
       `${money(key.budget.spend)} of ${money(key.budget.limit)}`,
       pct >= 100 ? 'over budget' : resetText(key.budget, now),
+      runsOut,
     )
   }
   if (expiresSoon && key.expiresAt !== null) {
@@ -260,5 +478,300 @@ export const statusText = (snapshot: Snapshot | null, failure: Failure | null, n
   return parts.filter(Boolean).join(' · ')
 }
 
-export const oneLine = (snapshot: Snapshot, now: number): string =>
-  statusText(snapshot, null, now) ?? 'no data'
+export const oneLine = (snapshot: Snapshot, now: number): string => statusText(snapshot, null, now) ?? 'no data'
+
+/** The models of the key and the ones it used, with what each spent over the last `range` days. */
+export const modelList = (snapshot: Snapshot, range: number, sort: SortName, filter: string): ModelList => {
+  const listed = snapshot.models ?? snapshot.key.models.filter(name => name !== 'all-proxy-models')
+  const isOpen = snapshot.key.models.length === 0 || snapshot.key.models.includes('all-proxy-models')
+  const totals = snapshot.usage ? usageOver(snapshot.usage, range) : null
+  const used = new Map((totals?.models ?? []).map(item => [item.model, item]))
+  const caps = new Map(snapshot.key.modelBudgets.map(item => [item.model, item]))
+  const names = [...new Set([...listed, ...used.keys()])]
+  const spent = totals?.spend ?? 0
+  const needle = filter.trim().toLowerCase()
+  const rows = names
+    .filter(name => needle === '' || name.toLowerCase().includes(needle))
+    .map(name => {
+      const own = used.get(name)
+
+      return {
+        model: name,
+        spend: own?.spend ?? 0,
+        requests: own?.requests ?? 0,
+        tokens: own?.tokens ?? 0,
+        share: spent > 0 && own ? own.spend / spent : spent > 0 ? 0 : null,
+        budget: caps.get(name) ?? null,
+      }
+    })
+    .sort((a, b) => (sort === 'name' ? byName(a.model, b.model) : b.spend - a.spend || byName(a.model, b.model)))
+
+  return { rows, total: names.length, isOpen, hasUsage: totals !== null }
+}
+
+const trendText = (snapshot: Snapshot, range: number): string | null => {
+  const trend = snapshot.usage ? usageTrend(snapshot.usage, range) : null
+
+  if (trend === null) {
+    return null
+  }
+  const { pct, direction } = trend.change
+
+  return direction === 'flat'
+    ? `unchanged vs the ${range} days before (full days)`
+    : `${direction === 'up' ? '▲' : '▼'} ${pct}% vs the ${range} days before (full days)`
+}
+
+/** What one request cost, with the third decimal that cents would round away. */
+const eachText = (spend: number, requests: number): string => {
+  const each = spend / requests
+
+  return each >= 1 || each < 0.001 ? money(each) : `$${each.toFixed(3)}`
+}
+
+/** The token split of a range in one line: what went in, what came out, how much of the input came from the cache. */
+export const tokensText = (totals: UsageTotals): string => {
+  const cached =
+    totals.inputTokens > 0 && totals.cacheReadTokens <= totals.inputTokens
+      ? ` (${Math.round((totals.cacheReadTokens / totals.inputTokens) * 100)}% of input)`
+      : ''
+
+  return `in ${compact(totals.inputTokens)} · out ${compact(totals.outputTokens)} · cache read ${compact(totals.cacheReadTokens)}${cached}`
+}
+
+/** The totals of a range as labeled lines: what the Usage tab shows beside its chart, and the report prints. */
+export const usageFacts = (snapshot: Snapshot, range: number): Row[] => {
+  const { usage } = snapshot
+
+  if (!usage) {
+    return []
+  }
+  const totals = usageOver(usage, range)
+  const rows: Row[] = []
+  const add = (label: string, text: string | null, tone: Tone = 'ok'): void => {
+    if (text) {
+      rows.push({ label, text, tone })
+    }
+  }
+  const trend = trendText(snapshot, range)
+
+  add('Spend', `${money(totals.spend)} · ${money(totals.average)}/day`)
+  add(
+    'Requests',
+    `${count(totals.requests)}${totals.requests > 0 ? ` · ${eachText(totals.spend, totals.requests)} each` : ''}`,
+  )
+  add(
+    'Failed',
+    totals.failed > 0
+      ? `${plural(totals.failed, 'request')} (${((totals.failed / Math.max(1, totals.requests)) * 100).toFixed(1)}%)`
+      : null,
+    'warn',
+  )
+  add('Tokens', totals.tokens > 0 ? `${compact(totals.tokens)} · ${tokensText(totals)}` : null)
+  add(
+    'Peak day',
+    totals.peak ? `${money(totals.peak.spend)} on ${weekday(totals.peak.date)} ${shortDate(totals.peak.date)}` : null,
+  )
+  add('Active days', `${totals.activeDays} of ${totals.days.length}`)
+  add('Trend', trend, trend?.startsWith('▲') ? 'warn' : 'ok')
+
+  return rows
+}
+
+export type DayDetail = {
+  /** "Sat Oct 3", with "(today)" for the day that is still going. */
+  title: string
+  /** What the day came to, in one line; "no activity" for a day that did nothing. */
+  summary: string
+  /** The models of the day, the one that spent most first, with their share of it. */
+  models: { model: string; spend: number; share: number }[]
+}
+
+/** What a single day of the history did, for the line under the chart. Null for a day the history does not have. */
+export const dayDetail = (snapshot: Snapshot, date: string): DayDetail | null => {
+  const days = snapshot.usage?.days ?? []
+  const day = days.find(item => item.date === date)
+
+  if (!day) {
+    return null
+  }
+  const isToday = days[days.length - 1]?.date === date
+  const title = `${weekday(date)} ${shortDate(date)}${isToday ? ' (today)' : ''}`
+
+  return {
+    title,
+    summary:
+      day.spend > 0 || day.requests > 0
+        ? `${money(day.spend)} · ${plural(day.requests, 'request')} · ${compact(day.tokens)} tokens`
+        : 'no activity',
+    models: [...day.models]
+      .sort((a, b) => b.spend - a.spend)
+      .map(item => ({ model: item.model, spend: item.spend, share: day.spend > 0 ? item.spend / day.spend : 0 })),
+  }
+}
+
+/** The usage report as text: one line per day and the totals, aligned in columns. */
+export const usageReport = (snapshot: Snapshot, range: number): string => {
+  const { usage } = snapshot
+
+  if (!usage) {
+    return 'No usage history: the proxy did not answer /user/daily/activity, or the key has no user.'
+  }
+  const totals = usageOver(usage, range)
+  const lines = [
+    `Usage · last ${range} days · ${snapshot.host}`,
+    `${'Date'.padEnd(8)}${'Day'.padEnd(5)}${'Spend'.padStart(10)}${'Requests'.padStart(10)}${'Tokens'.padStart(9)}`,
+    ...totals.days.map(
+      day =>
+        `${shortDate(day.date).padEnd(8)}${weekday(day.date).padEnd(5)}${money(day.spend).padStart(10)}${String(day.requests).padStart(10)}${compact(day.tokens).padStart(9)}`,
+    ),
+    `${'Total'.padEnd(13)}${money(totals.spend).padStart(10)}${String(totals.requests).padStart(10)}${compact(totals.tokens).padStart(9)}`,
+    '',
+    ...usageFacts(snapshot, range)
+      .filter(row => row.label !== 'Spend' && row.label !== 'Requests')
+      .map(row => `${row.label.padEnd(12)}${row.text}`),
+  ]
+
+  if (totals.models.length > 0) {
+    lines.push('', 'By model')
+    for (const item of totals.models) {
+      lines.push(
+        `${truncate(item.model, 30).padEnd(31)}${money(item.spend).padStart(10)}${`${totals.spend > 0 ? Math.round((item.spend / totals.spend) * 100) : 0}%`.padStart(6)}  ${plural(item.requests, 'request')}`,
+      )
+    }
+  }
+
+  return lines.join('\n')
+}
+
+/** The days of a range as CSV, for a spreadsheet. */
+export const usageCsv = (snapshot: Snapshot, range: number): string => {
+  const { usage } = snapshot
+  const days = usage ? usageOver(usage, range).days : []
+
+  return [
+    'date,spend,requests,failed_requests,total_tokens,input_tokens,output_tokens,cache_read_tokens',
+    ...days.map(day =>
+      [
+        day.date,
+        day.spend.toFixed(6),
+        day.requests,
+        day.failed,
+        day.tokens,
+        day.inputTokens,
+        day.outputTokens,
+        day.cacheReadTokens,
+      ].join(','),
+    ),
+  ].join('\n')
+}
+
+/** The model list as text, with what each spent over the range. */
+export const modelsReport = (snapshot: Snapshot, range: number): string => {
+  const list = modelList(snapshot, range, 'spend', '')
+
+  if (list.rows.length === 0) {
+    return `Models: ${modelsText(snapshot)}`
+  }
+  const width = Math.min(34, Math.max(...list.rows.map(row => row.model.length)))
+
+  return [
+    `Models (${list.rows.length}) · spend over the last ${range} days`,
+    ...list.rows.map(row => {
+      const cap =
+        row.budget !== null && row.budget.limit !== null
+          ? ` · cap ${money(row.budget.limit)}${row.budget.period ? ` per ${row.budget.period}` : ''}`
+          : ''
+      const used =
+        row.spend > 0 || row.requests > 0
+          ? `${money(row.spend).padStart(10)}  ${plural(row.requests, 'request')}`
+          : `${'—'.padStart(10)}`
+
+      return `${truncate(row.model, width).padEnd(width)}  ${used}${cap}`
+    }),
+  ].join('\n')
+}
+
+const dayAndAge = (at: number | null, now: number): string | null =>
+  at === null ? null : `${shortDate(isoDay(at))} · ${until(at, now)}`
+
+/** Everything the proxy told about the key and how it was read, in groups: what the Details tab lists. */
+export const details = (snapshot: Snapshot, now: number, refreshSeconds: number): Detail[] => {
+  const { key } = snapshot
+  const groups: Detail[] = []
+  const group = (
+    title: string,
+    build: (add: (label: string, text: string | null, tone?: Tone) => void) => void,
+  ): void => {
+    const rows: Row[] = []
+
+    build((label, text, tone = 'ok') => {
+      if (text) {
+        rows.push({ label, text, tone })
+      }
+    })
+    if (rows.length > 0) {
+      groups.push({ title, rows })
+    }
+  }
+  const cap = key.budget.limit
+  const allowed = snapshot.models ?? key.models
+
+  group('Key', add => {
+    add('Alias', key.alias)
+    add('Name', key.keyName ?? snapshot.keyHint)
+    add('Hash', key.keyHash === null ? null : `${key.keyHash.slice(0, 8)}…${key.keyHash.slice(-4)} (sha256)`)
+    add('Status', key.status, key.status === 'active' ? 'ok' : 'error')
+    add('Type', key.keyType)
+    add('User', key.userId)
+    add('Team', key.teamId)
+    add('Created', dayAndAge(key.createdAt, now))
+    add('Last active', key.lastActiveAt === null ? null : ago(key.lastActiveAt, now))
+    add(
+      'Expires',
+      key.expiresAt === null ? 'never' : dayAndAge(key.expiresAt, now),
+      key.expiresAt !== null && key.expiresAt - now < SOON_MS ? 'warn' : 'ok',
+    )
+  })
+  group('Budget', add => {
+    add('Spent', money(key.budget.spend))
+    add('Cap', cap === null ? 'no cap' : money(cap))
+    add('Soft limit', key.budget.softLimit === null ? null : money(key.budget.softLimit))
+    add('Period', key.budget.duration)
+    add('Resets', key.budget.resetAt === null ? null : dayAndAge(key.budget.resetAt, now))
+    add('Lifetime', key.lifetimeSpend === null ? null : money(key.lifetimeSpend))
+  })
+  group('Limits', add => {
+    add('Requests/min', key.limits.rpm === null ? null : compact(key.limits.rpm))
+    add('Tokens/min', key.limits.tpm === null ? null : compact(key.limits.tpm))
+    add('Tokens/day', key.limits.tpd === null ? null : compact(key.limits.tpd))
+    add('Parallel', key.limits.parallel === null ? null : String(key.limits.parallel))
+  })
+  group('Connection', add => {
+    add('Proxy', snapshot.root)
+    add('Auth', `via ${snapshot.keySource} (${snapshot.keyHint})`)
+    add('Read', `${clock(snapshot.fetchedAt)} (${ago(snapshot.fetchedAt, now)}) · every ${refreshSeconds}s`)
+    add('Models', allowed.length === 0 ? 'all proxy models' : plural(allowed.length, 'model'))
+    add(
+      'Related',
+      [snapshot.user ? 'user budget' : null, snapshot.team ? 'team budget' : null].filter(Boolean).join(' · ') || null,
+    )
+  })
+
+  return groups
+}
+
+export const detailsText = (snapshot: Snapshot, now: number, refreshSeconds: number): string => {
+  const groups = details(snapshot, now, refreshSeconds)
+  const width = Math.max(0, ...groups.flatMap(group => group.rows.map(row => row.label.length)))
+
+  return [
+    `${identity(snapshot)} · ${snapshot.host}`,
+    ...groups.flatMap(group => [
+      '',
+      group.title,
+      ...group.rows.map(row => `  ${row.label.padEnd(width)}  ${row.text}`),
+    ]),
+    ...(snapshot.notes.length > 0 ? ['', 'Notes', ...snapshot.notes.map(note => `  ${note}`)] : []),
+  ].join('\n')
+}

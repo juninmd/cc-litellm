@@ -9,7 +9,12 @@ Try the plugin without a real proxy:
 
 Scenarios: healthy, warning (default), over, expiring, blocked, nocap. Flags change one
 thing on top of a scenario: --spend, --max-budget, --expires-hours, --blocked, --delay
-(seconds before /key/info answers) and --fail-after (answer 502 after that many reads).
+(seconds before /key/info answers), --fail-after (answer 502 after that many reads),
+--models (how many models the proxy lists, to try the filter) and --no-usage (answer 404
+to /user/daily/activity, as a proxy without the beta endpoint does).
+
+The last 30 days of usage are made up but add up: the days of the current budget window
+sum to the spend of the scenario, and the days before it to what earlier windows spent.
 
 The answers are shaped like the real ones (litellm/proxy/management_endpoints). Any other
 key gets the same 401 body LiteLLM sends. Nothing is stored and nothing leaves localhost.
@@ -54,6 +59,9 @@ def key_info(c):
         "models": [],
         "user_id": "demo",
         "team_id": "platform",
+        "key_type": "llm_api",
+        "created_at": at(-timedelta(days=20, hours=4)),
+        "last_active": at(-timedelta(minutes=3)),
         "tpm_limit": 400000,
         "rpm_limit": 120,
         "max_parallel_requests": 8,
@@ -102,40 +110,59 @@ def team_info(c):
     }
 
 
-def models():
-    names = ["claude-sonnet-4-5", "claude-opus-4-1", "claude-haiku-4-5", "gpt-5"]
-    return {"object": "list", "data": [{"id": name, "object": "model", "owned_by": "openai"} for name in names]}
+CORE_MODELS = ["claude-sonnet-4-5", "claude-opus-4-1", "claude-haiku-4-5", "gpt-5"]
+# What each model takes of a day, and how that drifts from day to day: [share, drift].
+MODEL_SHARES = {"claude-sonnet-4-5": (0.58, 0.10), "claude-opus-4-1": (0.28, 0.12), "claude-haiku-4-5": (0.09, 0.04), "gpt-5": (0.05, 0.03)}
+# A made-up month: weekdays busier than weekends, a quiet stretch, a spike. One weight per day, oldest first.
+WEIGHTS = [4, 5, 6, 5, 4, 1, 0, 5, 7, 8, 6, 5, 1, 1, 0, 0, 0, 3, 6, 5, 7, 9, 2, 1, 6, 7, 5, 4, 8, 12]
+# Days of the current budget window out of the 30 shown (30d window, reset in 9d 3h: nearly 21 days elapsed).
+WINDOW_DAYS = 21
 
 
-def daily_activity():
+def models(count):
+    names = list(CORE_MODELS) + [f"bedrock/claude-3-{n:02d}-preview" for n in range(max(0, count - len(CORE_MODELS)))]
+    return {"object": "list", "data": [{"id": name, "object": "model", "owned_by": "openai"} for name in names[:count]]}
+
+
+def daily_activity(config):
     today = datetime.now(timezone.utc).date()
+    older = WEIGHTS[: len(WEIGHTS) - WINDOW_DAYS]
+    recent = WEIGHTS[len(WEIGHTS) - WINDOW_DAYS :]
+    # The days of this window add up to its spend; the earlier ones to what the windows before it spent.
+    scales = [28.0 / max(1, sum(older))] * len(older) + [config["spend"] / max(1, sum(recent))] * len(recent)
     results = []
-    for back, spend in zip(range(6, -1, -1), [3.1, 5.4, 0.0, 7.9, 9.2, 4.4, 11.37]):
+    for index, (weight, scale) in enumerate(zip(WEIGHTS, scales)):
+        spend = round(weight * scale, 4)
         if spend == 0:
             continue
+        back = len(WEIGHTS) - 1 - index
+        requests = max(1, int(spend * 9))
+        models = {}
+        for number, (name, (share, drift)) in enumerate(MODEL_SHARES.items()):
+            part = max(0.0, share + drift * ((index * (number + 3)) % 7 - 3) / 3 * 0.5)
+            models[name] = {"metrics": {"spend": round(spend * part, 4), "api_requests": int(requests * part), "total_tokens": int(spend * 210000 * part)}}
+        total = sum(entry["metrics"]["spend"] for entry in models.values()) or 1
+        for entry in models.values():
+            entry["metrics"]["spend"] = round(entry["metrics"]["spend"] * spend / total, 4)
         results.append(
             {
                 "date": (today - timedelta(days=back)).isoformat(),
                 "metrics": {
                     "spend": spend,
-                    "api_requests": int(spend * 9),
+                    "api_requests": requests,
+                    "failed_requests": 1 if index % 9 == 4 else 0,
                     "total_tokens": int(spend * 210000),
                     "prompt_tokens": int(spend * 170000),
                     "completion_tokens": int(spend * 40000),
                     "cache_read_input_tokens": int(spend * 120000),
                 },
-                "breakdown": {
-                    "models": {
-                        "claude-sonnet-4-5": {"metrics": {"spend": spend * 0.7}},
-                        "claude-opus-4-1": {"metrics": {"spend": spend * 0.3}},
-                    }
-                },
+                "breakdown": {"models": models},
             }
         )
     return {"results": results, "metadata": {"total_spend": sum(r["metrics"]["spend"] for r in results)}}
 
 
-def handler(config, delay, fail_after):
+def handler(config, delay, fail_after, model_count, has_usage):
     reads = {"key": 0}
 
     class Handler(BaseHTTPRequestHandler):
@@ -176,9 +203,10 @@ def handler(config, delay, fail_after):
                 "/key/info": lambda: key_info(config),
                 "/user/info": lambda: user_info(config),
                 "/team/info": lambda: team_info(config),
-                "/v1/models": models,
-                "/user/daily/activity": daily_activity,
+                "/v1/models": lambda: models(model_count),
             }
+            if has_usage:
+                routes["/user/daily/activity"] = lambda: daily_activity(config)
             if path in routes:
                 return self.reply(200, routes[path]())
             return self.reply(404, {"detail": "Not Found"})
@@ -200,6 +228,8 @@ if __name__ == "__main__":
     parser.add_argument("--blocked", action="store_true")
     parser.add_argument("--delay", type=float, default=0.0)
     parser.add_argument("--fail-after", type=int)
+    parser.add_argument("--models", type=int, default=len(CORE_MODELS), help="how many models /v1/models lists")
+    parser.add_argument("--no-usage", action="store_true", help="answer 404 to /user/daily/activity")
     args = parser.parse_args()
 
     config = {"max_budget": 50.0, "expires_hours": 960.0, "blocked": False, **SCENARIOS[args.scenario]}
@@ -212,4 +242,6 @@ if __name__ == "__main__":
     if args.blocked:
         config["blocked"] = True
     print(f"mock LiteLLM ({args.scenario}) on http://127.0.0.1:{args.port}  key: {KEY}", flush=True)
-    ThreadingHTTPServer(("127.0.0.1", args.port), handler(config, args.delay, args.fail_after)).serve_forever()
+    ThreadingHTTPServer(
+        ("127.0.0.1", args.port), handler(config, args.delay, args.fail_after, args.models, not args.no_usage)
+    ).serve_forever()

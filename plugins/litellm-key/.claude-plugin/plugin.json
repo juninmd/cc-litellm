@@ -1,11 +1,11 @@
 {
   "name": "litellm-key",
-  "version": "0.2.0",
-  "description": "See your LiteLLM virtual key inside Claude Code: budget, spend, limits, expiry, models and recent usage.",
+  "version": "0.3.0",
+  "description": "See your LiteLLM virtual key inside Claude Code: budget, spend pace, limits, expiry, models and usage, in tabs.",
   "author": { "name": "juninmd" },
   "homepage": "https://github.com/juninmd/cc-litellm",
   "repository": "https://github.com/juninmd/cc-litellm",
-  "keywords": ["litellm", "virtual-key", "budget", "spend", "status-line"],
+  "keywords": ["litellm", "virtual-key", "budget", "spend", "forecast", "usage", "status-line"],
   "types": "./types/index.d.ts",
   "userConfig": {
     "litellm_url": {
@@ -50,7 +50,19 @@
     "show_usage": {
       "type": "boolean",
       "title": "Usage history",
-      "description": "Also read /user/daily/activity for the last 7 days of spend and tokens (beta endpoint).",
+      "description": "Also read /user/daily/activity for the last 30 days of spend, requests and tokens, by day and by model (beta endpoint).",
+      "default": true
+    },
+    "status_bar": {
+      "type": "boolean",
+      "title": "Status line meter",
+      "description": "Start the status line with a small meter of the budget: ▰▰▰▰▱▱ 83% of budget. Off keeps the text alone.",
+      "default": true
+    },
+    "show_forecast": {
+      "type": "boolean",
+      "title": "Spend forecast",
+      "description": "Say where the spend is heading: the pace in the pane, when the budget would run out in the status line, and a warning when that is before it resets.",
       "default": true
     },
     "compact_pane": {

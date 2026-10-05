@@ -1,8 +1,15 @@
+import { expect } from 'claude-code/testing'
+
 import type { Snapshot } from '../types'
 import { fetchSnapshot } from '../hooks/litellm'
 import type { Http, Reply } from '../hooks/litellm'
 
 export const NOW = Date.parse('2026-10-03T12:00:00Z')
+
+/** The test kit has no toBeCloseTo: a number is near another when it is within `tolerance` of it. */
+export const near = (received: number | null | undefined, expected: number, tolerance = 1e-6): void => {
+  expect(Math.abs((received ?? Number.NaN) - expected) <= tolerance, `${received} is not within ${tolerance} of ${expected}`).toBe(true)
+}
 export const KEY = 'sk-test-secret-1234567890'
 export const HASH = '0123456789abcdef'.repeat(4)
 export const BASE = 'https://litellm.test'
@@ -41,6 +48,7 @@ const day = (date: string, spend: number, requests: number, tokens: number) => (
   metrics: {
     spend,
     api_requests: requests,
+    failed_requests: 0,
     total_tokens: tokens,
     prompt_tokens: Math.round(tokens * 0.8),
     completion_tokens: Math.round(tokens * 0.2),
@@ -48,8 +56,20 @@ const day = (date: string, spend: number, requests: number, tokens: number) => (
   },
   breakdown: {
     models: {
-      'claude-sonnet-4-5': { metrics: { spend: spend * 0.75 } },
-      'claude-opus-4-1': { metrics: { spend: spend * 0.25 } },
+      'claude-sonnet-4-5': {
+        metrics: {
+          spend: spend * 0.75,
+          api_requests: Math.round(requests * 0.75),
+          total_tokens: Math.round(tokens * 0.75),
+        },
+      },
+      'claude-opus-4-1': {
+        metrics: {
+          spend: spend * 0.25,
+          api_requests: Math.round(requests * 0.25),
+          total_tokens: Math.round(tokens * 0.25),
+        },
+      },
     },
   },
 })

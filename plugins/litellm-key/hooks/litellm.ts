@@ -10,8 +10,10 @@ import type {
   Related,
   Snapshot,
   Usage,
+  UsageDay,
 } from '../types'
 import { maskKey, redact, truncate, utcDay } from './format'
+import { USAGE_DAYS } from './usage'
 
 export type Reply = { status: number; text: string }
 export type Http = (url: string, headers: Record<string, string>) => Promise<Reply>
@@ -108,6 +110,9 @@ const parse = (text: string): unknown => {
     return undefined
   }
 }
+
+/** The url with any `user:password@` taken out: the root is shown and linked, so it must never carry credentials. */
+const withoutCredentials = (url: string): string => url.replace(/^(https?:\/\/)[^@/]*@/i, '$1')
 
 const hostOf = (url: string): string => /^https?:\/\/(?:[^@/]*@)?([^/]+)/i.exec(url)?.[1] ?? url
 const originOf = (url: string): string | null => /^(https?:\/\/[^/]+)/i.exec(url)?.[1] ?? null
@@ -474,57 +479,63 @@ export const parseModels = (body: unknown): string[] | null => {
   return [...new Set(ids)].sort()
 }
 
+const quietDay = (date: string): UsageDay => ({
+  date,
+  spend: 0,
+  requests: 0,
+  failed: 0,
+  tokens: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadTokens: 0,
+  models: [],
+})
+
 export const parseUsage = (body: unknown, days: readonly string[]): Usage | null => {
   if (!isObject(body) || !Array.isArray(body.results)) {
     return null
   }
-  const perDay = new Map<string, number>()
-  const perModel = new Map<string, number>()
-  const total = { spend: 0, requests: 0, tokens: 0, input: 0, output: 0, cacheRead: 0 }
+  const perDay = new Map<string, UsageDay>(days.map(day => [day, quietDay(day)]))
 
   for (const result of body.results) {
-    if (!isObject(result)) {
-      continue
-    }
-    const day = String(result.date ?? '').slice(0, 10)
+    const day = isObject(result) ? perDay.get(String(result.date ?? '').slice(0, 10)) : undefined
 
-    if (!days.includes(day)) {
+    if (!isObject(result) || !day) {
       continue
     }
     const metrics = isObject(result.metrics) ? result.metrics : {}
-    const spend = num(metrics.spend) ?? 0
 
-    perDay.set(day, (perDay.get(day) ?? 0) + spend)
-    total.spend += spend
-    total.requests += num(metrics.api_requests) ?? 0
-    total.tokens += num(metrics.total_tokens) ?? 0
-    total.input += num(metrics.prompt_tokens) ?? 0
-    total.output += num(metrics.completion_tokens) ?? 0
-    total.cacheRead += num(metrics.cache_read_input_tokens) ?? 0
+    day.spend += num(metrics.spend) ?? 0
+    day.requests += num(metrics.api_requests) ?? 0
+    day.failed += num(metrics.failed_requests) ?? 0
+    day.tokens += num(metrics.total_tokens) ?? 0
+    day.inputTokens += num(metrics.prompt_tokens) ?? 0
+    day.outputTokens += num(metrics.completion_tokens) ?? 0
+    day.cacheReadTokens += num(metrics.cache_read_input_tokens) ?? 0
 
     const models = isObject(result.breakdown) && isObject(result.breakdown.models) ? result.breakdown.models : {}
 
     for (const [model, entry] of Object.entries(models)) {
-      const modelMetrics = isObject(entry) && isObject(entry.metrics) ? entry.metrics : {}
+      const own = isObject(entry) && isObject(entry.metrics) ? entry.metrics : {}
+      const spend = num(own.spend) ?? 0
+      const requests = num(own.api_requests) ?? 0
 
-      perModel.set(model, (perModel.get(model) ?? 0) + (num(modelMetrics.spend) ?? 0))
+      if (spend <= 0 && requests <= 0) {
+        continue
+      }
+      const held = day.models.find(item => item.model === model)
+
+      if (held) {
+        held.spend += spend
+        held.requests += requests
+        held.tokens += num(own.total_tokens) ?? 0
+      } else {
+        day.models.push({ model, spend, requests, tokens: num(own.total_tokens) ?? 0 })
+      }
     }
   }
 
-  return {
-    days: days.map(day => ({ date: day, spend: perDay.get(day) ?? 0 })),
-    spend: total.spend,
-    requests: total.requests,
-    tokens: total.tokens,
-    inputTokens: total.input,
-    outputTokens: total.output,
-    cacheReadTokens: total.cacheRead,
-    topModels: [...perModel.entries()]
-      .filter(([, spend]) => spend > 0)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([model, spend]) => ({ model, spend })),
-  }
+  return { days: days.map(day => perDay.get(day) ?? quietDay(day)) }
 }
 
 const NETWORK_ERRORS: readonly [RegExp, string][] = [
@@ -626,8 +637,8 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
       return null
     }
   }
-  const days = [6, 5, 4, 3, 2, 1, 0].map(back => utcDay(now, back))
-  const [first = '', last = ''] = [days[0], days[6]]
+  const days = Array.from({ length: USAGE_DAYS }, (_, at) => utcDay(now, USAGE_DAYS - 1 - at))
+  const [first = '', last = ''] = [days[0], days[USAGE_DAYS - 1]]
   const usageQuery = [
     `start_date=${first}`,
     `end_date=${last}`,
@@ -662,6 +673,7 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
     snapshot: {
       fetchedAt: now,
       host: credentials.host,
+      root: withoutCredentials(root),
       keySource: credentials.keySource,
       keyHint: maskKey(key),
       key: keyInfo,

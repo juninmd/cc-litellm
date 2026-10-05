@@ -311,19 +311,55 @@ describe('related budgets, models and usage', () => {
     expect(parseModels({})).toBeNull()
   })
 
-  test('usage fills the quiet days with zero and ranks models', () => {
+  test('usage fills the quiet days with zero and keeps what each day did', () => {
     const days = ['2026-10-01', '2026-10-02', '2026-10-03']
     const usage = parseUsage(standardUsage(), days)
 
-    expect(usage?.days).toEqual([
-      { date: '2026-10-01', spend: 4 },
-      { date: '2026-10-02', spend: 0 },
-      { date: '2026-10-03', spend: 8.7 },
+    expect(usage?.days.map(item => [item.date, item.spend, item.requests, item.tokens])).toEqual([
+      ['2026-10-01', 4, 40, 800000],
+      ['2026-10-02', 0, 0, 0],
+      ['2026-10-03', 8.7, 90, 1700000],
     ])
-    expect(usage?.requests).toBe(130)
-    expect(usage?.tokens).toBe(2500000)
-    expect(usage?.topModels[0]?.model).toBe('claude-sonnet-4-5')
+    expect(usage?.days[0]).toMatchObject({ failed: 0, inputTokens: 640000, outputTokens: 160000, cacheReadTokens: 400000 })
     expect(parseUsage({}, days)).toBeNull()
+  })
+
+  test('usage keeps each model of each day, and nothing for a quiet day', () => {
+    const usage = parseUsage(standardUsage(), ['2026-10-01', '2026-10-02'])
+
+    expect(usage?.days[0]?.models).toEqual([
+      { model: 'claude-sonnet-4-5', spend: 3, requests: 30, tokens: 600000 },
+      { model: 'claude-opus-4-1', spend: 1, requests: 10, tokens: 200000 },
+    ])
+    expect(usage?.days[1]?.models).toEqual([])
+  })
+
+  test('usage adds up rows of one day, counts failures and skips models that did nothing', () => {
+    const row = (spend: number, failed: number, models: Record<string, unknown>) => ({
+      date: '2026-10-03',
+      metrics: { spend, api_requests: 4, failed_requests: failed, total_tokens: 10 },
+      breakdown: { models },
+    })
+    const usage = parseUsage(
+      {
+        results: [
+          row(1, 1, { a: { metrics: { spend: 1, api_requests: 4, total_tokens: 10 } }, idle: { metrics: { spend: 0 } } }),
+          row(2, 0, { a: { metrics: { spend: 2, api_requests: 4, total_tokens: 10 } } }),
+          { date: '2026-09-01', metrics: { spend: 99 } },
+        ],
+      },
+      ['2026-10-03'],
+    )
+
+    expect(usage?.days).toHaveLength(1)
+    expect(usage?.days[0]).toMatchObject({ spend: 3, requests: 8, failed: 1, tokens: 20 })
+    expect(usage?.days[0]?.models).toEqual([{ model: 'a', spend: 3, requests: 8, tokens: 20 }])
+  })
+
+  test('usage survives rows that are not objects and models that carry no metrics', () => {
+    const usage = parseUsage({ results: ['x', null, { date: '2026-10-03', breakdown: { models: { a: 5, b: {} } } }] }, ['2026-10-03'])
+
+    expect(usage?.days[0]).toMatchObject({ spend: 0, requests: 0, models: [] })
   })
 })
 
@@ -342,10 +378,12 @@ describe('fetchSnapshot', () => {
       expect(snapshot.user?.label).toBe('jane@acme.test')
       expect(snapshot.team?.label).toBe('eng-platform')
       expect(snapshot.models).toEqual(['claude-haiku-4-5', 'claude-opus-4-1', 'claude-sonnet-4-5'])
-      expect(snapshot.usage?.days).toHaveLength(7)
+      expect(snapshot.usage?.days).toHaveLength(30)
+      expect(snapshot.usage?.days.at(-1)?.date).toBe('2026-10-03')
       expect(snapshot.notes).toEqual([])
       expect(snapshot.keyHint).toBe('sk-…7890')
       expect(snapshot.host).toBe('litellm.test')
+      expect(snapshot.root).toBe(BASE)
     }
     expect(calls.every(call => call.headers.authorization === `Bearer ${KEY}`)).toBe(true)
   })
@@ -358,7 +396,7 @@ describe('fetchSnapshot', () => {
     expect(JSON.stringify(result)).not.toContain(KEY)
   })
 
-  test('asks for the usage of this key by its hash, over a 7 day window', async () => {
+  test('asks for the usage of this key by its hash, over a 30 day window', async () => {
     const { http, calls } = router(standardRoutes())
 
     await fetchSnapshot(request(http))
@@ -366,8 +404,16 @@ describe('fetchSnapshot', () => {
 
     expect(usage?.url).toContain(`api_key=${HASH}`)
     expect(usage?.url).toContain('user_id=jane')
-    expect(usage?.url).toContain('start_date=2026-09-27')
+    expect(usage?.url).toContain('start_date=2026-09-04')
     expect(usage?.url).toContain('end_date=2026-10-03')
+  })
+
+  test('names the proxy root it read from, without any credentials that sat in the url', async () => {
+    const { http } = router(standardRoutes())
+    const result = await fetchSnapshot(request(http, { credentials: credentials({ roots: ['https://bob:hunter2@litellm.test'] }) }))
+
+    expect(result.ok && result.snapshot.root).toBe('https://litellm.test')
+    expect(JSON.stringify(result.ok ? result.snapshot : null)).not.toContain('hunter2')
   })
 
   test('skips the slow endpoints and keeps the previous answer between slow refreshes', async () => {

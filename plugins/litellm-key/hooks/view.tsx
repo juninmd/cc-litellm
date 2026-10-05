@@ -1,263 +1,229 @@
-import type { Elements, RenderElement, UiPressArgument } from 'claude-code'
+import type { RenderElement } from 'claude-code'
 
-import type { Failure, Snapshot } from '../types'
-import { bar, clock, percent, truncate } from './format'
-import type { Row, Tone } from './summary'
-import { facts, identity, meters } from './summary'
+import type { Snapshot, ViewName } from '../types'
+import { ago, clock } from './format'
+import type { DashboardProps, Layout, Ui } from './parts'
+import { glyph, layoutOf, tint } from './parts'
+import type { Tone } from './summary'
+import { detailsText, identity, modelsReport, summaryText, usageReport } from './summary'
+import { detailsTab } from './tab-details'
+import { modelsTab } from './tab-models'
+import { overviewTab } from './tab-overview'
+import { usageTab } from './tab-usage'
 
-export type Ui = Pick<Elements['terminal'], 'Box' | 'Text' | 'Button'>
+export { packFacts } from './tab-overview'
+export type { DashboardProps, Placement, Ui } from './parts'
 
-export type Placement = 'dock' | 'inline'
+type Tab = { name: ViewName; label: string; hotkey: string }
 
-export type DashboardProps = {
-  snapshot: Snapshot | null
-  failure: Failure | null
-  isLoading: boolean
-  now: number
-  columns: number
-  placement: Placement
-  /** The person asked for the compact layout (the `compact_pane` option); off, the pane keeps the stacked one. */
-  isCompact: boolean
-  warnPercent: number
-  refreshSeconds: number
-  onRefresh: () => void
-  onCopy: (press: UiPressArgument) => void
-  onClose: () => void
-}
-
-type Tint = { color?: string; dimColor?: boolean }
-
-// Body columns from which the meters sit in a table, one line each.
-const WIDE = 118
-// Fewest body columns the compact layout serves: a meter needs its label, its bar and the amounts on one line.
-const COMPACT_MIN = 70
-const COMPACT_BAR = 10
-const COMPACT_LABEL = 22
-const FACT_GAP = 3
-
-const tint = (tone: Tone): Tint =>
-  tone === 'warn' ? { color: 'warning' } : tone === 'error' ? { color: 'error' } : {}
-
-const barTint = (tone: Tone): Tint => (tone === 'ok' ? { color: 'success' } : tint(tone))
-
-const SETUP = [
-  'Set these under "env" in ~/.claude/settings.json:',
-  '  ANTHROPIC_BASE_URL    https://your-litellm-host',
-  '  ANTHROPIC_AUTH_TOKEN  <your virtual key>',
+const TABS: readonly Tab[] = [
+  { name: 'overview', label: 'Overview', hotkey: '1' },
+  { name: 'usage', label: 'Usage', hotkey: '2' },
+  { name: 'models', label: 'Models', hotkey: '3' },
+  { name: 'details', label: 'Details', hotkey: '4' },
 ]
 
-// Where the compact layout can serve: inline above the prompt, where rows are scarce (the pane shrinks to its content,
-// never past what the layout spares) and the table has no room, below WIDE. Narrower than COMPACT_MIN a meter's text
-// would not fit beside its bar, so the stacked layout, with the text on a line of its own, serves better there.
-const fitsCompact = (placement: Placement, columns: number): boolean =>
-  placement === 'inline' && columns >= COMPACT_MIN && columns < WIDE
-
-const sizeOf = (row: Row): number => row.label.length + 1 + row.text.length
-
-/** Packs the facts into lines no wider than `width`, in order, FACT_GAP apart. */
-export const packFacts = (rows: readonly Row[], width: number): Row[][] => {
-  const lines: Row[][] = []
-  let line: Row[] = []
-  let used = 0
-
-  for (const row of rows) {
-    const size = sizeOf(row)
-
-    if (line.length > 0 && used + FACT_GAP + size > width) {
-      lines.push(line)
-      line = []
-      used = 0
-    }
-    used += (line.length === 0 ? 0 : FACT_GAP) + size
-    line.push(row)
+const SETUP_SNIPPET = `{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://your-litellm-host",
+    "ANTHROPIC_AUTH_TOKEN": "<your virtual key>"
   }
-  if (line.length > 0) {
-    lines.push(line)
-  }
+}`
 
-  return lines
+type Copy = { text: () => string; what: string }
+
+/**
+ * What the Copy button puts on the clipboard: the tab the person is looking at, as text. The text is only made when the
+ * button is pressed, not each time the pane is drawn.
+ */
+const copyOf = (props: DashboardProps, snapshot: Snapshot): Copy => {
+  const { now, warnPercent, range } = props
+
+  switch (props.tab) {
+    case 'usage':
+      return { text: () => usageReport(snapshot, range), what: 'the usage report' }
+    case 'models':
+      return { text: () => modelsReport(snapshot, range), what: 'the model list' }
+    case 'details':
+      return { text: () => detailsText(snapshot, now, props.refreshSeconds), what: 'the key details' }
+    default:
+      return {
+        text: () => summaryText(snapshot, now, warnPercent, { session: props.session, isForecast: props.isForecast }),
+        what: 'the summary',
+      }
+  }
 }
 
-export const dashboard = ({ Box, Text, Button }: Ui, props: DashboardProps): RenderElement => {
-  const { snapshot, failure, isLoading, now } = props
-  const isWide = props.columns >= WIDE
-  const compact = props.isCompact && fitsCompact(props.placement, props.columns)
-  const gap = compact ? 0 : 1
-  const buttons = (
+/** Refresh, Copy and Close: what can be done whatever the tab. */
+const actions = (ui: Ui, props: DashboardProps, snapshot: Snapshot | null, isSetup: boolean): RenderElement => {
+  const { Box, Button } = ui
+  const copy: Copy | null = snapshot
+    ? copyOf(props, snapshot)
+    : isSetup
+      ? { text: () => SETUP_SNIPPET, what: 'the settings snippet' }
+      : null
+
+  return (
     <Box gap={1}>
       <Button key="refresh" label="Refresh" hotkey="r" variant="primary" onPress={props.onRefresh} />
-      {snapshot && <Button key="copy" label="Copy" hotkey="c" onPress={props.onCopy} />}
+      {copy !== null && (
+        <Button
+          key="copy"
+          label={snapshot ? 'Copy' : 'Copy snippet'}
+          hotkey="c"
+          onPress={press => {
+            props.onCopy(copy.text(), copy.what, press)
+          }}
+        />
+      )}
       <Button key="close" label="Close" hotkey="q" role="dismiss" onPress={props.onClose} />
     </Box>
   )
+}
 
-  if (!snapshot) {
-    return (
-      <Box flexDirection="column">
-        {failure ? (
-          <Text color={failure.kind === 'not-configured' ? 'warning' : 'error'} bold>
-            {failure.kind === 'not-configured' ? '⚠' : '✗'} {failure.message}
-          </Text>
-        ) : (
-          <Text dimColor>{isLoading ? 'Reading the key from the proxy…' : 'No data yet.'}</Text>
-        )}
-        {failure?.hint && <Text dimColor>{failure.hint}</Text>}
-        {failure?.kind === 'not-configured' && (
-          <Box flexDirection="column" marginTop={1}>
-            {SETUP.map(line => (
-              <Text dimColor>{line}</Text>
-            ))}
-          </Box>
-        )}
-        <Box marginTop={gap}>{buttons}</Box>
-      </Box>
-    )
-  }
-  const { key } = snapshot
-  const list = meters(snapshot, now, props.warnPercent)
-  const rows = facts(snapshot, now).filter(row => row.label !== 'Status')
-  const longest = Math.max(...list.map(item => item.label.length))
-  // Compact: labels take about a quarter of the width (10 to 22 cells), so the amounts keep the rest of the line.
-  const labelWidth = compact
-    ? Math.min(COMPACT_LABEL, Math.max(10, Math.floor(props.columns * 0.27)), longest)
-    : Math.min(24, Math.max(8, longest, ...rows.map(row => row.label.length)))
-  const barWidth = isWide ? 18 : compact ? COMPACT_BAR : Math.max(8, Math.min(30, props.columns - labelWidth - 12))
-  const statusTone: Tone = key.status === 'active' ? 'ok' : 'error'
-  const state = (
-    <Text {...(statusTone === 'ok' ? { color: 'success' } : tint(statusTone))}>
-      {key.status === 'active' ? '●' : '✗'} {key.status}
+/** Whether the key works, in a word with a sign. */
+const state = ({ Text }: Ui, snapshot: Snapshot): RenderElement => {
+  const tone: Tone = snapshot.key.status === 'active' ? 'ok' : 'error'
+
+  return (
+    <Text {...(tone === 'ok' ? { color: 'success' } : tint(tone))}>
+      {glyph(tone)} {snapshot.key.status}
     </Text>
   )
-  const meterRows = list.map(meter => {
-    const pct = percent(meter.used, meter.limit)
-    const gauge =
-      pct === null ? (
-        <Text dimColor>no cap</Text>
-      ) : (
-        <Text {...barTint(meter.tone)}>
-          {bar(pct / 100, barWidth)} {pct}%
+}
+
+/** Who the key is and whether it works, with the actions at the other end; they wrap under it where there is no room. */
+const header = (ui: Ui, props: DashboardProps, snapshot: Snapshot, layout: Layout): RenderElement => {
+  const { Box, Text } = ui
+
+  return (
+    <Box justifyContent="space-between" flexWrap="wrap" columnGap={2}>
+      <Box gap={2} flexShrink={1}>
+        <Text bold wrap="truncate-end">
+          {identity(snapshot)}
         </Text>
-      )
-
-    if (compact) {
-      const room = props.columns - (labelWidth + 1) - (barWidth + 6)
-
-      return (
-        <Box>
-          <Box width={labelWidth + 1} flexShrink={0}>
-            <Text bold>{truncate(meter.label, labelWidth)}</Text>
-          </Box>
-          <Box width={barWidth + 6} flexShrink={0}>
-            {gauge}
-          </Box>
-          <Box flexGrow={1} flexShrink={1}>
+        {state(ui, snapshot)}
+        {props.isLoading && <Text dimColor>↻</Text>}
+        {layout.isCompact && (
+          <Box flexShrink={1}>
             <Text dimColor wrap="truncate-end">
-              {meter.text.length <= room ? meter.text : meter.brief}
+              {snapshot.host}
             </Text>
           </Box>
-        </Box>
-      )
-    }
+        )}
+      </Box>
+      {actions(ui, props, snapshot, false)}
+    </Box>
+  )
+}
 
-    return isWide ? (
-      <Box>
-        <Box width={labelWidth + 2} flexShrink={0}>
-          <Text bold>{truncate(meter.label, labelWidth)}</Text>
+/** The four tabs: the one showing is a mark, the others are buttons with their digit as the hotkey. */
+const tabs = ({ Box, Text, Button }: Ui, props: DashboardProps): RenderElement => (
+  <Box columnGap={2} flexWrap="wrap">
+    {TABS.map(tab =>
+      tab.name === props.tab ? (
+        <Text inverse bold>{` ${tab.hotkey}: ${tab.label} `}</Text>
+      ) : (
+        <Button
+          key={`tab-${tab.name}`}
+          label={tab.label}
+          hotkey={tab.hotkey}
+          plain
+          onPress={() => {
+            props.onTab(tab.name)
+          }}
+        />
+      ),
+    )}
+  </Box>
+)
+
+const footer = ({ Box, Text }: Ui, props: DashboardProps, snapshot: Snapshot, layout: Layout): RenderElement => {
+  const { now, isLoading } = props
+  const read = `Updated ${clock(snapshot.fetchedAt)} (${ago(snapshot.fetchedAt, now)}) · every ${props.refreshSeconds}s${isLoading ? ' · refreshing…' : ''}`
+
+  return (
+    <Box flexDirection="column" marginTop={layout.gap}>
+      {!layout.isCompact && (
+        <Text dimColor wrap="truncate-end">
+          {snapshot.host} · via {snapshot.keySource}
+        </Text>
+      )}
+      <Text dimColor wrap="truncate-end">
+        {read}
+      </Text>
+      {!layout.isCompact && props.isTerminal && (
+        <Text dimColor wrap="truncate-end">
+          {props.isFocused
+            ? '1-4 tabs · r refresh · c copy · q close · esc back to the prompt'
+            : 'ctrl+x tab, or a click, gives the pane the keyboard'}
+        </Text>
+      )}
+    </Box>
+  )
+}
+
+const empty = (ui: Ui, props: DashboardProps, layout: Layout): RenderElement => {
+  const { Box, Text, Code } = ui
+  const { failure, isLoading } = props
+  const isSetup = failure?.kind === 'not-configured'
+
+  return (
+    <Box flexDirection="column">
+      {failure ? (
+        <Box flexDirection="column" borderStyle="round" borderColor={isSetup ? 'warning' : 'error'} paddingX={1}>
+          <Text color={isSetup ? 'warning' : 'error'} bold>
+            {isSetup ? '⚠' : '✗'} {failure.message}
+          </Text>
+          {failure.hint && <Text dimColor>{failure.hint}</Text>}
         </Box>
-        <Box width={barWidth + 6} flexShrink={0}>
-          {gauge}
+      ) : (
+        <Text dimColor>{isLoading ? 'Reading the key from the proxy…' : 'No data yet.'}</Text>
+      )}
+      {isSetup && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text dimColor>Set these under "env" in ~/.claude/settings.json:</Text>
+          <Code source={SETUP_SNIPPET} language="json" />
         </Box>
-        <Box flexGrow={1} flexShrink={1}>
-          <Text dimColor>{meter.text}</Text>
-        </Box>
-      </Box>
-    ) : (
-      <Box flexDirection="column">
-        <Box>
-          <Box width={labelWidth + 2} flexShrink={0}>
-            <Text bold>{truncate(meter.label, labelWidth)}</Text>
-          </Box>
-          {gauge}
-        </Box>
-        <Box paddingLeft={2}>
-          <Text dimColor>{meter.text}</Text>
-        </Box>
-      </Box>
-    )
-  })
+      )}
+      <Box marginTop={layout.gap}>{actions(ui, props, null, isSetup)}</Box>
+    </Box>
+  )
+}
+
+export const dashboard = (ui: Ui, props: DashboardProps): RenderElement => {
+  const { Box, Text } = ui
+  const { snapshot, failure } = props
+  const layout = layoutOf(props)
+
+  if (!snapshot) {
+    return empty(ui, props, layout)
+  }
+  const body =
+    props.tab === 'usage'
+      ? usageTab(ui, props, snapshot, layout)
+      : props.tab === 'models'
+        ? modelsTab(ui, props, snapshot, layout)
+        : props.tab === 'details'
+          ? detailsTab(ui, props, snapshot, layout)
+          : overviewTab(ui, props, snapshot, layout)
 
   return (
     <Box flexDirection="column">
       {failure && (
-        <Box flexDirection="column" marginBottom={gap}>
+        <Box flexDirection="column" marginBottom={layout.gap}>
           <Text color="warning" bold>
             ⚠ Showing the last good reading: {failure.message}
           </Text>
           {failure.hint && <Text dimColor>{failure.hint}</Text>}
         </Box>
       )}
-      {compact ? (
-        <Box gap={2}>
-          <Text bold>{identity(snapshot)}</Text>
-          {state}
-          <Box flexShrink={1}>
-            <Text dimColor wrap="truncate-end">
-              {snapshot.host}
-            </Text>
-          </Box>
-        </Box>
-      ) : (
-        <Box flexDirection="column">
-          <Box gap={2}>
-            <Text bold>{identity(snapshot)}</Text>
-            {state}
-          </Box>
-          <Text dimColor>
-            {snapshot.host} · via {snapshot.keySource}
-          </Text>
-        </Box>
-      )}
-      <Box flexDirection="column" marginTop={gap}>
-        {meterRows}
+      {header(ui, props, snapshot, layout)}
+      {tabs(ui, props)}
+      <Box flexDirection="column" marginTop={layout.gap}>
+        {body}
       </Box>
-      {compact ? (
-        rows.length > 0 && (
-          <Box flexDirection="column" marginTop={1}>
-            {packFacts(rows, props.columns).map(line => (
-              <Box gap={FACT_GAP}>
-                {line.map(row => (
-                  <Box gap={1}>
-                    <Text bold>{row.label}</Text>
-                    <Text {...tint(row.tone)}>{row.text}</Text>
-                  </Box>
-                ))}
-              </Box>
-            ))}
-          </Box>
-        )
-      ) : (
-        <Box flexDirection="column" marginTop={1}>
-          {rows.map(row => (
-            <Box>
-              <Box width={labelWidth + 2} flexShrink={0}>
-                <Text bold>{truncate(row.label, labelWidth)}</Text>
-              </Box>
-              <Box flexGrow={1} flexShrink={1}>
-                <Text {...tint(row.tone)}>{row.text}</Text>
-              </Box>
-            </Box>
-          ))}
-        </Box>
-      )}
-      {snapshot.notes.map(note => (
-        <Text dimColor>· {note}</Text>
-      ))}
-      <Box marginTop={gap} gap={2}>
-        {buttons}
-        <Text dimColor>
-          Updated {clock(snapshot.fetchedAt)} · every {props.refreshSeconds}s{isLoading ? ' · refreshing…' : ''}
-        </Text>
-      </Box>
+      {footer(ui, props, snapshot, layout)}
     </Box>
   )
 }

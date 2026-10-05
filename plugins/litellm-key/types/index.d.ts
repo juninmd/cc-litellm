@@ -54,25 +54,37 @@ export type Related = {
   budget: Budget
 }
 
-export type UsageDay = {
-  date: string
-  spend: number
-}
-
-export type Usage = {
-  days: UsageDay[]
+/** What one model did on one day, or over a stretch of days. */
+export type UsageModel = {
+  model: string
   spend: number
   requests: number
+  tokens: number
+}
+
+export type UsageDay = {
+  /** `YYYY-MM-DD`, in UTC, as the proxy counts days. */
+  date: string
+  spend: number
+  requests: number
+  failed: number
   tokens: number
   inputTokens: number
   outputTokens: number
   cacheReadTokens: number
-  topModels: { model: string; spend: number }[]
+  models: UsageModel[]
+}
+
+/** Every day the proxy was asked about, oldest first and today last; a quiet day is all zeros. */
+export type Usage = {
+  days: UsageDay[]
 }
 
 export type Snapshot = {
   fetchedAt: number
   host: string
+  /** The proxy root that answered, without credentials: the page of its admin UI hangs off it. */
+  root: string
   keySource: string
   keyHint: string
   key: KeyInfo
@@ -102,12 +114,33 @@ export type Failure = {
   at: number
 }
 
+export type ViewName = 'overview' | 'usage' | 'models' | 'details'
+
+export type SortName = 'spend' | 'name'
+
+/** What this key spent while Claude Code has been running, counted from the first reading. */
+export type Session = {
+  /** When the first reading was taken. */
+  since: number
+  /** Spend added since then, across budget resets. */
+  spend: number
+  /** The spend of the latest reading, to tell what is new from what was already there. */
+  last: number
+}
+
 declare module 'claude-code' {
   interface PluginState {
     'litellm-key': {
-      snapshot: Snapshot | null
+      snapshot: Shaped<Snapshot | null>
       failure: Failure | null
       isLoading: boolean
+      view: ViewName
+      range: number
+      sort: SortName
+      filter: string
+      /** The day picked under the chart of the Usage tab, as `YYYY-MM-DD`. */
+      day: string | null
+      session: Session | null
     }
   }
 }
