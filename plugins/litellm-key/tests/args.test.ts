@@ -51,6 +51,13 @@ describe('closest', () => {
     expect(closest('Debgu', words)).toBe('debug')
   })
 
+  test('counts a swap of two neighbours as one slip, which a short command needs', () => {
+    expect(closest('hlep', ['help', 'usage'])).toBe('help')
+    expect(closest('ifno', ['info', 'usage'])).toBe('info')
+    expect(closest('pnig', ['ping', 'pace'])).toBe('ping')
+    expect(closest('dya', ['day', 'debug'])).toBe('day')
+  })
+
   test('takes the start of a word as the word', () => {
     expect(closest('mod', words)).toBe('models')
     expect(closest('com', words)).toBe('compare')

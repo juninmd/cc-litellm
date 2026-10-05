@@ -179,11 +179,11 @@ let latest: { snapshot: Snapshot | null; failure: Failure | null } = { snapshot:
 
 /** One request, timed, and given up on after REQUEST_MS. */
 const fetchWithin = async ($: EngineInterface, url: string, headers: Record<string, string>): Promise<Reply> => {
+  const started = await $.clock.now()
   let timer: Timer | undefined
   const late = new Promise<never>((_, reject) => {
     timer = $.clock.after(REQUEST_MS, () => reject(new Error(`no answer within ${REQUEST_MS / 1000}s`)))
   })
-  const started = await $.clock.now()
 
   try {
     const { status, text } = await Promise.race([$.http.fetch(url, { headers }), late])
@@ -455,37 +455,50 @@ const TAB_WHAT: Record<ViewName, string> = {
 
 const REPORTS = 'overview, usage, models, details, pace, compare, csv, json'
 
-/** A report the person can name, to copy it or hand it to Claude: how it is made and what to call it. */
-type Named = { build: (snapshot: Snapshot, now: number) => string; what: string }
+/**
+ * A report the person can name, to copy it or hand it to Claude: how it is made, what to call it, and whether it is
+ * nothing but a table of the usage history (with no history there is nothing to copy, not a sentence about it).
+ */
+type Named = { build: (snapshot: Snapshot, now: number) => string; what: string; needsUsage: boolean }
 
 /** `name` as a report (none given: the tab that is showing); null for a name that is no report. */
 const namedReport = (name: string, tab: ViewName, range: number): Named | null => {
   switch (name.toLowerCase()) {
     case '':
-      return { build: textOf(tab, range), what: TAB_WHAT[tab] }
+      return { build: textOf(tab, range), what: TAB_WHAT[tab], needsUsage: tab === 'usage' }
     case 'overview':
     case 'info':
     case 'summary':
-      return { build: summaryOf, what: TAB_WHAT.overview }
+      return { build: summaryOf, what: TAB_WHAT.overview, needsUsage: false }
     case 'usage':
-      return { build: snapshot => usageReport(snapshot, range), what: TAB_WHAT.usage }
+      return { build: snapshot => usageReport(snapshot, range), what: TAB_WHAT.usage, needsUsage: true }
     case 'models':
-      return { build: snapshot => modelsReport(snapshot, range), what: TAB_WHAT.models }
+      return { build: snapshot => modelsReport(snapshot, range), what: TAB_WHAT.models, needsUsage: false }
     case 'details':
-      return { build: (snapshot, now) => detailsText(snapshot, now, config.refreshSeconds), what: TAB_WHAT.details }
+      return {
+        build: (snapshot, now) => detailsText(snapshot, now, config.refreshSeconds),
+        what: TAB_WHAT.details,
+        needsUsage: false,
+      }
     case 'pace':
-      return { build: (snapshot, now) => paceReport(snapshot, now, reportOptions()), what: 'the pace report' }
+      return {
+        build: (snapshot, now) => paceReport(snapshot, now, reportOptions()),
+        what: 'the pace report',
+        needsUsage: false,
+      }
     case 'compare':
       return {
         build: snapshot => compareReport(snapshot, COMPARABLE.includes(range) ? range : 7),
         what: 'the comparison',
+        needsUsage: true,
       }
     case 'csv':
-      return { build: snapshot => usageCsv(snapshot, range), what: `${range} days as CSV` }
+      return { build: snapshot => usageCsv(snapshot, range), what: `${range} days as CSV`, needsUsage: true }
     case 'json':
       return {
         build: (snapshot, now) => jsonReport(snapshot, now, config.warnPercent, reportOptions()),
         what: 'the JSON',
+        needsUsage: false,
       }
     default:
       return null
@@ -508,11 +521,33 @@ const requested = async (
   await ensureFresh($)
   const got = await current($)
 
-  return typeof got === 'string' ? got : { named, snapshot: got.snapshot, text: named.build(got.snapshot, got.now) }
+  if (typeof got === 'string') {
+    return got
+  }
+
+  return named.needsUsage && got.snapshot.usage === null
+    ? NO_HISTORY
+    : { named, snapshot: got.snapshot, text: named.build(got.snapshot, got.now) }
+}
+
+/** The command that prints what `copy` could not put on the clipboard: the report's own, or the nearest to it. */
+const printing = (name: string, tab: ViewName): string => {
+  const word = name.toLowerCase() || tab
+
+  switch (word) {
+    case 'overview':
+    case 'summary':
+      return 'info'
+    case 'details':
+      return 'tab details'
+    default:
+      return word
+  }
 }
 
 const copyCommand = async ($: EngineInterface, words: readonly string[]): Promise<{ text: string }> => {
-  const found = await requested($, words, await read($, viewState))
+  const tab = await read($, viewState)
+  const found = await requested($, words, tab)
 
   if (typeof found === 'string') {
     return { text: found }
@@ -523,7 +558,7 @@ const copyCommand = async ($: EngineInterface, words: readonly string[]): Promis
   return {
     text: result.isCopied
       ? `Copied ${found.named.what} (${lines}).`
-      : `Could not copy ${found.named.what} (${result.reason}). Use /litellm ${words[0] || 'info'} to print it instead.`,
+      : `Could not copy ${found.named.what} (${result.reason}). Use /litellm ${printing(words[0] ?? '', tab)} to print it instead.`,
   }
 }
 
@@ -542,7 +577,7 @@ const shareCommand = async (
   return {
     text: `Shared ${named.what} with Claude. Ask it about your spend, budget or usage.`,
     context: [
-      `The user ran /litellm share. Below is ${named.what} for their LiteLLM virtual key, read from ${snapshot.host} at ${clock(snapshot.fetchedAt)}. It holds no secrets. Use it when they ask about their spend, budget or usage.\n\n${text}`,
+      `The user ran /litellm share. Below is ${named.what} for their LiteLLM virtual key, read from ${snapshot.host} at ${clock(snapshot.fetchedAt)}. It never holds the key itself. Use it when they ask about their spend, budget or usage.\n\n${text}`,
     ],
   }
 }
@@ -799,9 +834,12 @@ const debugText = async ($: EngineInterface): Promise<string> => {
   return lines.join('\n')
 }
 
-/** A line for a number that was asked for and is no range the plugin reads, once the report is shown anyway. */
-const strayNote = (stray: string | null, shown: number): string =>
-  stray === null ? '' : `\n(${stray} is not a range the plugin reads: 7, 14 or 30. This is ${shown} days.)`
+/** A line for a number that was asked for and is no range of the command, once the report is shown anyway. */
+const strayNote = (stray: string | null, shown: number, takes: string): string =>
+  stray === null ? '' : `\n(${stray} is not a range ${takes}. This is ${shown} days.)`
+
+const READS = 'the plugin reads: 7, 14 or 30'
+const COMPARES = 'to compare: 7 or 14'
 
 const viewNamed = (word: string): ViewName | null =>
   VIEWS.find((view, at) => view === word.toLowerCase() || String(at + 1) === word) ?? null
@@ -869,11 +907,12 @@ export const register: Register = (on, options) => {
         case 'tab':
         case 'view': {
           const tab = viewNamed(argument)
+          const guess = tab === null ? closest(argument, VIEWS) : null
 
           return {
             text:
               tab === null
-                ? `Unknown tab "${truncate(argument, 30)}". The tabs are ${VIEWS.join(', ')}.`
+                ? `Unknown tab "${truncate(argument, 30)}".${guess === null ? '' : ` Did you mean "${guess}"?`} The tabs are ${VIEWS.join(', ')}.`
                 : await showPane($, tab),
           }
         }
@@ -914,7 +953,7 @@ export const register: Register = (on, options) => {
           await ensureFresh($)
 
           return {
-            text: await report($, snapshot => `${usageReport(snapshot, days)}${strayNote(stray, days)}`),
+            text: await report($, snapshot => `${usageReport(snapshot, days)}${strayNote(stray, days, READS)}`),
           }
         }
         case 'compare':
@@ -928,7 +967,7 @@ export const register: Register = (on, options) => {
           await ensureFresh($)
 
           return {
-            text: await report($, snapshot => `${compareReport(snapshot, days)}${strayNote(stray, days)}`),
+            text: await report($, snapshot => `${compareReport(snapshot, days)}${strayNote(stray, days, COMPARES)}`),
           }
         }
         case 'day':

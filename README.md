@@ -53,7 +53,7 @@ Este repositório é um marketplace (`cc-litellm`) com um plugin: [`litellm-key`
 │ Last 7 days            ▂▅▅▄▃▆█ · $18.53 · 164 requests · 3.9M tokens         │
 │ Session                nothing spent since 17:26 (1m ago)                    │
 │                                                                              │
-│ 127.0.0.1:4012 · via ANTHROPIC_AUTH_TOKEN                                    │
+│ 127.0.0.1:4000 · via ANTHROPIC_AUTH_TOKEN                                    │
 │ Updated 17:27:51 (14s ago) · every 60s                                       │
 │ ctrl+x tab, or a click, gives the pane the keyboard                          │
 ╰──────────────────────────────────────────────────────────────────────────────╯
@@ -85,13 +85,13 @@ Este repositório é um marketplace (`cc-litellm`) com um plugin: [`litellm-key`
 │ Trend        ▲ 10% vs the 7 days before (full days)                          │
 │                                                                              │
 │ By model, last 7 days · ▲▼ vs the 7 before ───────────────────────────────── │
-│ claude-sonnet-4-5  █████████████▊░░░░░░░░░░  58%  $10.66 ▲ 9% · 89 requests  │
-│ claude-opus-4-1    ██████▊░░░░░░░░░░░░░░░░░  28%  $5.24 ▲ 11% · 43 requests  │
-│ claude-haiku-4-5   ██▎░░░░░░░░░░░░░░░░░░░░░   9%  $1.69 ▲ 11% · 11 requests  │
-│ gpt-5              █▎░░░░░░░░░░░░░░░░░░░░░░   5%  $0.94 ▲ 18% · 5 requests   │
+│ claude-sonnet-4-5  ███████████▌░░░░░░░░  58%  $10.66 ▲ 9% · 89 requests      │
+│ claude-opus-4-1    █████▋░░░░░░░░░░░░░░  28%  $5.24 ▲ 11% · 43 requests      │
+│ claude-haiku-4-5   █▉░░░░░░░░░░░░░░░░░░   9%  $1.69 ▲ 11% · 11 requests      │
+│ gpt-5              █░░░░░░░░░░░░░░░░░░░   5%  $0.94 ▲ 18% · 5 requests       │
 │                                                                              │
-│ 127.0.0.1:4012 · via ANTHROPIC_AUTH_TOKEN                                    │
-│ Updated 17:27:22 (just now) · every 60s                                      │
+│ 127.0.0.1:4000 · via ANTHROPIC_AUTH_TOKEN                                    │
+│ Updated 17:43:39 (23s ago) · every 60s                                       │
 │ 1-4 tabs · r refresh · c copy · q or esc close                               │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
@@ -118,7 +118,7 @@ Este repositório é um marketplace (`cc-litellm`) com um plugin: [`litellm-key`
 
 ## Instalação
 
-Requer um Claude Code recente: o plugin usa hooks de função (API em acesso antecipado), testados na 2.1.288 e na 2.1.289.
+Requer um Claude Code recente: o plugin usa hooks de função (API em acesso antecipado), testados na 2.1.289 (a versão 0.3 também na 2.1.288).
 
 ```text
 /plugin marketplace add juninmd/cc-litellm
@@ -271,7 +271,7 @@ As leituras do relógio e as de depois de um turno só refazem os modelos, o uso
 
 - A chave só viaja para o proxy que o Claude Code já usa, no header `Authorization` (ou `x-litellm-api-key`). Nunca em URL, log, toast, estado ou no armazenamento do plugin; mensagens de erro passam por um filtro que a mascara.
 - O plugin guarda só os ids dos avisos já mostrados, para não repeti-los, e a sua preferência de período, de ordem e de gráfico.
-- `/litellm share` é a única coisa que põe algo no contexto do modelo, e só quando você o digita: o relatório que você escolheu, sem a chave, que o Claude passa a poder ler. `copy`, `json` e `csv` mostram ou copiam o mesmo que o painel mostra, e nenhum deles tem a chave nem o hash dela.
+- `/litellm share` é a única coisa que põe algo no contexto do modelo, e só quando você o digita: o relatório que você escolheu, sem a chave, que o Claude passa a poder ler. `copy`, `json` e `csv` mostram ou copiam o mesmo que o painel mostra: nenhum tem a chave. O hash dela (o sha256 que o proxy usa como nome da chave) aparece só na aba Details, cortado (8 caracteres do começo e 4 do fim); o `json` não o tem, e um erro do proxy que o repete (o 401 do LiteLLM o faz) passa por um filtro que o apaga.
 - O link para o painel do LiteLLM (aba Details) é a raiz do proxy sem credenciais: um `usuario:senha@` na URL é retirado antes.
 - `litellm-key` lê as variáveis `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY`, `ANTHROPIC_CUSTOM_HEADERS`, `LITELLM_PROXY_API_BASE` e `LITELLM_PROXY_API_KEY`, o bloco `env` do `settings.json` e faz requisições HTTP. `claude plugin validate plugins/litellm-key` lista tudo isso.
 

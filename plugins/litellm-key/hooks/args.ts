@@ -27,25 +27,33 @@ export const rangeIn = (words: readonly string[], allowed: readonly number[], fa
 export const strayNumber = (words: readonly string[], allowed: readonly number[]): string | null =>
   words.find(word => /^\d+d?$/i.test(word) && !allowed.includes(Number.parseInt(word, 10))) ?? null
 
+/** How many slips of the fingers lie between two words; a swap of two neighbours ("hlep") is one, not two. */
 const distance = (a: string, b: string): number => {
-  let row = Array.from({ length: b.length + 1 }, (_, at) => at)
+  const width = b.length + 1
+  const grid = new Array<number>((a.length + 1) * width).fill(0)
+  const at = (row: number, column: number): number => grid[row * width + column] ?? 0
 
-  for (let i = 1; i <= a.length; i += 1) {
-    const next = [i]
+  for (let row = 0; row <= a.length; row += 1) {
+    for (let column = 0; column <= b.length; column += 1) {
+      if (row === 0 || column === 0) {
+        grid[row * width + column] = row + column
 
-    for (let j = 1; j <= b.length; j += 1) {
-      next.push(
-        Math.min(
-          (row[j] ?? 0) + 1,
-          (next[j - 1] ?? 0) + 1,
-          (row[j - 1] ?? 0) + (a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1),
-        ),
+        continue
+      }
+      let best = Math.min(
+        at(row - 1, column) + 1,
+        at(row, column - 1) + 1,
+        at(row - 1, column - 1) + (a.charAt(row - 1) === b.charAt(column - 1) ? 0 : 1),
       )
+
+      if (row > 1 && column > 1 && a.charAt(row - 1) === b.charAt(column - 2) && a.charAt(row - 2) === b.charAt(column - 1)) {
+        best = Math.min(best, at(row - 2, column - 2) + 1)
+      }
+      grid[row * width + column] = best
     }
-    row = next
   }
 
-  return row[b.length] ?? Math.max(a.length, b.length)
+  return at(a.length, b.length)
 }
 
 /** The word of `words` that `word` most likely meant, if it is near enough to one to be a slip of the fingers. */

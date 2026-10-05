@@ -310,10 +310,16 @@ export const redact = (text: string, secrets: readonly string[] = []): string =>
     }
   }
 
-  return masked
-    .replace(/\b([a-z][a-z\d+.-]*:\/\/)[^/\s]*@/gi, '$1')
-    .replace(/\bsk-[A-Za-z0-9_-]{6,}/g, 'sk-…')
-    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, 'Bearer …')
+  return (
+    masked
+      .replace(/\b([a-z][a-z\d+.-]*:\/\/)[^/\s]*@/gi, '$1')
+      .replace(/\bsk-[A-Za-z0-9_-]{6,}/g, 'sk-…')
+      .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, 'Bearer …')
+      // The sha256 of a key is the name the proxy knows it by, and a 401 says it ("Key Hash (Token) =…"): kept out too,
+      // whole or cut short in the url of a request that an error names.
+      .replace(/\b(api_key=)[^&\s"']+/gi, '$1…')
+      .replace(/\b[0-9a-f]{64}\b/gi, '…')
+  )
 }
 
 export const truncate = (text: string, max: number): string =>

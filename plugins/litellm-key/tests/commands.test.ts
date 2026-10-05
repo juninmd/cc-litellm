@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { boot, keysOf, mount, run, start, texts, urls } from './harness'
+import { SURFACES, boot, keysOf, mount, run, start, texts, urls } from './harness'
 import { HASH, KEY, activity, health, keyBody, reply, standardRoutes } from './support'
 
 /** 15 quiet days, 7 of $10 (sonnet 80%), 7 of $15 (opus up to 47%), and today at $99: a month to compare. */
@@ -102,7 +102,7 @@ describe('/litellm compare', () => {
 
     expect((await run($, 'compare 14')).text).toContain('Not enough history to compare 14 days')
     expect((await run($, 'compare 30')).text).toBe('Comparing 30 days takes 60 days of history, and the plugin reads 30. Use 7 or 14.')
-    expect((await run($, 'compare 9')).text).toMatch(/\(9 is not a range the plugin reads: 7, 14 or 30\. This is 7 days\.\)$/)
+    expect((await run($, 'compare 9')).text).toMatch(/\(9 is not a range to compare: 7 or 14\. This is 7 days\.\)$/)
   })
 
   test('says it cannot when the history is too short', async ($, on) => {
@@ -427,6 +427,42 @@ describe('/litellm copy', () => {
     expect((await run($, 'copy usage')).text).toBe('Could not copy the usage report (no-clipboard). Use /litellm usage to print it instead.')
   })
 
+  test('says which command prints what the clipboard would not take', async ($, on) => {
+    const { clock } = boot(on, { copy: { isCopied: false, reason: 'no-clipboard' } })
+
+    await start($, clock)
+
+    expect((await run($, 'copy details')).text).toContain('Use /litellm tab details to print it instead.')
+    expect((await run($, 'copy overview')).text).toContain('Use /litellm info to print it instead.')
+    expect((await run($, 'copy')).text).toContain('Use /litellm info to print it instead.')
+    expect((await run($, 'copy pace')).text).toContain('Use /litellm pace to print it instead.')
+    expect((await run($, 'copy csv')).text).toContain('Use /litellm csv to print it instead.')
+  })
+
+  test('copies nothing, and says why, of a report that is only the history when there is none', async ($, on) => {
+    const { log, clock } = boot(on, { routes: { ...standardRoutes(), '/user/daily/activity': reply(404, { detail: 'Not Found' }) } })
+
+    await start($, clock)
+    for (const name of ['usage', 'csv', 'compare']) {
+      expect((await run($, `copy ${name}`)).text).toContain('No usage history')
+    }
+    expect(log.copies).toEqual([])
+    // The reports that have more to say than the history still go.
+    expect((await run($, 'copy overview')).text).toMatch(/^Copied the summary/)
+    expect((await run($, 'copy json')).text).toMatch(/^Copied the JSON/)
+  })
+
+  test('copies nothing of the usage tab either, when the pane shows it and there is no history', async ($, on) => {
+    const { log, clock } = boot(on, { routes: { ...standardRoutes(), '/user/daily/activity': reply(404, { detail: 'Not Found' }) } })
+
+    await start($, clock)
+    const ui = await mount($, 'terminal')
+
+    await ui.press({ key: 'tab-usage' })
+    expect((await run($, 'copy')).text).toContain('No usage history')
+    expect(log.copies).toEqual([])
+  })
+
   test('says what it has when there is nothing to copy', async ($, on) => {
     const { log, clock } = boot(on, { env: {} })
 
@@ -462,6 +498,30 @@ describe('/litellm share', () => {
     expect(usage.text).toContain('Shared the usage report with Claude')
     expect(usage.context?.[0]).toContain('Usage · last 14 days')
     expect((await run($, 'share pace')).context?.[0]).toContain('Allowance')
+  })
+
+  test('hands over no report that is only the history when there is none', async ($, on) => {
+    const { clock } = boot(on, { routes: { ...standardRoutes(), '/user/daily/activity': reply(404, { detail: 'Not Found' }) } })
+
+    await start($, clock)
+    for (const name of ['usage', 'csv', 'compare']) {
+      const result = await run($, `share ${name}`)
+
+      expect(result.text).toContain('No usage history')
+      expect(result.context).toBeUndefined()
+    }
+    expect((await run($, 'share')).context).toHaveLength(1)
+  })
+
+  test('says it never holds the key, which is what is true of it', async ($, on) => {
+    const { clock } = boot(on)
+
+    await start($, clock)
+    const { context } = await run($, 'share details')
+
+    expect(context?.[0]).toContain('It never holds the key itself.')
+    expect(context?.[0]).not.toContain('no secrets')
+    expect(context?.[0]).not.toContain(KEY)
   })
 
   test('hands over nothing for a name that is none', async ($, on) => {
@@ -569,6 +629,26 @@ describe('typos and help', () => {
     expect((await run($, 'usgae')).text).toContain('Unknown option "usgae". Did you mean "usage"?')
     expect((await run($, 'comapre')).text).toContain('Did you mean "compare"?')
     expect((await run($, 'chek')).text).toContain('Did you mean "check"?')
+  })
+
+  test('suggests the tab too', async ($, on) => {
+    const { log, clock } = boot(on)
+
+    await start($, clock)
+
+    expect((await run($, 'tab usgae')).text).toBe('Unknown tab "usgae". Did you mean "usage"? The tabs are overview, usage, models, details.')
+    expect((await run($, 'tab detail')).text).toContain('Did you mean "details"?')
+    expect(log.opens).toEqual([])
+  })
+
+  test('knows a swap of two letters for what it is, in a short command too', async ($, on) => {
+    const { clock } = boot(on)
+
+    await start($, clock)
+
+    expect((await run($, 'hlep')).text).toContain('Did you mean "help"?')
+    expect((await run($, 'ifno')).text).toContain('Did you mean "info"?')
+    expect((await run($, 'pnig')).text).toContain('Did you mean "ping"?')
   })
 
   test('has no suggestion for what is nothing like a command', async ($, on) => {
@@ -858,6 +938,25 @@ describe('the pane', () => {
       expect(await ui.find({ type: 'Text', text: /^Spend per day \(UTC\)$/ })).toBeDefined()
     })
 
+    test('draws on every surface, whatever it counts', async ($, on) => {
+      const { clock } = boot(on, { routes: { ...standardRoutes(), ...month() } })
+
+      await start($, clock)
+      for (const surface of SURFACES) {
+        const ui = await mount($, surface)
+
+        // The tab is the pane's, not the surface's: the one a surface before this left is the one shown now.
+        if ((await keysOf(ui)).includes('tab-usage')) {
+          await ui.press({ key: 'tab-usage' })
+        }
+        for (const title of ['Requests per day', 'Tokens per day', 'Spend per day']) {
+          await ui.press({ key: 'metric' })
+          expect(await ui.find({ type: 'Text', text: new RegExp(`^${title} \\(UTC\\)$`) })).toBeDefined()
+        }
+        await ui.unmount()
+      }
+    })
+
     test('keeps the days to pick, whatever it counts', async ($, on) => {
       const { clock } = boot(on)
 
@@ -964,5 +1063,40 @@ describe('the pane', () => {
       expect(await ui.find({ type: 'Text', text: /^By model, last 7 days$/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /▲ 250%/ })).toBeDefined()
     })
+  })
+})
+
+describe('the sha256 of the key', () => {
+  const rejected = reply(401, {
+    error: {
+      message: `Authentication Error, Invalid proxy server token passed. Received API Key = sk-...7890, Key Hash (Token) =${HASH}. Unable to find token in cache or LiteLLM_VerificationTokenTable`,
+      type: 'auth_error',
+      param: 'None',
+      code: '401',
+    },
+  })
+
+  test('is in nothing a proxy that rejects the key makes the plugin say', async ($, on) => {
+    const { log, clock } = boot(on, { routes: { '/key/info': rejected } })
+
+    await start($, clock)
+    for (const word of ['check', 'json', 'debug', 'info', 'status', 'pace', 'ping', 'csv', 'share', 'copy']) {
+      const result = await run($, word)
+
+      expect(JSON.stringify(result), word).not.toContain(HASH)
+      expect(JSON.stringify(result), word).not.toContain(HASH.slice(0, 12))
+    }
+    expect(JSON.stringify(log)).not.toContain(HASH.slice(0, 12))
+    expect(JSON.stringify(log)).not.toContain(KEY)
+  })
+
+  test('is not in the pane that says the key was rejected', async ($, on) => {
+    const { clock } = boot(on, { routes: { '/key/info': rejected } })
+
+    await start($, clock)
+    const ui = await mount($, 'terminal')
+
+    expect(await ui.find({ type: 'Text', text: /The proxy rejected the key \(401\)/ })).toBeDefined()
+    expect(JSON.stringify(await ui.drawn())).not.toContain(HASH.slice(0, 12))
   })
 })

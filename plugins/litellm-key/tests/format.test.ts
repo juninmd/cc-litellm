@@ -225,6 +225,22 @@ describe('secrets', () => {
     expect(redact('nothing to hide')).toBe('nothing to hide')
   })
 
+  test('redact hides the sha256 of a key, which is what the proxy knows it by, and the api_key of a url', () => {
+    const hash = '0123456789abcdef'.repeat(4)
+
+    expect(redact(`Key Hash (Token) =${hash}. Unable to find token`)).toBe('Key Hash (Token) =…. Unable to find token')
+    expect(redact(`${hash.toUpperCase()} and ${hash}`)).toBe('… and …')
+    expect(redact('fetching "http://x/user/daily/activity?user_id=jane&api_key=0123456789abcdef0123&page_size=1000"')).toBe(
+      'fetching "http://x/user/daily/activity?user_id=jane&api_key=…&page_size=1000"',
+    )
+    expect(redact('api_key=')).toBe('api_key=')
+  })
+
+  test('redact leaves alone what only looks a little like a hash', () => {
+    expect(redact('request 0123456789abcdef is done')).toBe('request 0123456789abcdef is done')
+    expect(redact(`${'a'.repeat(63)} ${'a'.repeat(65)}`)).toBe(`${'a'.repeat(63)} ${'a'.repeat(65)}`)
+  })
+
   test('redact drops the credentials of a url', () => {
     expect(redact('Could not reach https://bob:hunter2@litellm.test/key/info')).toBe(
       'Could not reach https://litellm.test/key/info',

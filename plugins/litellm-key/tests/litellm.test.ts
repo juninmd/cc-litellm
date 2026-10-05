@@ -917,3 +917,68 @@ describe('probeEndpoints', () => {
     expect(probes.find(probe => probe.path === '/v1/models')?.detail).toContain('sk-…7890')
   })
 })
+
+describe('what the proxy and the engine say of the key', () => {
+  const message = (hash: string) =>
+    `Authentication Error, Invalid proxy server token passed. Received API Key = sk-...7890, Key Hash (Token) =${hash}. Unable to find token in cache or LiteLLM_VerificationTokenTable`
+
+  test('a rejected key does not bring its sha256 into the failure', async () => {
+    const { http } = router({
+      '/key/info': reply(401, { error: { message: message(HASH), type: 'auth_error', param: 'None', code: '401' } }),
+    })
+    const result = await fetchSnapshot(request(http))
+
+    expect(!result.ok && result.failure.message).toContain('The proxy rejected the key (401)')
+    expect(JSON.stringify(result)).not.toContain(HASH)
+    expect(JSON.stringify(result)).not.toContain(HASH.slice(0, 12))
+  })
+
+  test('an engine error that names the url does not bring the api_key of it into a note', async () => {
+    const { http } = router(standardRoutes())
+    const failing = async (url: string, headers: Record<string, string>) => {
+      if (url.includes('/user/daily/activity')) {
+        throw new Error(`Malformed_HTTP_Response fetching "${url}": not HTTP`)
+      }
+
+      return http(url, headers)
+    }
+    const result = await fetchSnapshot(request(failing))
+    const note = result.ok ? result.snapshot.notes.join('\n') : ''
+
+    expect(note).toContain('usage history unavailable')
+    expect(note).not.toContain(HASH.slice(0, 8))
+    expect(note).not.toContain('api_key=0')
+  })
+
+  test('says in plain words that the proxy answered something that is not HTTP', async () => {
+    const { http } = router(standardRoutes())
+    const failing = async (url: string, headers: Record<string, string>) => {
+      if (url.endsWith('/v1/models')) {
+        throw new Error(`Malformed_HTTP_Response fetching "${url}": not HTTP`)
+      }
+
+      return http(url, headers)
+    }
+    const result = await fetchSnapshot(request(failing))
+
+    expect(result.ok && result.snapshot.notes).toEqual(['model list unavailable: the proxy sent an answer that is not HTTP'])
+  })
+
+  test('probing does not bring the api_key into a row either', async () => {
+    const { http } = router(standardRoutes())
+    const snapshot = await fetchSnapshot(request(http))
+    const failing = async (url: string): Promise<never> => {
+      throw new Error(`Malformed_HTTP_Response fetching "${url}": not HTTP`)
+    }
+    const probes = await probeEndpoints({
+      credentials: credentials(),
+      root: BASE,
+      http: failing,
+      snapshot: snapshot.ok ? snapshot.snapshot : null,
+      now: NOW,
+    })
+
+    expect(JSON.stringify(probes)).not.toContain(HASH.slice(0, 8))
+    expect(probes.find(probe => probe.path === '/user/daily/activity')?.detail).toBe('the proxy sent an answer that is not HTTP')
+  })
+})

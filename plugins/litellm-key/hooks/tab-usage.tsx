@@ -16,6 +16,20 @@ const TOP_MODELS = 6
 // Body columns from which the heading of the models has room to say what the arrows measure.
 const ARROWS_NOTE_MIN = 70
 
+// What an arrow takes beside the amounts of a model: "▲ 250% " and a cell to spare.
+const ARROW_ROOM = 8
+
+/**
+ * The cells of a row of the list of models: the name, the bar, and what the bar leaves for the amounts. The bar gives up
+ * cells to the arrows only when there are some, so a list without them keeps the room it always had.
+ */
+export const modelColumns = (columns: number, longest: number, hasArrows: boolean) => {
+  const nameWidth = Math.min(26, longest, Math.max(10, Math.floor(columns * 0.3)))
+  const barWidth = Math.max(6, Math.min(24, columns - nameWidth - 2 - 7 - 22 - (hasArrows ? ARROW_ROOM : 0)))
+
+  return { nameWidth, barWidth, textWidth: columns - (nameWidth + 2) - (barWidth + 7) }
+}
+
 const TITLES: Record<MetricName, string> = {
   spend: 'Spend per day',
   requests: 'Requests per day',
@@ -130,8 +144,7 @@ export const usageTab = (ui: Ui, props: DashboardProps, snapshot: Snapshot, layo
   const rows = usageFacts(snapshot, props.range)
   const labelWidth = Math.max(8, ...rows.map(row => row.label.length))
   const longest = Math.max(1, ...totals.models.map(item => item.model.length))
-  const nameWidth = Math.min(26, longest, Math.max(10, Math.floor(columns * 0.3)))
-  const barWidth = Math.max(6, Math.min(24, columns - nameWidth - 2 - 7 - 26))
+  const { nameWidth, barWidth } = modelColumns(columns, longest, diff !== null)
 
   return (
     <Box flexDirection="column">

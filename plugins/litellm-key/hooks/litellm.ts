@@ -578,6 +578,7 @@ export const parseUsage = (body: unknown, days: readonly string[]): Usage | null
 }
 
 const NETWORK_ERRORS: readonly [RegExp, string][] = [
+  [/Malformed_HTTP_Response/i, 'the proxy sent an answer that is not HTTP'],
   [/ECONNREFUSED/i, 'connection refused'],
   [/ENOTFOUND|EAI_AGAIN/i, 'host not found'],
   [/ECONNRESET|socket hang up/i, 'connection reset'],
