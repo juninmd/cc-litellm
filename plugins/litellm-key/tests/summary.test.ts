@@ -763,6 +763,12 @@ describe('today', () => {
     expect(todayRow(first, NOW)).toEqual({ label: 'Today', text: '$2.00 · 20 requests', tone: 'ok' })
   })
 
+  test('compares with no usual day that is a cent or less: "9000×" says nothing', async () => {
+    const faint = await snapshotOf({ ...standardRoutes(), '/user/daily/activity': activity([0.004, 0.004, 0.004, 5]) })
+
+    expect(todayRow(faint, NOW)).toEqual({ label: 'Today', text: '$5.00 · 50 requests', tone: 'ok' })
+  })
+
   test('has no row for a day that did nothing, or for a history that stops before today', async () => {
     const idle = await snapshotOf({ ...standardRoutes(), '/user/daily/activity': activity([4, 4, 4, 0]) })
 

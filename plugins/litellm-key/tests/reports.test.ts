@@ -90,6 +90,12 @@ describe('dayReport', () => {
     expect(dayReport({ ...snapshot, usage: { days } }, '2026-10-03')).toContain('Failed     9 requests (10.0%)')
   })
 
+  test('leaves out the usual day when it is a cent or less', async () => {
+    const faint = await snapshotOf({ ...standardRoutes(), '/user/daily/activity': activity([0.004, 0.004, 0.004, 5]) })
+
+    expect(dayReport(faint, '2026-10-03')).not.toContain('Usual day')
+  })
+
   test('is short for a day that did nothing', async () => {
     expect(dayReport(await snapshotOf(), '2026-10-02')).toBe('Fri Oct 2 · UTC · litellm.test\nno activity')
   })

@@ -95,7 +95,7 @@ export const dayReport = (snapshot: Snapshot, date: string): string => {
       tone: 'warn',
     })
   }
-  if (usual !== null && day.spend > 0) {
+  if (usual !== null && usual >= 0.01 && day.spend > 0) {
     rows.push({ label: 'Usual day', text: `${money(usual)} · this one was ${times(day.spend / usual)} that`, tone: 'ok' })
   }
   lines.push(...table(rows))

@@ -80,6 +80,8 @@ const STATUS_BAR_CELLS = 6
 const RECENT_NOTE = 'at the recent daily average'
 // Fewest requests of the last week that make their average price worth building a count of what is left on.
 const HEADROOM_MIN_REQUESTS = 10
+// The smallest usual day, in dollars, that today can be compared with.
+const USUAL_MIN = 0.01
 // A rate needs time to say anything: an hour of a session is a rate, five minutes of it is a burst.
 const SESSION_RATE_MIN_MS = 30 * 60_000
 
@@ -389,15 +391,17 @@ export const todayRow = (snapshot: Snapshot, now: number): Row | null => {
   }
   const usual = snapshot.usage ? recentDaily(snapshot.usage) : null
   const parts = [money(today.spend), plural(today.requests, 'request')]
+  // A usual day of a cent or less is no measure: "9000× the usual day" would say nothing.
+  const hasUsual = usual !== null && usual >= USUAL_MIN
 
-  if (usual !== null && today.spend > 0) {
+  if (hasUsual && today.spend > 0) {
     parts.push(`${times(today.spend / usual)} the usual day (${money(usual)})`)
   }
 
   return {
     label: 'Today',
     text: parts.join(' · '),
-    tone: usual !== null && isSpike(today.spend, usual) ? 'warn' : 'ok',
+    tone: hasUsual && isSpike(today.spend, usual) ? 'warn' : 'ok',
   }
 }
 

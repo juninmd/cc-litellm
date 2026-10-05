@@ -629,14 +629,14 @@ const csvCommand = async ($: EngineInterface, words: readonly string[]): Promise
 }
 
 /** `/litellm ping`: every endpoint the plugin reads, asked once, with its status and its time. */
-const pingCommand = async ($: EngineInterface): Promise<{ text: string }> => {
+const pingCommand = async ($: EngineInterface): Promise<{ text: string; exitCode?: number }> => {
   // A reading first, to know the user and the team to ask about; if it fails, the rest is asked all the same.
   await ensureFresh($)
   const now = await $.clock.now()
   const resolved = resolveCredentials(await sourcesOf($, config), now)
 
   if (!resolved.ok) {
-    return { text: failureText(resolved.failure) }
+    return { text: failureText(resolved.failure), exitCode: 3 }
   }
   const { credentials } = resolved
   const root =
@@ -649,7 +649,10 @@ const pingCommand = async ($: EngineInterface): Promise<{ text: string }> => {
     now,
   })
 
-  return { text: pingReport(credentials.host, withoutCredentials(root), probes) }
+  const text = pingReport(credentials.host, withoutCredentials(root), probes)
+
+  // The key info is what the plugin cannot do without; the rest is optional, and does not fail a script.
+  return probes[0]?.ok === false ? { text, exitCode: 3 } : { text }
 }
 
 /** `/litellm models [text]`: the names the key can call, or just the ones that hold `text`. */

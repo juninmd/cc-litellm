@@ -528,12 +528,34 @@ describe('/litellm ping', () => {
     expect(net.calls.every(call => call.headers.authorization === `Bearer ${KEY}`)).toBe(true)
   })
 
+  test('exits with 0 while the key can be read, whatever the optional endpoints say', async ($, on) => {
+    const { clock } = boot(on, { routes: { ...standardRoutes(), '/user/daily/activity': reply(404, { detail: 'Not Found' }) } })
+
+    await start($, clock)
+
+    expect((await run($, 'ping')).exitCode).toBeUndefined()
+  })
+
+  test('exits with 3 when the key cannot be read', async ($, on) => {
+    const routes = { '/key/info': reply(401, { error: { message: 'bad key', type: 'auth_error', param: 'None', code: '401' } }) }
+    const { clock } = boot(on, { routes })
+
+    await start($, clock)
+    const result = await run($, 'ping')
+
+    expect(result.exitCode).toBe(3)
+    expect(result.text).toMatch(/✗ \/key\/info +401 .*bad key/)
+  })
+
   test('says what is missing when there is nothing to ask', async ($, on) => {
     const { net, clock } = boot(on, { env: {} })
 
     await start($, clock)
 
-    expect((await run($, 'ping')).text).toContain('ANTHROPIC_BASE_URL is not set')
+    const result = await run($, 'ping')
+
+    expect(result.text).toContain('ANTHROPIC_BASE_URL is not set')
+    expect(result.exitCode).toBe(3)
     expect(net.calls).toHaveLength(0)
   })
 })
