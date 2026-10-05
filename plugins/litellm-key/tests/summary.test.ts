@@ -355,7 +355,7 @@ describe('statusText options', () => {
       '▰▰▱▱▱▱ 25% of budget · $12.50 of $50.00 · resets in 6d 12h (30d)',
     )
     expect(statusText(await snapshotOf(withKey({ spend: 52 })), null, NOW, { bar: true })).toMatch(/^▰{6} 104% of budget/)
-    expect(statusText(await snapshotOf(withKey({ spend: 49.9 })), null, NOW, { bar: true })).toMatch(/^▰{5}▱ 100% of budget/)
+    expect(statusText(await snapshotOf(withKey({ spend: 49.9 })), null, NOW, { bar: true })).toMatch(/^▰{5}▱ 99% of budget/)
   })
 
   test('has no meter without a cap, and none by default', async () => {

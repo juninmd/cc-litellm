@@ -1,7 +1,7 @@
 import type { Elements, RenderElement, UiPressArgument } from 'claude-code'
 
 import type { Failure, Session, Snapshot, SortName, ViewName } from '../types'
-import { gauge, percent, truncate } from './format'
+import { gauge, percent, share, truncate } from './format'
 import type { Row, Tone } from './summary'
 import { RANGES, nextRange } from './usage'
 
@@ -116,7 +116,7 @@ export const gaugeText = (
   if (pct === null || limit === null) {
     return <Text dimColor>no cap</Text>
   }
-  const { filled, empty } = gauge(used / limit, width)
+  const { filled, empty } = gauge(share(used, limit), width)
 
   return (
     <Text {...(accent === undefined ? barTint(tone) : { color: accent })}>

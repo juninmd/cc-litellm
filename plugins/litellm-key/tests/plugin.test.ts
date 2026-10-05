@@ -17,6 +17,8 @@ type Setup = {
   open?: { isPlaced: boolean; reason?: string }
   /** What the clipboard answers: it takes the text unless this says otherwise. */
   copy?: { isCopied: false; reason: 'no-surface' | 'no-clipboard' | 'refused' }
+  /** The store fails on every call, as a disk that cannot be written would. */
+  storeFails?: boolean
 }
 
 const boot = (on: On, setup: Setup = {}) => {
@@ -31,14 +33,27 @@ const boot = (on: On, setup: Setup = {}) => {
     focuses: [] as string[],
     invalidations: 0,
     stored: {} as Record<string, unknown>,
+    /** The panes that are up, as the engine lists them; a test drops one to play the engine closing it by itself. */
+    panes: new Set<string>(),
   }
   const net = router(setup.routes ?? standardRoutes())
   const clock = mock.clock(on, { now: NOW })
 
   // What mock.store keeps, kept here in the open so a test can see what was written.
   Object.assign(log.stored, setup.store)
-  on('store.get', (_$, e) => ({ value: log.stored[e.key] }))
+  const diskFails = () => {
+    if (setup.storeFails) {
+      throw new Error('disk error')
+    }
+  }
+
+  on('store.get', (_$, e) => {
+    diskFails()
+
+    return { value: log.stored[e.key] }
+  })
   on('store.set', (_$, e) => {
+    diskFails()
     log.stored[e.key] = e.value
 
     return { value: undefined }
@@ -77,14 +92,19 @@ const boot = (on: On, setup: Setup = {}) => {
   on('ui.open', (_$, e) => {
     log.opens.push(e.id)
     log.escapes.push(e.closeOnEscape === true)
+    log.panes.add(e.id)
 
     return { value: setup.open ? { isPlaced: setup.open.isPlaced, reason: setup.open.reason ?? '' } : { isPlaced: true } }
   })
   on('ui.close', (_$, e) => {
     log.closes.push(e.id)
+    log.panes.delete(e.id)
 
     return { value: undefined }
   })
+  on('ui.panes', () => ({
+    value: [...log.panes].map(id => ({ id, title: id, isShown: true, isFocused: false, isPlaced: true })),
+  }))
   on('ui.copy', (_$, e) => {
     log.copies.push(e.text)
 
@@ -128,6 +148,27 @@ describe('session start', () => {
     expect(log.commands).toEqual(['litellm'])
     expect(urls(net)).toContain('/key/info')
     expect(log.statuses.at(-1)).toBe('▰▰▱▱▱▱ 25% of budget · $12.50 of $50.00 · resets in 6d 12h (30d)')
+  })
+
+  test('a store that fails does not stop the plugin', async ($, on) => {
+    const { log, net, clock } = boot(on, { storeFails: true })
+
+    await start($, clock)
+    await clock.advance(60_000)
+
+    expect(urls(net).filter(url => url === '/key/info')).toHaveLength(2)
+    expect(log.statuses.at(-1)).toMatch(/^▰▰▱▱▱▱ 25% of budget · \$12\.50 of \$50\.00 · resets in 6d 1[12]h \(30d\)$/)
+    expect((await run($, 'info')).text).toContain('$12.50 / $50.00 (25%)')
+  })
+
+  test('a pane that stayed up while the code reloaded keeps its clock', async ($, on) => {
+    const { log, clock } = boot(on)
+
+    log.panes.add('litellm-key')
+    await start($, clock)
+    await clock.advance(2_000)
+
+    expect(log.invalidations).toBe(2)
   })
 
   test('status_bar off keeps the text alone', { options: { status_bar: false } }, async ($, on) => {
@@ -433,6 +474,38 @@ describe('options', () => {
 describe('warnings', () => {
   const near = (spend: number) => ({ ...standardRoutes(), '/key/info': reply(200, keyBody({ spend })) })
 
+  test('a store that fails still toasts a warning, once', { options: { show_forecast: false } }, async ($, on) => {
+    const { log, clock } = boot(on, { routes: near(41), storeFails: true })
+
+    await start($, clock)
+    await clock.advance(180_000)
+
+    expect(log.toasts).toEqual(['82% of the key budget is used ($41.00 of $50.00)'])
+  })
+
+  test('a budget a hair under its cap is not called over it', { options: { show_forecast: false } }, async ($, on) => {
+    const { log, clock } = boot(on, { routes: near(49.8) })
+
+    await start($, clock)
+
+    expect(log.toasts).toEqual(['99% of the key budget is used ($49.80 of $50.00)'])
+    expect((await run($, 'info')).text).not.toMatch(/over its cap|over budget/)
+    expect(log.statuses.at(-1)).toMatch(/99% of budget/)
+  })
+
+  test('a budget of zero is a cap that is reached', { options: { show_forecast: false } }, async ($, on) => {
+    const routes = { ...standardRoutes(), '/key/info': reply(200, keyBody({ spend: 3, max_budget: 0 })) }
+    const { log, clock } = boot(on, { routes })
+
+    await start($, clock)
+    const { text } = await run($, 'info')
+
+    expect(text).toContain('$3.00 / $0.00 (100%)')
+    expect(text).toContain('$3.00 over')
+    expect(log.statuses.at(-1)).toMatch(/▰{6} 100% of budget · \$3\.00 of \$0\.00 · over budget/)
+    expect(log.toasts).toEqual(['The key is over budget ($3.00 of $0.00)'])
+  })
+
   test('toasts once when the budget crosses the threshold, again at 95% and 100%', { options: { show_forecast: false } }, async ($, on) => {
     let spend = 30
     const routes = { ...standardRoutes(), '/key/info': () => reply(200, keyBody({ spend })) }
@@ -506,6 +579,24 @@ describe('warnings', () => {
     expect(soon.log.toasts).toEqual(['The key expires in 2d'])
   })
 
+  test('warns again once less than a day is left', { options: { refresh_seconds: 3600, show_forecast: false } }, async ($, on) => {
+    const routes = {
+      ...standardRoutes(),
+      '/key/info': reply(200, keyBody({ expires: new Date(NOW + 2.5 * DAY).toISOString() })),
+    }
+    const { log, clock } = boot(on, { routes })
+
+    await start($, clock)
+    expect(log.toasts).toEqual(['The key expires in 2d 12h'])
+
+    await clock.advance(10 * 3_600_000)
+    expect(log.toasts).toHaveLength(1)
+
+    await clock.advance(30 * 3_600_000)
+    expect(log.toasts).toHaveLength(2)
+    expect(log.toasts[1]).toMatch(/^The key expires in \d+h$/)
+  })
+
   test('a blocked key is announced once', async ($, on) => {
     const { log, clock } = boot(on, { routes: { ...standardRoutes(), '/key/info': reply(200, keyBody({ blocked: true, status: 'revoked' })) } })
 
@@ -549,6 +640,15 @@ describe('warnings', () => {
       await start($, calm.clock)
       expect(calm.log.toasts).toEqual([])
       expect((await run($, 'refresh')).text).toContain('25%')
+    })
+
+    test('says the budget is over, and nothing about a pace, once it is', async ($, on) => {
+      const { log, clock } = boot(on, { routes: fast(52) })
+
+      await start($, clock)
+      await run($, 'refresh')
+
+      expect(log.toasts).toEqual(['The key is over budget ($52.00 of $50.00)'])
     })
 
     test('says it again in the next budget window', async ($, on) => {
@@ -614,6 +714,34 @@ describe('failures', () => {
 
     await run($, 'refresh')
     expect(log.toasts).toHaveLength(1)
+  })
+
+  test('an error the proxy colours is told in plain words, and the pane draws it', async ($, on) => {
+    const routes = {
+      '/key/info': reply(401, {
+        error: { message: '\u001b[31mbad key\u001b[0m\u0000', type: 'auth_error', param: 'None', code: '401' },
+      }),
+    }
+    const { log, clock } = boot(on, { routes })
+
+    await start($, clock)
+    const { text } = await run($, 'info')
+
+    expect(text).toContain('The proxy rejected the key (401): bad key')
+    expect(text).not.toContain('\u001b')
+    expect(log.toasts[0]).toBe('The proxy rejected the key (401): bad key')
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({
+        plugin: 'litellm-key',
+        surface,
+        component: 'Pane',
+        requestId: 'litellm-key',
+        props: { title: 'LiteLLM key', isFocused: false, bodyColumns: 76, placement: 'dock', scroll: { offset: 0, bodyRows: 20 }, view: {} },
+      })
+
+      expect(await ui.find({ type: 'Text', text: /The proxy rejected the key \(401\): bad key/ })).toBeDefined()
+      await ui.unmount()
+    }
   })
 
   test('the master key gets an honest explanation', async ($, on) => {
@@ -1313,15 +1441,6 @@ describe('the pane', () => {
       expect(await texts(ui, /^[▁-█]{30}$/)).toHaveLength(1)
     })
 
-    test('explains the lack of history in the words of what can be done', async ($, on) => {
-      const off = boot(on, { routes: standardRoutes() })
-
-      await start($, off.clock)
-      const ui = await mount($, 'terminal')
-
-      await ui.press({ key: 'tab-usage' })
-      expect(await ui.find({ type: 'Text', text: /^By model/ })).toBeDefined()
-    })
   })
 
   describe('usage without a history', () => {
@@ -1551,8 +1670,19 @@ describe('the pane', () => {
     await away.unmount()
     const held = await mount($, 'terminal', { isFocused: true })
 
-    expect(await held.find({ type: 'Text', text: /1-4 tabs · r refresh · c copy · q close/ })).toBeDefined()
+    expect(await held.find({ type: 'Text', text: /^1-4 tabs · r refresh · c copy · q or esc close$/ })).toBeDefined()
     expect(await held.find({ type: 'Text', text: /gives the pane the keyboard/ })).toBeUndefined()
+  })
+
+  test('on Models, where the filter keeps Esc, the footer says Esc only hands the keys back', async ($, on) => {
+    const { clock } = boot(on)
+
+    await start($, clock)
+    const held = await mount($, 'terminal', { isFocused: true })
+
+    await held.press({ key: 'tab-models' })
+    expect(await held.find({ type: 'Text', text: /f filter · q close · esc back to the prompt/ })).toBeDefined()
+    expect(await held.find({ type: 'Text', text: /q or esc close/ })).toBeUndefined()
   })
 
   test('keeps the words about keys and focus for the terminal, where they hold', async ($, on) => {
@@ -1564,6 +1694,35 @@ describe('the pane', () => {
       const hint = await ui.find({ type: 'Text', text: /1-4 tabs · r refresh/ })
 
       expect(hint !== undefined).toBe(surface === 'terminal')
+      await ui.unmount()
+    }
+  })
+
+  test('a proxy that sends escape sequences and absurd dates does not take the pane down', async ($, on) => {
+    const esc = '\u001b[31m'
+    const routes = {
+      ...standardRoutes(),
+      '/key/info': reply(
+        200,
+        keyBody({
+          key_alias: `${esc}prod\u0000-claude`,
+          created_at: 1e16,
+          expires: 1e16,
+          models: [`${esc}claude\u0007`],
+        }),
+      ),
+      '/v1/models': reply(200, { data: [{ id: `${esc}gpt\u007f-5` }, { id: 'claude-sonnet-4-5' }] }),
+    }
+    const { clock } = boot(on, { routes })
+
+    await start($, clock)
+    for (const surface of SURFACES) {
+      const ui = await mount($, surface)
+
+      for (const tab of ['usage', 'models', 'details', 'overview']) {
+        await ui.press({ key: `tab-${tab}` })
+        expect(await ui.find({ type: 'Text', text: /prod-claude/ })).toBeDefined()
+      }
       await ui.unmount()
     }
   })
@@ -1725,6 +1884,64 @@ describe('the pane', () => {
       await run($, '')
       await clock.advance(2_000)
       expect(log.invalidations).toBe(5)
+    })
+
+    test('stops redrawing a pane the engine dropped by itself, and starts again when it is opened', async ($, on) => {
+      const { log, clock } = boot(on)
+
+      await start($, clock)
+      await run($, '')
+      await clock.advance(2_000)
+      expect(log.invalidations).toBe(2)
+
+      log.panes.delete('litellm-key')
+      await clock.advance(5_000)
+      expect(log.invalidations).toBe(2)
+
+      await run($, '')
+      await clock.advance(2_000)
+      expect(log.invalidations).toBe(4)
+    })
+
+    test('debug never prints the credentials that sit in the url', async ($, on) => {
+      const { clock } = boot(on, {
+        env: { ANTHROPIC_BASE_URL: 'https://bob:p@ss@litellm.test', ANTHROPIC_AUTH_TOKEN: KEY },
+      })
+
+      await start($, clock)
+      const { text } = await run($, 'debug')
+
+      expect(text).toContain('Proxy    litellm.test (tries https://litellm.test; using https://litellm.test)')
+      expect(text).not.toContain('bob')
+      expect(text).not.toContain('p@ss')
+    })
+
+    test('reads the key every tick, and the models and the usage every ten minutes', async ($, on) => {
+      const { net, clock } = boot(on)
+      const count = (path: string) => urls(net).filter(url => url === path).length
+
+      await start($, clock)
+      expect([count('/key/info'), count('/v1/models'), count('/user/daily/activity')]).toEqual([1, 1, 1])
+
+      await clock.advance(5 * 60_000)
+      expect([count('/key/info'), count('/v1/models'), count('/user/daily/activity')]).toEqual([6, 1, 1])
+
+      await clock.advance(6 * 60_000)
+      expect(count('/v1/models')).toBe(2)
+      expect(count('/user/daily/activity')).toBe(2)
+    })
+
+    test('a command reads again only when what it has is older than 15 seconds', async ($, on) => {
+      const { net, clock } = boot(on)
+      const keyReads = () => urls(net).filter(url => url === '/key/info').length
+
+      await start($, clock)
+      await run($, 'info')
+      expect(keyReads()).toBe(1)
+
+      await clock.advance(20_000)
+      await run($, 'info')
+      expect(keyReads()).toBe(2)
     })
 
     test('keeps one clock for the pane, however often it is opened', async ($, on) => {

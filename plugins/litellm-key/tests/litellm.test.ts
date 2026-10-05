@@ -10,6 +10,7 @@ import {
   parseUsage,
   parseUser,
   resolveCredentials,
+  withoutCredentials,
 } from '../hooks/litellm'
 import type { Credentials, FetchRequest, Sources } from '../hooks/litellm'
 import { BASE, HASH, KEY, NOW, keyBody, reply, router, standardRoutes } from './support'
@@ -163,6 +164,36 @@ describe('resolveCredentials', () => {
     expect(resolved.ok && resolved.credentials.host).toBe('litellm.test:4000')
   })
 
+  test('drops the query and the fragment of the url', () => {
+    const resolved = resolveCredentials(
+      sources({ env: { ANTHROPIC_BASE_URL: 'https://litellm.test/api/?x=1#frag', ANTHROPIC_AUTH_TOKEN: KEY } }),
+      NOW,
+    )
+
+    expect(resolved.ok && resolved.credentials.roots).toEqual(['https://litellm.test/api', 'https://litellm.test'])
+  })
+
+  test('does not show credentials that hold an @ either', () => {
+    const resolved = resolveCredentials(
+      sources({ env: { ANTHROPIC_BASE_URL: 'https://bob:p@ss@litellm.test:4000/api', ANTHROPIC_AUTH_TOKEN: KEY } }),
+      NOW,
+    )
+
+    expect(resolved.ok && resolved.credentials.host).toBe('litellm.test:4000')
+    expect(withoutCredentials('https://bob:p@ss@litellm.test/path@x')).toBe('https://litellm.test/path@x')
+    expect(withoutCredentials('https://litellm.test/a@b')).toBe('https://litellm.test/a@b')
+  })
+
+  test('does not show the credentials of a url that is not an http one either', () => {
+    const resolved = resolveCredentials(
+      sources({ env: { ANTHROPIC_BASE_URL: 'ftp://bob:hunter2@litellm.test', ANTHROPIC_AUTH_TOKEN: KEY } }),
+      NOW,
+    )
+
+    expect(resolved.ok).toBe(false)
+    expect(JSON.stringify(resolved)).not.toContain('hunter2')
+  })
+
   test('never puts the key in a failure message', () => {
     const resolved = resolveCredentials(sources({ env: { ANTHROPIC_BASE_URL: `${KEY}-not-a-url` } }), NOW)
 
@@ -199,6 +230,15 @@ describe('date', () => {
     expect(date('2026-10-10T00:00:00+02:00')).toBe(Date.parse('2026-10-09T22:00:00Z'))
     expect(date('nope')).toBeNull()
     expect(date(null)).toBeNull()
+  })
+
+  test('a moment a Date cannot hold is no date', () => {
+    expect(date(NOW)).toBe(NOW)
+    expect(date(8.64e15)).toBe(8.64e15)
+    expect(date(1e16)).toBeNull()
+    expect(date(-1e16)).toBeNull()
+    expect(date(Number.POSITIVE_INFINITY)).toBeNull()
+    expect(date('+275761-01-01T00:00:00Z')).toBeNull()
   })
 })
 
@@ -433,6 +473,49 @@ describe('fetchSnapshot', () => {
     expect(result.ok && result.snapshot.usage).toEqual(done.ok ? done.snapshot.usage : null)
   })
 
+  test('a read that fails leaves what the last good one held, and a note', async () => {
+    const first = router(standardRoutes())
+    const done = await fetchSnapshot(request(first.http))
+    const down = router({
+      ...standardRoutes(),
+      '/user/info': reply(500, { detail: 'boom' }),
+      '/team/info': reply(500, { detail: 'boom' }),
+      '/v1/models': reply(500, { detail: 'boom' }),
+      '/user/daily/activity': reply(500, { detail: 'boom' }),
+    })
+    const result = await fetchSnapshot(request(down.http, { previous: done.ok ? done.snapshot : null }))
+
+    expect(result.ok && result.snapshot.user).toEqual(done.ok ? done.snapshot.user : undefined)
+    expect(result.ok && result.snapshot.team).toEqual(done.ok ? done.snapshot.team : undefined)
+    expect(result.ok && result.snapshot.models).toEqual(done.ok ? done.snapshot.models : undefined)
+    expect(result.ok && result.snapshot.usage).toEqual(done.ok ? done.snapshot.usage : undefined)
+    expect(result.ok && result.snapshot.notes).toHaveLength(4)
+  })
+
+  test('a read that fails has nothing to keep without a last good one, and a read that finds nothing keeps nothing', async () => {
+    const down = router({ ...standardRoutes(), '/v1/models': reply(500, { detail: 'boom' }) })
+    const first = await fetchSnapshot(request(down.http))
+    const quiet = router({ ...standardRoutes(), '/v1/models': reply(200, { object: 'list' }) })
+    const done = await fetchSnapshot(request(router(standardRoutes()).http))
+    const next = await fetchSnapshot(request(quiet.http, { previous: done.ok ? done.snapshot : null }))
+
+    expect(first.ok && first.snapshot.models).toBeNull()
+    expect(next.ok && next.snapshot.models).toBeNull()
+  })
+
+  test('the user of another key is not kept for this one', async () => {
+    const first = router(standardRoutes())
+    const done = await fetchSnapshot(request(first.http))
+    const other = router({
+      ...standardRoutes(),
+      '/key/info': reply(200, keyBody({ user_id: 'john' })),
+      '/user/info': reply(500, { detail: 'boom' }),
+    })
+    const result = await fetchSnapshot(request(other.http, { previous: done.ok ? done.snapshot : null }))
+
+    expect(result.ok && result.snapshot.user).toBeNull()
+  })
+
   test('a failing extra only leaves a note', async () => {
     const { http } = router({ ...standardRoutes(), '/team/info': reply(403, { detail: 'nope' }) })
     const result = await fetchSnapshot(request(http))
@@ -440,6 +523,51 @@ describe('fetchSnapshot', () => {
     expect(result.ok).toBe(true)
     expect(result.ok && result.snapshot.team).toBeNull()
     expect(result.ok && result.snapshot.notes).toEqual(['team budget unavailable: /team/info answered 403'])
+  })
+
+  test('whatever the proxy sends goes out without control characters, which the engine would refuse to draw', async () => {
+    const esc = '\u001b[31m'
+    const { http } = router({
+      ...standardRoutes(),
+      '/key/info': reply(
+        200,
+        keyBody({
+          key_alias: `${esc}red\u0000alias`,
+          team_id: `eng\u0007`,
+          models: [`${esc}claude\u0085`, '\u0000'],
+          model_max_budget: { [`${esc}opus`]: { budget_limit: 5, time_period: '1d\u0000' } },
+        }),
+      ),
+      '/v1/models': reply(200, { data: [{ id: `${esc}gpt\u007f-5` }, { id: 'ok' }, { id: '\u0000' }] }),
+      '/user/daily/activity': reply(200, {
+        results: [
+          {
+            date: '2026-10-03',
+            metrics: { spend: 2, api_requests: 3 },
+            breakdown: { models: { [`${esc}sonnet\u0000`]: { metrics: { spend: 2, api_requests: 3 } } } },
+          },
+        ],
+      }),
+    })
+    const result = await fetchSnapshot(request(http))
+    const text = JSON.stringify(result.ok ? result.snapshot : null)
+
+    expect(result.ok).toBe(true)
+    expect(text).not.toMatch(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]|\\u00[01]|\\u007f|\\u008|\\u009/)
+    expect(result.ok && result.snapshot.key.alias).toBe('redalias')
+    expect(result.ok && result.snapshot.key.models).toEqual(['claude'])
+    expect(result.ok && result.snapshot.models).toEqual(['gpt-5', 'ok'])
+    expect(result.ok && result.snapshot.usage?.days.at(-1)?.models.map(item => item.model)).toEqual(['sonnet'])
+    expect(result.ok && result.snapshot.key.modelBudgets.map(item => item.model)).toEqual(['opus'])
+  })
+
+  test('an error message the proxy colours is told in plain words', async () => {
+    const { http } = router({
+      '/key/info': reply(401, { error: { message: '\u001b[31mAuthentication Error\u001b[0m: bad key\u0000', type: 'auth_error', code: '401', param: null } }),
+    })
+    const result = await fetchSnapshot(request(http))
+
+    expect(!result.ok && result.failure.message).toBe('The proxy rejected the key (401): Authentication Error: bad key')
   })
 
   test('honours the switches', async () => {
@@ -558,6 +686,22 @@ describe('fetchSnapshot', () => {
       expect(!result.ok && result.failure.message).toBe(`Could not reach litellm.test: ${expected}`)
       expect(!result.ok && result.failure.hint).toContain('ANTHROPIC_BASE_URL')
     }
+  })
+
+  test('tells what each answer means: a refusal, a rate limit, a stranger and a gateway', async () => {
+    const kindOf = async (status: number, body: unknown) => {
+      const { http } = router({ '/key/info': reply(status, body) })
+      const result = await fetchSnapshot(request(http))
+
+      return result.ok ? 'ok' : result.failure.kind
+    }
+    const error = (code: string) => ({ error: { message: 'no', type: 'x', param: 'None', code } })
+
+    expect(await kindOf(403, error('403'))).toBe('forbidden')
+    expect(await kindOf(429, error('429'))).toBe('rate-limit')
+    expect(await kindOf(404, { detail: 'Not Found' })).toBe('not-litellm')
+    expect(await kindOf(408, 'timeout')).toBe('http')
+    expect(await kindOf(502, '<html>bad gateway</html>')).toBe('http')
   })
 
   test('a 401 beats a later not-LiteLLM answer', async () => {

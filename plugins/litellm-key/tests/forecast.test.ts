@@ -83,6 +83,14 @@ describe('forecast', () => {
     expect(forecast(budget({ duration: '1h', resetAt: NOW + 55 * 60_000 }), NOW)).toBeNull()
   })
 
+  test('trusts the window from a tenth of the period on, and from 15 minutes whatever the period', () => {
+    // 30 days: a tenth is 3 days. 1 hour: a tenth is 6 minutes, so the 15 minutes of floor decide.
+    expect(forecast(budget({ resetAt: NOW + 27.1 * DAY }), NOW)).toBeNull()
+    expect(forecast(budget({ resetAt: NOW + 26.9 * DAY }), NOW)?.basis).toBe('window')
+    expect(forecast(budget({ duration: '1h', resetAt: NOW + 46 * 60_000 }), NOW)).toBeNull()
+    expect(forecast(budget({ duration: '1h', resetAt: NOW + 44 * 60_000 }), NOW)?.basis).toBe('window')
+  })
+
   test('falls back to the recent daily spend when the window cannot say', () => {
     const early = forecast(budget({ resetAt: NOW + 29 * DAY }), NOW, 2)
     const open = forecast(budget({ duration: null, resetAt: null, spend: 10 }), NOW, 4)
@@ -134,9 +142,20 @@ describe('session', () => {
     near(advanceSession(next, 14.25).spend, 1.75)
   })
 
-  test('counts all of a reading that fell below the last one: the budget reset in between', () => {
+  test('counts all of a reading that fell far below the last one: the budget reset in between', () => {
     const before = { since: NOW, spend: 3, last: 49 }
 
     expect(advanceSession(before, 1.5)).toEqual({ since: NOW, spend: 4.5, last: 1.5 })
+    expect(advanceSession({ since: NOW, spend: 0, last: 10 }, 0)).toEqual({ since: NOW, spend: 0, last: 0 })
+  })
+
+  test('adds nothing for a small step back: counters that disagree for a moment are not a reset', () => {
+    const before = { since: NOW, spend: 3, last: 40 }
+    const back = advanceSession(before, 39.99)
+
+    expect(back).toEqual({ since: NOW, spend: 3, last: 39.99 })
+    near(advanceSession(back, 40.5).spend, 3.51)
+    near(advanceSession(before, 19.99).spend, 22.99)
+    expect(advanceSession(before, 20).spend).toBe(3)
   })
 })

@@ -5,7 +5,7 @@ import type { Failure, Session, Snapshot, ViewName } from '../types'
 import { advanceSession, beginSession } from './forecast'
 import { clock, maskKey, money, percent, redact, span, truncate, until } from './format'
 import type { EnvName, Reply, Sources } from './litellm'
-import { fetchSnapshot, isObject, resolveCredentials } from './litellm'
+import { fetchSnapshot, isObject, resolveCredentials, withoutCredentials } from './litellm'
 import {
   detailsText,
   failureText,
@@ -127,6 +127,8 @@ let lastSlowAt = 0
 let pinnedRoot: string | null = null
 let diagnostics: Diagnostics | null = null
 let toasted: string | null = null
+// The warnings toasted since this code loaded: what keeps a store that fails from repeating them on every reading.
+let told: string[] = []
 // What the key spent since the first reading, and whose reading that was, so another key starts again from nothing.
 let tracked: { id: string; session: Session } | null = null
 let latest: { snapshot: Snapshot | null; failure: Failure | null } = { snapshot: null, failure: null }
@@ -185,15 +187,18 @@ const notify = async ($: EngineInterface, snapshot: Snapshot, now: number): Prom
   if (events.length === 0) {
     return
   }
-  const stored = await $.store.get('notified')
-  const seen = Array.isArray(stored) ? stored.filter((item): item is string => typeof item === 'string') : []
+  // A store that fails costs the memory between sessions, not the warning.
+  const stored: unknown = await $.store.get('notified').catch(() => undefined)
+  const before = Array.isArray(stored) ? stored.filter((item): item is string => typeof item === 'string') : []
+  const seen = [...before, ...told]
   const fresh = events.filter(event => !seen.includes(event.id))
 
   for (const event of fresh) {
     $.ui.toast(event.message, { timeoutMs: 8000 })
   }
   if (fresh.length > 0) {
-    await $.store.set('notified', [...seen, ...fresh.map(event => event.id)].slice(-REMEMBERED))
+    told = [...told, ...fresh.map(event => event.id)].slice(-REMEMBERED)
+    await $.store.set('notified', [...seen, ...fresh.map(event => event.id)].slice(-REMEMBERED)).catch(() => undefined)
   }
 }
 
@@ -229,7 +234,7 @@ const settle = async (
 
   if (failure === null && shown) {
     await track($, shown)
-    await notify($, shown, now)
+    await notify($, shown, now).catch(() => undefined)
     toasted = null
   } else if (failure && !TRANSIENT.includes(failure.kind) && toasted !== failure.kind) {
     toasted = failure.kind
@@ -360,7 +365,7 @@ const textOf = (tab: ViewName, range: number): ((snapshot: Snapshot, now: number
 }
 
 const loadPrefs = async ($: EngineInterface): Promise<void> => {
-  const stored = await $.store.get('prefs')
+  const stored: unknown = await $.store.get('prefs').catch(() => undefined)
 
   if (!isObject(stored)) {
     return
@@ -375,23 +380,34 @@ const loadPrefs = async ($: EngineInterface): Promise<void> => {
   }
 }
 
+/** What the person chose is kept for next time; a store that fails only loses that. */
 const savePrefs = async ($: EngineInterface): Promise<void> => {
-  await $.store.set('prefs', { range: await read($, rangeState), sort: await read($, sortState) })
-}
-
-const startPaneClock = ($: EngineInterface): void => {
-  paneClock ??= $.clock.every(1000, () => {
-    try {
-      $.ui.invalidate('ui.render')
-    } catch {
-      // Nothing draws the pane here (a headless run): there is nothing to keep up.
-    }
-  })
+  await $.store
+    .set('prefs', { range: await read($, rangeState), sort: await read($, sortState) })
+    .catch(() => undefined)
 }
 
 const stopPaneClock = (): void => {
   paneClock?.cancel()
   paneClock = undefined
+}
+
+// The engine drops a pane it cannot draw without telling the hooks of `ui.close`, so the clock looks for the pane too.
+const startPaneClock = ($: EngineInterface): void => {
+  paneClock ??= $.clock.every(1000, () => {
+    $.ui
+      .panes()
+      .then(panes => {
+        if (panes.some(pane => pane.id === PANE)) {
+          $.ui.invalidate('ui.render')
+        } else {
+          stopPaneClock()
+        }
+      })
+      .catch(() => {
+        // Nothing draws the pane here (a headless run): there is nothing to keep up.
+      })
+  })
 }
 
 /**
@@ -431,11 +447,13 @@ const debugText = async ($: EngineInterface): Promise<string> => {
   const { snapshot, failure } = latest
   const surfaces = await $.session.surfaces()
   const on = (flag: boolean): string => (flag ? 'on' : 'off')
+  const tries = (diagnostics?.roots ?? []).map(withoutCredentials)
+  const using = pinnedRoot ? `; using ${withoutCredentials(pinnedRoot)}` : ''
   const lines = [
     `Refresh every ${config.refreshSeconds}s · status line ${on(config.isStatusShown)} (bar ${on(config.isStatusBar)}) · related ${on(config.isRelatedShown)} · usage ${on(config.isUsageShown)} · forecast ${on(config.isForecastShown)} · compact pane ${on(config.isCompact)}`,
     `Pane     ${await read($, viewState)} tab · ${await read($, rangeState)} days · sorted by ${await read($, sortState)}`,
     diagnostics
-      ? `Proxy    ${diagnostics.host} (tries ${diagnostics.roots.join(', ')}${pinnedRoot ? `; using ${pinnedRoot}` : ''})`
+      ? `Proxy    ${diagnostics.host} (tries ${tries.join(', ')}${using})`
       : 'Proxy    not resolved',
     diagnostics ? `Key      ${diagnostics.keyHint} from ${diagnostics.keySource}` : 'Key      not resolved',
     failure
@@ -458,6 +476,7 @@ export const register: Register = (on, options) => {
   config = configOf(options)
   ticker = undefined
   paneClock = undefined
+  told = []
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -465,7 +484,6 @@ export const register: Register = (on, options) => {
       description: 'Show your LiteLLM virtual key: budget, limits, models and usage',
       argumentHint: '[tab|refresh|info|usage|models|debug|close|help]',
     })
-    await loadPrefs($)
     ticker?.cancel()
     ticker = $.clock.every(config.refreshSeconds * 1000, () => {
       reload($, 'tick')
@@ -473,6 +491,11 @@ export const register: Register = (on, options) => {
     $.clock.after(250, () => {
       reload($, 'force')
     })
+    await loadPrefs($)
+    // A pane that stayed up while this code reloaded does not open again: its clock starts here.
+    if ((await $.ui.panes().catch(() => [])).some(pane => pane.id === PANE)) {
+      startPaneClock($)
+    }
 
     return next(e)
   })

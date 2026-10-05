@@ -138,6 +138,11 @@ const tabs = ({ Box, Text, Button }: Ui, props: DashboardProps): RenderElement =
   </Box>
 )
 
+// Esc closes the pane, except on Models: its filter field keeps Esc for itself, which only hands the keys back.
+const FOCUSED = '1-4 tabs · r refresh · c copy · q or esc close'
+const FOCUSED_MODELS = '1-4 tabs · r refresh · c copy · f filter · q close · esc back to the prompt'
+const UNFOCUSED = 'ctrl+x tab, or a click, gives the pane the keyboard'
+
 const footer = ({ Box, Text }: Ui, props: DashboardProps, snapshot: Snapshot, layout: Layout): RenderElement => {
   const { now, isLoading } = props
   const read = `Updated ${clock(snapshot.fetchedAt)} (${ago(snapshot.fetchedAt, now)}) · every ${props.refreshSeconds}s${isLoading ? ' · refreshing…' : ''}`
@@ -154,9 +159,7 @@ const footer = ({ Box, Text }: Ui, props: DashboardProps, snapshot: Snapshot, la
       </Text>
       {!layout.isCompact && props.isTerminal && (
         <Text dimColor wrap="truncate-end">
-          {props.isFocused
-            ? '1-4 tabs · r refresh · c copy · q close · esc back to the prompt'
-            : 'ctrl+x tab, or a click, gives the pane the keyboard'}
+          {props.isFocused ? (props.tab === 'models' ? FOCUSED_MODELS : FOCUSED) : UNFOCUSED}
         </Text>
       )}
     </Box>

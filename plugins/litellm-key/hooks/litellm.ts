@@ -12,7 +12,7 @@ import type {
   Usage,
   UsageDay,
 } from '../types'
-import { maskKey, redact, truncate, utcDay } from './format'
+import { clean, maskKey, redact, truncate, utcDay } from './format'
 import { USAGE_DAYS } from './usage'
 
 export type Reply = { status: number; text: string }
@@ -80,15 +80,19 @@ const num = (value: unknown): number | null => {
   return null
 }
 
-const str = (value: unknown): string | null =>
-  typeof value === 'string' && value.trim() !== '' ? value : null
+const str = (value: unknown): string | null => {
+  const text = typeof value === 'string' ? clean(value) : ''
+
+  return text.trim() !== '' ? text : null
+}
 
 const strings = (value: unknown): string[] =>
-  Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+  Array.isArray(value) ? value.flatMap(item => str(item) ?? []) : []
 
 export const date = (value: unknown): number | null => {
   if (typeof value === 'number') {
-    return Number.isFinite(value) ? value : null
+    // A Date holds up to 8.64e15 ms either side of the epoch; a moment out there cannot be told as a day.
+    return Number.isFinite(value) && !Number.isNaN(new Date(value).getTime()) ? value : null
   }
   if (typeof value !== 'string' || value.trim() === '') {
     return null
@@ -111,10 +115,28 @@ const parse = (text: string): unknown => {
   }
 }
 
-/** The url with any `user:password@` taken out: the root is shown and linked, so it must never carry credentials. */
-const withoutCredentials = (url: string): string => url.replace(/^(https?:\/\/)[^@/]*@/i, '$1')
+/** The same data with every text clean, whatever the proxy put in it. */
+const scrub = <T>(value: T): T => {
+  if (typeof value === 'string') {
+    return clean(value) as T
+  }
+  if (Array.isArray(value)) {
+    return value.map(scrub) as T
+  }
+  if (isObject(value)) {
+    return Object.fromEntries(Object.entries(value).map(([name, item]) => [clean(name), scrub(item)])) as T
+  }
 
-const hostOf = (url: string): string => /^https?:\/\/(?:[^@/]*@)?([^/]+)/i.exec(url)?.[1] ?? url
+  return value
+}
+
+/**
+ * The url with any `user:password@` taken out: the root is shown and linked, so it must never carry credentials. The
+ * userinfo runs to the last `@` before the path, as a password may hold one.
+ */
+export const withoutCredentials = (url: string): string => url.replace(/^([a-z][a-z\d+.-]*:\/\/)[^/\s]*@/i, '$1')
+
+const hostOf = (url: string): string => /^https?:\/\/(?:[^/]*@)?([^/]+)/i.exec(url)?.[1] ?? url
 const originOf = (url: string): string | null => /^(https?:\/\/[^/]+)/i.exec(url)?.[1] ?? null
 
 const failure = (
@@ -124,8 +146,8 @@ const failure = (
   extra: { hint?: string; status?: number } = {},
 ): Failure => ({
   kind,
-  message,
-  hint: extra.hint ?? null,
+  message: clean(message),
+  hint: extra.hint === undefined ? null : clean(extra.hint),
   status: extra.status ?? null,
   at: now,
 })
@@ -202,9 +224,12 @@ export const resolveCredentials = (sources: Sources, now: number): Resolved => {
   if (!base) {
     return {
       ok: false,
-      failure: failure('not-configured', `"${truncate(redact(rawUrl), 60)}" is not an http(s) URL.`, now, {
-        hint: 'Use a full URL such as https://litellm.example.com',
-      }),
+      failure: failure(
+        'not-configured',
+        `"${truncate(redact(withoutCredentials(rawUrl)), 60)}" is not an http(s) URL.`,
+        now,
+        { hint: 'Use a full URL such as https://litellm.example.com' },
+      ),
     }
   }
   if (/^https?:\/\/api\.anthropic\.com$/i.test(base)) {
@@ -403,7 +428,7 @@ const modelBudgetsOf = (row: Json, table: Json | null): ModelBudget[] => {
     const used = usage[model]
 
     return {
-      model,
+      model: clean(model),
       spend: (isObject(used) ? num(used.current_spend) : null) ?? num(spent[model]) ?? 0,
       limit:
         num(config) ??
@@ -474,7 +499,7 @@ export const parseModels = (body: unknown): string[] | null => {
   if (!isObject(body) || !Array.isArray(body.data)) {
     return null
   }
-  const ids = body.data.flatMap(item => (isObject(item) && typeof item.id === 'string' ? [item.id] : []))
+  const ids = body.data.flatMap(item => (isObject(item) ? (str(item.id) ?? []) : []))
 
   return [...new Set(ids)].sort()
 }
@@ -515,7 +540,8 @@ export const parseUsage = (body: unknown, days: readonly string[]): Usage | null
 
     const models = isObject(result.breakdown) && isObject(result.breakdown.models) ? result.breakdown.models : {}
 
-    for (const [model, entry] of Object.entries(models)) {
+    for (const [name, entry] of Object.entries(models)) {
+      const model = clean(name)
       const own = isObject(entry) && isObject(entry.metrics) ? entry.metrics : {}
       const spend = num(own.spend) ?? 0
       const requests = num(own.api_requests) ?? 0
@@ -628,13 +654,14 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
 
     return parse(reply.text)
   }
-  const attempt = async <T>(label: string, run: () => Promise<T>): Promise<T | null> => {
+  // A read that fails is undefined, to tell it from one that found nothing: the last good answer stands in for it.
+  const attempt = async <T>(label: string, run: () => Promise<T>): Promise<T | undefined> => {
     try {
       return await run()
     } catch (error) {
       notes.push(`${label} unavailable: ${describeError(error, key)}`)
 
-      return null
+      return undefined
     }
   }
   const days = Array.from({ length: USAGE_DAYS }, (_, at) => utcDay(now, USAGE_DAYS - 1 - at))
@@ -667,21 +694,25 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
         : Promise.resolve(previous?.usage ?? null),
   ])
 
+  const kept = <T>(read: T | undefined, before: T | null | undefined): T | null =>
+    read === undefined ? (before ?? null) : read
+
   return {
     ok: true,
     root,
-    snapshot: {
+    // What the proxy sent is drawn as it came, so it goes out clean: a control character in it would close the pane.
+    snapshot: scrub({
       fetchedAt: now,
       host: credentials.host,
       root: withoutCredentials(root),
       keySource: credentials.keySource,
       keyHint: maskKey(key),
       key: keyInfo,
-      user,
-      team,
-      models,
-      usage,
+      user: kept(user, previous?.user?.id === keyInfo.userId ? previous?.user : null),
+      team: kept(team, previous?.team?.id === keyInfo.teamId ? previous?.team : null),
+      models: kept(models, previous?.models),
+      usage: kept(usage, previous?.usage),
       notes,
-    },
+    }),
   }
 }

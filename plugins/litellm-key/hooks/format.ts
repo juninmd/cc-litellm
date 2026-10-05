@@ -56,8 +56,24 @@ export const compact = (value: number): string => {
   return String(Math.round(value))
 }
 
-export const percent = (used: number, limit: number | null): number | null =>
-  limit === null || !(limit > 0) ? null : Math.round((used / limit) * 100)
+/**
+ * How much of a limit is used, in whole percent; null without one. It reaches 100 only once the limit is reached,
+ * however near it is, and a limit of zero is reached from the start.
+ */
+export const percent = (used: number, limit: number | null): number | null => {
+  if (limit === null || !(limit >= 0)) {
+    return null
+  }
+  if (limit === 0) {
+    return 100
+  }
+  const rounded = Math.round((used / limit) * 100)
+
+  return used < limit ? Math.min(99, rounded) : rounded
+}
+
+/** The part of a limit that is used, from 0 up; a limit of zero is all used. */
+export const share = (used: number, limit: number): number => (limit > 0 ? used / limit : 1)
 
 /** A horizontal bar in two parts, so the filled part and the empty track can take their own colors. */
 export type Gauge = { filled: string; empty: string }
@@ -269,16 +285,24 @@ export const maskKey = (key: string): string => {
   return `${trimmed.startsWith('sk-') ? 'sk-' : ''}…${trimmed.slice(-4)}`
 }
 
+// The engine refuses a text child that holds a control character, and a pane it cannot draw is closed.
+const ESCAPE_SEQUENCES = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b]*(?:\u0007|\u001b\\)?)/g
+const CONTROLS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g
+
+/** The text without its terminal escape sequences and other control characters, which are never drawn. */
+export const clean = (text: string): string => text.replace(ESCAPE_SEQUENCES, '').replace(CONTROLS, '')
+
 export const redact = (text: string, secrets: readonly string[] = []): string => {
-  let clean = text
+  let masked = clean(text)
 
   for (const secret of secrets) {
     if (secret.length >= 6) {
-      clean = clean.split(secret).join(maskKey(secret))
+      masked = masked.split(secret).join(maskKey(secret))
     }
   }
 
-  return clean
+  return masked
+    .replace(/\b([a-z][a-z\d+.-]*:\/\/)[^/\s]*@/gi, '$1')
     .replace(/\bsk-[A-Za-z0-9_-]{6,}/g, 'sk-…')
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, 'Bearer …')
 }

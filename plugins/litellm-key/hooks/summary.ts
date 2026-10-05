@@ -11,6 +11,7 @@ import {
   money,
   percent,
   plural,
+  share,
   shortDate,
   span,
   sparkline,
@@ -458,7 +459,7 @@ export const statusText = (
 
     const meter =
       options.bar && key.budget.limit !== null
-        ? `${miniBar(key.budget.spend / key.budget.limit, STATUS_BAR_CELLS)} `
+        ? `${miniBar(share(key.budget.spend, key.budget.limit), STATUS_BAR_CELLS)} `
         : ''
 
     parts.push(

@@ -5,6 +5,7 @@ import {
   bar,
   change,
   columnChart,
+  clean,
   compact,
   gauge,
   isoDay,
@@ -14,6 +15,7 @@ import {
   percent,
   plural,
   redact,
+  share,
   shortDate,
   shortMoney,
   span,
@@ -50,10 +52,24 @@ describe('numbers', () => {
     expect(compact(2_300_000_000)).toBe('2.3B')
   })
 
-  test('percent is rounded and null without a positive limit', () => {
+  test('percent is rounded, and null without a limit', () => {
     expect(percent(26.1, 50)).toBe(52)
-    expect(percent(5, 0)).toBeNull()
     expect(percent(5, null)).toBeNull()
+    expect(percent(5, -1)).toBeNull()
+  })
+
+  test('percent only says 100 once the limit is reached, however near it is', () => {
+    expect(percent(49.9, 50)).toBe(99)
+    expect(percent(49.99, 50)).toBe(99)
+    expect(percent(50, 50)).toBe(100)
+    expect(percent(52, 50)).toBe(104)
+  })
+
+  test('a limit of zero is reached from the start', () => {
+    expect(percent(0, 0)).toBe(100)
+    expect(percent(3, 0)).toBe(100)
+    expect(share(3, 0)).toBe(1)
+    expect(share(1, 4)).toBe(0.25)
   })
 
   test('plural counts', () => {
@@ -207,6 +223,25 @@ describe('secrets', () => {
     expect(redact('Authorization: Bearer abcdef123456')).toBe('Authorization: Bearer …')
     expect(redact('got sk-AAAABBBBCCCC here')).toBe('got sk-… here')
     expect(redact('nothing to hide')).toBe('nothing to hide')
+  })
+
+  test('redact drops the credentials of a url', () => {
+    expect(redact('Could not reach https://bob:hunter2@litellm.test/key/info')).toBe(
+      'Could not reach https://litellm.test/key/info',
+    )
+    expect(redact('https://bob:p@ss@litellm.test')).toBe('https://litellm.test')
+    expect(redact('see https://litellm.test/a@b')).toBe('see https://litellm.test/a@b')
+  })
+
+  test('clean drops what the engine would refuse to draw, and the escape sequences with it', () => {
+    expect(clean('\u001b[31mred\u001b[0m text')).toBe('red text')
+    expect(clean('title\u001b]0;evil\u0007 here')).toBe('title here')
+    expect(clean('a\u0000b\u0007c\u007fd\u0085e')).toBe('abcde')
+    expect(clean('keeps\ttabs\nand lines, é, 日本 and 🙂')).toBe('keeps\ttabs\nand lines, é, 日本 and 🙂')
+  })
+
+  test('redact cleans too', () => {
+    expect(redact('bad \u001b[31mkey\u001b[0m')).toBe('bad key')
   })
 
   test('truncate adds an ellipsis', () => {

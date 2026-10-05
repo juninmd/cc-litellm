@@ -87,9 +87,14 @@ export const forecast = (budget: Budget, now: number, recentPerDay: number | nul
 
 export const beginSession = (at: number, spend: number): Session => ({ since: at, spend: 0, last: spend })
 
-/** Adds what a new reading shows. A reading below the last one means the budget reset: all of it is new. */
+/**
+ * What a new reading adds. One far below the last (under half of it) means the budget reset, so all of it is new; a
+ * small step back is the proxy's counters disagreeing for a moment, and adds nothing.
+ */
+const added = (last: number, spend: number): number => (spend >= last ? spend - last : spend < last / 2 ? spend : 0)
+
 export const advanceSession = (session: Session, spend: number): Session => ({
   since: session.since,
-  spend: session.spend + (spend >= session.last ? spend - session.last : spend),
+  spend: session.spend + added(session.last, spend),
   last: spend,
 })
