@@ -1,0 +1,22 @@
+[
+  {"wait": 10},
+  {"shot": "18-over-budget", "title": "Over budget: a banner above the prompt stays until the budget is normal"},
+
+  {"send": "/litellm info\r"},
+  {"wait": 3},
+  {"shot": "19-over-budget-info", "title": "/litellm info"},
+
+  {"send": "/litellm grant 10 --key claude-code-ana --dry-run\r"},
+  {"wait": 4},
+  {"shot": "20-grant-dry-run", "title": "/litellm grant 10 --key claude-code-ana --dry-run"},
+
+  {"send": "/litellm grant 10 --key claude-code-ana --yes\r"},
+  {"wait": 8},
+  {"shot": "21-grant-recovers", "title": "After the grant the key has room again"},
+
+  {"send": "/litellm help\r"},
+  {"wait": 3},
+  {"shot": "22-help", "title": "/litellm help"},
+
+  {"send": "/exit\r"}
+]

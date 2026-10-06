@@ -1,11 +1,21 @@
 {
   "name": "litellm-key",
   "version": "0.4.0",
-  "description": "See your LiteLLM virtual key inside Claude Code: budget, spend pace and allowance, limits, expiry, models and usage, in tabs, with commands for scripts.",
-  "author": { "name": "juninmd" },
+  "description": "See your LiteLLM virtual key inside Claude Code: budget, spend, limits, expiry, models and recent usage. Admins can also create and edit keys, grant extra budget and read router fallbacks.",
+  "author": {
+    "name": "juninmd"
+  },
   "homepage": "https://github.com/juninmd/cc-litellm",
   "repository": "https://github.com/juninmd/cc-litellm",
-  "keywords": ["litellm", "virtual-key", "budget", "spend", "forecast", "usage", "status-line", "monitoring"],
+  "license": "MIT",
+  "keywords": [
+    "litellm",
+    "virtual-key",
+    "budget",
+    "spend",
+    "status-line",
+    "key-management"
+  ],
   "types": "./types/index.d.ts",
   "userConfig": {
     "litellm_url": {
@@ -19,6 +29,12 @@
       "description": "Leave empty to use the key Claude Code already sends (ANTHROPIC_AUTH_TOKEN, ANTHROPIC_API_KEY or the x-litellm-api-key custom header).",
       "sensitive": true
     },
+    "litellm_admin_key": {
+      "type": "string",
+      "title": "LiteLLM admin key (optional)",
+      "description": "Only for /litellm keys, key new/set/reset-spend/block, grant, org and fallbacks. Leave empty to use the virtual key itself, which the proxy lets manage keys only if it is an admin key. Never printed, and sent only to the proxy.",
+      "sensitive": true
+    },
     "refresh_seconds": {
       "type": "number",
       "title": "Refresh interval (seconds)",
@@ -26,14 +42,6 @@
       "default": 60,
       "min": 15,
       "max": 3600
-    },
-    "daily_alert": {
-      "type": "number",
-      "title": "Daily spend alert ($)",
-      "description": "Warn once today's spend on the key reaches this many dollars (toast once a day, the status line and the pane). 0 turns it off. Needs the usage history; with it on, the history is read every 3 minutes.",
-      "default": 0,
-      "min": 0,
-      "max": 1000000
     },
     "warn_percent": {
       "type": "number",
@@ -58,25 +66,7 @@
     "show_usage": {
       "type": "boolean",
       "title": "Usage history",
-      "description": "Also read /user/daily/activity for the last 30 days of spend, requests and tokens, by day and by model (beta endpoint).",
-      "default": true
-    },
-    "show_toasts": {
-      "type": "boolean",
-      "title": "Warning toasts",
-      "description": "Show the toasts that warn about the budget, the pace, the daily alert, an expiring key and a proxy that fails. Off keeps the warnings to the status line, the pane and /litellm check.",
-      "default": true
-    },
-    "status_bar": {
-      "type": "boolean",
-      "title": "Status line meter",
-      "description": "Start the status line with a small meter of the budget: ▰▰▰▰▱▱ 83% of budget. Off keeps the text alone.",
-      "default": true
-    },
-    "show_forecast": {
-      "type": "boolean",
-      "title": "Spend forecast",
-      "description": "Say where the spend is heading: the pace in the pane, when the budget would run out in the status line, and a warning when that is before it resets.",
+      "description": "Also read /user/daily/activity for the last 7 days of spend and tokens (beta endpoint).",
       "default": true
     },
     "compact_pane": {

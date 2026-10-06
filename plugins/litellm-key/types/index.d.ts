@@ -45,6 +45,7 @@ export type KeyInfo = {
   lastActiveAt: number | null
   userId: string | null
   teamId: string | null
+  organizationId: string | null
   keyType: string | null
 }
 
@@ -52,57 +53,49 @@ export type Related = {
   id: string
   label: string
   budget: Budget
+  /** True when `budget.spend` is a lower bound: the proxy does not report the real figure to a virtual key. */
+  isFloor?: boolean
 }
 
-/** What one model did on one day, or over a stretch of days. */
-export type UsageModel = {
-  model: string
-  spend: number
-  requests: number
-  tokens: number
+/** Dollars per million tokens, and the context window, of one model the key can call. */
+export type ModelPrice = {
+  input: number | null
+  output: number | null
+  context: number | null
 }
 
 export type UsageDay = {
-  /** `YYYY-MM-DD`, in UTC, as the proxy counts days. */
   date: string
   spend: number
+}
+
+export type Usage = {
+  days: UsageDay[]
+  spend: number
   requests: number
-  failed: number
   tokens: number
   inputTokens: number
   outputTokens: number
   cacheReadTokens: number
-  models: UsageModel[]
-}
-
-/** Every day the proxy was asked about, oldest first and today last; a quiet day is all zeros. */
-export type Usage = {
-  days: UsageDay[]
-}
-
-/** What the proxy says about itself on its health endpoint, in the words it uses. */
-export type ProxyInfo = {
-  version: string | null
-  /** `connected`, or whatever the proxy says when it has no database. */
-  db: string | null
+  topModels: { model: string; spend: number }[]
 }
 
 export type Snapshot = {
   fetchedAt: number
   host: string
-  /** The proxy root that answered, without credentials: the page of its admin UI hangs off it. */
-  root: string
   keySource: string
   keyHint: string
   key: KeyInfo
   user: Related | null
+  /** The user's proxy role (proxy_admin, internal_user…), known even when the user has no budget cap. */
+  userRole: string | null
   team: Related | null
+  /** The per-member cap of the team (team_member_budget), for the key's user. */
+  member: Related | null
   models: string[] | null
+  /** Prices of the allowed models, by name; null when the proxy does not say. */
+  prices: Record<string, ModelPrice> | null
   usage: Usage | null
-  /** Read now and then, and only when the proxy answers: nothing here is worth a note when it does not. */
-  proxy: ProxyInfo | null
-  /** How long `/key/info` took to answer, when the reading could tell. */
-  latencyMs: number | null
   notes: string[]
 }
 
@@ -110,6 +103,8 @@ export type FailureKind =
   | 'not-configured'
   | 'not-litellm'
   | 'auth'
+  | 'blocked'
+  | 'expired'
   | 'forbidden'
   | 'not-found'
   | 'db'
@@ -125,37 +120,12 @@ export type Failure = {
   at: number
 }
 
-export type ViewName = 'overview' | 'usage' | 'models' | 'details'
-
-export type SortName = 'spend' | 'name'
-
-/** What the chart of the Usage tab counts per day. */
-export type MetricName = 'spend' | 'requests' | 'tokens'
-
-/** What this key spent while Claude Code has been running, counted from the first reading. */
-export type Session = {
-  /** When the first reading was taken. */
-  since: number
-  /** Spend added since then, across budget resets. */
-  spend: number
-  /** The spend of the latest reading, to tell what is new from what was already there. */
-  last: number
-}
-
 declare module 'claude-code' {
   interface PluginState {
     'litellm-key': {
-      snapshot: Shaped<Snapshot | null>
+      snapshot: Snapshot | null
       failure: Failure | null
       isLoading: boolean
-      view: ViewName
-      range: number
-      sort: SortName
-      metric: MetricName
-      filter: string
-      /** The day picked under the chart of the Usage tab, as `YYYY-MM-DD`. */
-      day: string | null
-      session: Session | null
     }
   }
 }

@@ -1,115 +1,115 @@
-import { weekday } from './format'
-
-const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
-
-/** What was typed after `/litellm`: the first word as it was written, and the words after it. */
-export const splitArgs = (raw: string): { word: string; rest: string[] } => {
-  const [word = '', ...rest] = raw.trim().split(/\s+/).filter(Boolean)
-
-  return { word, rest }
+export type Parsed = {
+  positional: string[]
+  flags: Record<string, string | true>
+  errors: string[]
 }
 
-/** The first word that names one of the `allowed` ranges ("14" or "14d"); `fallback` when none does. */
-export const rangeIn = (words: readonly string[], allowed: readonly number[], fallback: number): number => {
-  for (const word of words) {
-    const match = /^(\d+)d?$/i.exec(word)
-    const days = match ? Number(match[1]) : Number.NaN
+export type Outcome<T> = { ok: true; value: T } | { ok: false; message: string }
 
-    if (allowed.includes(days)) {
-      return days
-    }
-  }
+const SHORT: Record<string, string> = { y: 'yes', n: 'dry-run' }
 
-  return fallback
-}
+/** Splits on whitespace; "double" and 'single' quotes keep a value together (no escapes). */
+export const tokenize = (input: string): string[] => {
+  const tokens: string[] = []
+  let current = ''
+  let quote: string | null = null
+  let isOpen = false
 
-/** Whether `words` carries a number that is not one of the `allowed` ranges, to tell the person instead of guessing. */
-export const strayNumber = (words: readonly string[], allowed: readonly number[]): string | null =>
-  words.find(word => /^\d+d?$/i.test(word) && !allowed.includes(Number.parseInt(word, 10))) ?? null
-
-/** How many slips of the fingers lie between two words; a swap of two neighbours ("hlep") is one, not two. */
-const distance = (a: string, b: string): number => {
-  const width = b.length + 1
-  const grid = new Array<number>((a.length + 1) * width).fill(0)
-  const at = (row: number, column: number): number => grid[row * width + column] ?? 0
-
-  for (let row = 0; row <= a.length; row += 1) {
-    for (let column = 0; column <= b.length; column += 1) {
-      if (row === 0 || column === 0) {
-        grid[row * width + column] = row + column
-
-        continue
+  for (const char of input) {
+    if (quote !== null) {
+      if (char === quote) {
+        quote = null
+      } else {
+        current += char
       }
-      let best = Math.min(
-        at(row - 1, column) + 1,
-        at(row, column - 1) + 1,
-        at(row - 1, column - 1) + (a.charAt(row - 1) === b.charAt(column - 1) ? 0 : 1),
-      )
-
-      if (row > 1 && column > 1 && a.charAt(row - 1) === b.charAt(column - 2) && a.charAt(row - 2) === b.charAt(column - 1)) {
-        best = Math.min(best, at(row - 2, column - 2) + 1)
+    } else if (char === '"' || char === "'") {
+      quote = char
+      isOpen = true
+    } else if (/\s/.test(char)) {
+      if (current !== '' || isOpen) {
+        tokens.push(current)
       }
-      grid[row * width + column] = best
+      current = ''
+      isOpen = false
+    } else {
+      current += char
+      isOpen = true
     }
   }
+  if (current !== '' || isOpen) {
+    tokens.push(current)
+  }
 
-  return at(a.length, b.length)
+  return tokens
 }
 
-/** The word of `words` that `word` most likely meant, if it is near enough to one to be a slip of the fingers. */
-export const closest = (word: string, words: readonly string[]): string | null => {
-  const needle = word.toLowerCase()
-  let best: string | null = null
-  let least = Number.POSITIVE_INFINITY
+const isFlag = (token: string): boolean => /^--[a-z][\w-]*(=|$)/i.test(token) || /^-[a-z]$/i.test(token)
 
-  if (needle === '') {
-    return null
-  }
-  for (const candidate of words) {
-    const gap = distance(needle, candidate)
-    const isNear = gap <= (candidate.length >= 5 ? 2 : 1) || (needle.length >= 2 && candidate.startsWith(needle))
+/** `--name value`, `--name=value`, `-y`. Names in `booleans` never take a value. */
+export const parseArgs = (input: string, booleans: ReadonlySet<string>): Parsed => {
+  const tokens = tokenize(input)
+  const parsed: Parsed = { positional: [], flags: {}, errors: [] }
 
-    if (isNear && gap < least) {
-      best = candidate
-      least = gap
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index] ?? ''
+
+    if (!isFlag(token)) {
+      parsed.positional.push(token)
+      continue
+    }
+    const body = token.startsWith('--') ? token.slice(2) : (SHORT[token.slice(1).toLowerCase()] ?? token.slice(1))
+    const equals = body.indexOf('=')
+    const name = (equals === -1 ? body : body.slice(0, equals)).toLowerCase()
+
+    if (booleans.has(name)) {
+      if (equals === -1) {
+        parsed.flags[name] = true
+      } else {
+        // --yes=false must never read as yes
+        parsed.errors.push(`--${name} takes no value: add the switch or leave it out.`)
+      }
+    } else if (equals !== -1) {
+      parsed.flags[name] = body.slice(equals + 1)
+    } else if (index + 1 < tokens.length) {
+      index += 1
+      parsed.flags[name] = tokens[index] ?? ''
+    } else {
+      parsed.errors.push(`--${name} needs a value`)
     }
   }
 
-  return best
+  return parsed
 }
 
-const pad = (digits: string): string => digits.padStart(2, '0')
+/** Dollars: `10`, `10.5`, `$10`; positive, at most 4 decimals, below a billion. */
+export const parseMoney = (value: unknown, label: string): Outcome<number> => {
+  const text = typeof value === 'string' ? value.trim().replace(/^\$/, '') : ''
 
-/**
- * The day of the history a person meant, as `YYYY-MM-DD`: "today", "yesterday", a date ("2026-10-03" or "10-03"), or a
- * weekday ("mon", "monday") for the latest one the history has. Null when the words name no day it holds.
- */
-export const parseDay = (word: string, days: readonly string[]): string | null => {
-  const text = word.trim().toLowerCase()
-
-  if (text === '' || text === 'today') {
-    return days[days.length - 1] ?? null
+  if (!/^\d+(\.\d{1,4})?$/.test(text)) {
+    return { ok: false, message: `${label} must be a positive dollar amount such as 10 or 2.50 (got "${String(value)}").` }
   }
-  if (text === 'yesterday') {
-    return days[days.length - 2] ?? null
-  }
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
-    return days.includes(text) ? text : null
-  }
-  const short = /^(\d{1,2})[-/](\d{1,2})$/.exec(text)
+  const amount = Number(text)
 
-  if (short) {
-    const suffix = `-${pad(short[1] ?? '')}-${pad(short[2] ?? '')}`
-
-    return [...days].reverse().find(day => day.endsWith(suffix)) ?? null
-  }
-  if (text.length >= 3) {
-    const name = WEEKDAYS.find(full => full.startsWith(text))
-
-    if (name !== undefined) {
-      return [...days].reverse().find(day => weekday(day).toLowerCase() === name.slice(0, 3)) ?? null
-    }
+  if (!(amount > 0) || amount >= 1e9) {
+    return { ok: false, message: `${label} must be above $0 and below $1,000,000,000.` }
   }
 
-  return null
+  return { ok: true, value: amount }
+}
+
+/** A LiteLLM duration: a count and one unit (s, m, h, d, w, mo). */
+export const parseDuration = (value: unknown, label: string): Outcome<string> => {
+  const text = typeof value === 'string' ? value.trim().toLowerCase() : ''
+
+  return /^[1-9]\d{0,5}(mo|s|m|h|d|w)$/.test(text)
+    ? { ok: true, value: text }
+    : { ok: false, message: `${label} must be a count and a unit (s, m, h, d, w, mo), such as 30d or 12h (got "${String(value)}").` }
+}
+
+export const parseCount = (value: unknown, label: string): Outcome<number> => {
+  const text = typeof value === 'string' ? value.trim() : ''
+
+  return /^[1-9]\d{0,8}$/.test(text)
+    ? { ok: true, value: Number(text) }
+    : { ok: false, message: `${label} must be a whole number above 0 (got "${String(value)}").` }
 }

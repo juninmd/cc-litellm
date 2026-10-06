@@ -1,21 +1,14 @@
-import { expect } from 'claude-code/testing'
-
 import type { Snapshot } from '../types'
-import { utcDay } from '../hooks/format'
+import type { Reply } from '../hooks/litellm'
 import { fetchSnapshot } from '../hooks/litellm'
-import type { Http, Reply } from '../hooks/litellm'
 
 export const NOW = Date.parse('2026-10-03T12:00:00Z')
-
-/** The test kit has no toBeCloseTo: a number is near another when it is within `tolerance` of it. */
-export const near = (received: number | null | undefined, expected: number, tolerance = 1e-6): void => {
-  expect(Math.abs((received ?? Number.NaN) - expected) <= tolerance, `${received} is not within ${tolerance} of ${expected}`).toBe(true)
-}
 export const KEY = 'sk-test-secret-1234567890'
 export const HASH = '0123456789abcdef'.repeat(4)
 export const BASE = 'https://litellm.test'
 
-export type Route = Reply | ((url: string, headers: Record<string, string>) => Reply | Promise<Reply>)
+export type Init = { method: string; body?: string }
+export type Route = Reply | ((url: string, headers: Record<string, string>, init?: Init) => Reply | Promise<Reply>)
 
 export const reply = (status: number, body: unknown): Reply => ({
   status,
@@ -49,7 +42,6 @@ const day = (date: string, spend: number, requests: number, tokens: number) => (
   metrics: {
     spend,
     api_requests: requests,
-    failed_requests: 0,
     total_tokens: tokens,
     prompt_tokens: Math.round(tokens * 0.8),
     completion_tokens: Math.round(tokens * 0.2),
@@ -57,77 +49,11 @@ const day = (date: string, spend: number, requests: number, tokens: number) => (
   },
   breakdown: {
     models: {
-      'claude-sonnet-4-5': {
-        metrics: {
-          spend: spend * 0.75,
-          api_requests: Math.round(requests * 0.75),
-          total_tokens: Math.round(tokens * 0.75),
-        },
-      },
-      'claude-opus-4-1': {
-        metrics: {
-          spend: spend * 0.25,
-          api_requests: Math.round(requests * 0.25),
-          total_tokens: Math.round(tokens * 0.25),
-        },
-      },
+      'claude-sonnet-4-5': { metrics: { spend: spend * 0.75 } },
+      'claude-opus-4-1': { metrics: { spend: spend * 0.25 } },
     },
   },
 })
-
-type Shares = Record<string, number>
-
-/**
- * A `/user/daily/activity` answer: one day for each value, ending on the day of NOW, oldest first. A day that spent
- * nothing is left out, as the proxy does. The models split a day by `shares` (a function of the day's place, to let it
- * change over time).
- */
-export const activity = (
-  spends: readonly number[],
-  shares: Shares | ((at: number) => Shares) = { 'claude-sonnet-4-5': 0.75, 'claude-opus-4-1': 0.25 },
-): Reply =>
-  reply(200, {
-    results: spends.flatMap((spend, at) => {
-      if (!(spend > 0)) {
-        return []
-      }
-      const split = typeof shares === 'function' ? shares(at) : shares
-      const requests = Math.round(spend * 10)
-
-      return [
-        {
-          date: utcDay(NOW, spends.length - 1 - at),
-          metrics: {
-            spend,
-            api_requests: requests,
-            failed_requests: 0,
-            total_tokens: spend * 1000,
-            prompt_tokens: spend * 800,
-            completion_tokens: spend * 200,
-            cache_read_input_tokens: spend * 500,
-          },
-          breakdown: {
-            models: Object.fromEntries(
-              Object.entries(split).map(([model, share]) => [
-                model,
-                {
-                  metrics: {
-                    spend: spend * share,
-                    api_requests: Math.round(requests * share),
-                    total_tokens: spend * 1000 * share,
-                  },
-                },
-              ]),
-            ),
-          },
-        },
-      ]
-    }),
-  })
-
-/** What `/health/readiness` answers on a proxy that has a database. */
-export const health = (version = '1.77.0', db = 'connected'): Reply =>
-  reply(200, { status: 'healthy', db, cache: null, litellm_version: version, success_callbacks: [] })
 
 export const standardRoutes = (): Record<string, Route> => ({
   '/key/info': reply(200, keyBody()),
@@ -136,6 +62,7 @@ export const standardRoutes = (): Record<string, Route> => ({
     user_info: {
       user_id: 'jane',
       user_email: 'jane@acme.test',
+      user_role: 'internal_user',
       spend: 26.1,
       max_budget: 100,
       budget_duration: '30d',
@@ -172,9 +99,9 @@ export const standardRoutes = (): Record<string, Route> => ({
 })
 
 export const router = (routes: Record<string, Route>) => {
-  const calls: { url: string; headers: Record<string, string> }[] = []
-  const http: Http = async (url, headers) => {
-    calls.push({ url, headers })
+  const calls: { url: string; headers: Record<string, string>; method: string; body?: string }[] = []
+  const http = async (url: string, headers: Record<string, string>, init?: Init): Promise<Reply> => {
+    calls.push({ url, headers, method: init?.method ?? 'GET', ...(init?.body === undefined ? {} : { body: init.body }) })
     const path = url.replace(/^https?:\/\/[^/]+/, '').split('?')[0] ?? ''
     const route = routes[path]
 
@@ -182,7 +109,7 @@ export const router = (routes: Record<string, Route>) => {
       return reply(404, { detail: 'Not Found' })
     }
 
-    return typeof route === 'function' ? await route(url, headers) : route
+    return typeof route === 'function' ? await route(url, headers, init) : route
   }
 
   return { http, calls }

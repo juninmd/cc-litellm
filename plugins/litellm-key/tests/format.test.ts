@@ -1,29 +1,21 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import {
-  ago,
-  bar,
-  change,
-  columnChart,
-  clean,
   compact,
-  gauge,
-  isoDay,
   maskKey,
-  miniBar,
   money,
   percent,
   plural,
   redact,
-  share,
-  shortDate,
-  shortMoney,
+  rule,
   span,
+  gauge,
   sparkline,
   truncate,
+  truncateMiddle,
   until,
+  usedShare,
   utcDay,
-  weekday,
 } from '../hooks/format'
 
 describe('money', () => {
@@ -52,24 +44,16 @@ describe('numbers', () => {
     expect(compact(2_300_000_000)).toBe('2.3B')
   })
 
-  test('percent is rounded, and null without a limit', () => {
+  test('percent is rounded and null without a positive limit', () => {
     expect(percent(26.1, 50)).toBe(52)
+    expect(percent(5, 0)).toBeNull()
     expect(percent(5, null)).toBeNull()
-    expect(percent(5, -1)).toBeNull()
   })
 
-  test('percent only says 100 once the limit is reached, however near it is', () => {
-    expect(percent(49.9, 50)).toBe(99)
-    expect(percent(49.99, 50)).toBe(99)
-    expect(percent(50, 50)).toBe(100)
-    expect(percent(52, 50)).toBe(104)
-  })
-
-  test('a limit of zero is reached from the start', () => {
-    expect(percent(0, 0)).toBe(100)
-    expect(percent(3, 0)).toBe(100)
-    expect(share(3, 0)).toBe(1)
-    expect(share(1, 4)).toBe(0.25)
+  test('usedShare reads a cap of $0 as used up, as the banner does, and no cap as none', () => {
+    expect(usedShare(26.1, 50)).toBe(52)
+    expect(usedShare(0, 0)).toBe(100)
+    expect(usedShare(5, null)).toBeNull()
   })
 
   test('plural counts', () => {
@@ -79,62 +63,33 @@ describe('numbers', () => {
 })
 
 describe('charts', () => {
-  test('bar fills in proportion and clamps', () => {
-    expect(bar(0.5, 10)).toBe('█████░░░░░')
-    expect(bar(2, 4)).toBe('████')
-    expect(bar(-1, 4)).toBe('░░░░')
-    expect(bar(Number.NaN, 4)).toBe('░░░░')
+  test('gauge fills in eighths of a cell and keeps the track apart', () => {
+    expect(gauge(0.5, 10)).toEqual({ full: '█████', track: '░░░░░' })
+    expect(gauge(0.3, 4)).toEqual({ full: '█▎', track: '░░' })
+    expect(gauge(0, 4)).toEqual({ full: '', track: '░░░░' })
+    expect(gauge(2, 4)).toEqual({ full: '████', track: '' })
+    expect(gauge(Number.NaN, 4)).toEqual({ full: '', track: '░░░░' })
+    expect(gauge(-1, 4)).toEqual({ full: '', track: '░░░░' })
+    expect(gauge(0.5, 0)).toEqual({ full: '', track: '' })
+    // a hair under the cap still rounds to a full bar, so the tone and the amounts are what tell it apart
+    expect(gauge(0.999, 10)).toEqual({ full: '██████████', track: '' })
+  })
+
+  test('rule is a slim bar in whole cells, and any share above zero keeps one', () => {
+    expect(rule(0.75, 16)).toEqual({ full: '▄'.repeat(12), track: '▁'.repeat(4) })
+    expect(rule(0.03, 16)).toEqual({ full: '▄', track: '▁'.repeat(15) })
+    expect(rule(0, 4)).toEqual({ full: '', track: '▁▁▁▁' })
+    expect(rule(1, 4)).toEqual({ full: '▄▄▄▄', track: '' })
+    expect(rule(5, 4)).toEqual({ full: '▄▄▄▄', track: '' })
+    expect(rule(Number.NaN, 4)).toEqual({ full: '', track: '▁▁▁▁' })
+    expect(rule(0.5, 0)).toEqual({ full: '', track: '' })
   })
 
   test('sparkline scales to the biggest value', () => {
-    expect(sparkline([0, 0, 0])).toBe('▁▁▁')
-    expect(sparkline([0, 4, 8])).toBe('▁▅█')
+    expect(sparkline([0, 0, 0])).toBe('···')
+    // a day with nothing is a dot: "none" must never look like "a little"
+    expect(sparkline([0, 4, 8])).toBe('·▅█')
     expect(sparkline([])).toBe('')
-  })
-
-  test('gauge fills in eighths of a cell, filled part and empty track apart', () => {
-    expect(gauge(0.5, 10)).toEqual({ filled: '█████', empty: '░░░░░' })
-    expect(gauge(0.83, 30)).toEqual({ filled: `${'█'.repeat(24)}▉`, empty: '░'.repeat(5) })
-    expect(gauge(0.25, 4)).toEqual({ filled: '█', empty: '░░░' })
-    expect(gauge(0.3125, 4)).toEqual({ filled: '█▎', empty: '░░' })
-  })
-
-  test('gauge shows a little use, never calls a nearly full bar full, and has no width to give at zero', () => {
-    expect(gauge(0.001, 10)).toEqual({ filled: '▏', empty: '░'.repeat(9) })
-    expect(gauge(0.999, 10)).toEqual({ filled: `${'█'.repeat(9)}▉`, empty: '' })
-    expect(gauge(1, 10)).toEqual({ filled: '█'.repeat(10), empty: '' })
-    expect(gauge(7, 10)).toEqual({ filled: '█'.repeat(10), empty: '' })
-    expect(gauge(0, 3)).toEqual({ filled: '', empty: '░░░' })
-    expect(gauge(Number.NaN, 3)).toEqual({ filled: '', empty: '░░░' })
-    expect(gauge(0.5, 0)).toEqual({ filled: '', empty: '' })
-  })
-
-  test('miniBar is a whole-cell meter that shows a little and never calls a nearly full one full', () => {
-    expect(miniBar(0.25, 6)).toBe('▰▰▱▱▱▱')
-    expect(miniBar(0.001, 6)).toBe('▰▱▱▱▱▱')
-    expect(miniBar(0.999, 6)).toBe('▰▰▰▰▰▱')
-    expect(miniBar(1, 6)).toBe('▰▰▰▰▰▰')
-    expect(miniBar(2, 3)).toBe('▰▰▰')
-    expect(miniBar(0, 3)).toBe('▱▱▱')
-    expect(miniBar(Number.NaN, 3)).toBe('▱▱▱')
-  })
-
-  test('miniBar has nothing to draw in no width at all', () => {
-    expect(miniBar(0.5, 0)).toBe('')
-    expect(miniBar(1, -3)).toBe('')
-    expect(miniBar(1, Number.NaN)).toBe('')
-  })
-
-  test('columnChart draws one bar per value, tallest to the top, in rows from the top down', () => {
-    expect(columnChart([0, 4, 8], 2, 1, 1)).toEqual(['    █', '  █ █'])
-    expect(columnChart([1, 8], 1, 1, 0)).toEqual(['▁█'])
-    expect(columnChart([2, 8], 1, 2, 1)).toEqual(['▂▂ ██'])
-  })
-
-  test('columnChart keeps a tiny value visible and draws nothing for zeros', () => {
-    expect(columnChart([0.001, 100], 1, 1, 0)).toEqual(['▁█'])
-    expect(columnChart([0, 0, 0], 2, 1, 1)).toEqual(['     ', '     '])
-    expect(columnChart([], 3, 1, 1)).toEqual(['', '', ''])
   })
 })
 
@@ -161,52 +116,6 @@ describe('time', () => {
     expect(utcDay(night, 0)).toBe('2026-10-03')
     expect(utcDay(night, 6)).toBe('2026-09-27')
   })
-
-  test('ago says just now for a moment and counts after that', () => {
-    expect(ago(1000, 4000)).toBe('just now')
-    expect(ago(5000, 1000)).toBe('just now')
-    expect(ago(0, 12_000)).toBe('12s ago')
-    expect(ago(0, 125_000)).toBe('2m ago')
-  })
-
-  test('weekday and shortDate read a proxy day, and say nothing about nonsense', () => {
-    expect(weekday('2026-10-03')).toBe('Sat')
-    expect(weekday('2026-10-05')).toBe('Mon')
-    expect(shortDate('2026-10-03')).toBe('Oct 3')
-    expect(shortDate('2026-12-25')).toBe('Dec 25')
-    expect(weekday('nope')).toBe('')
-    expect(shortDate('nope')).toBe('nope')
-  })
-
-  test('isoDay is the UTC day of a timestamp', () => {
-    expect(isoDay(Date.parse('2026-10-03T23:59:59Z'))).toBe('2026-10-03')
-    expect(isoDay(Date.parse('2026-10-04T00:00:00Z'))).toBe('2026-10-04')
-  })
-})
-
-describe('shapes', () => {
-  test('shortMoney stays within about six cells', () => {
-    expect(shortMoney(0)).toBe('$0')
-    expect(shortMoney(0.004)).toBe('<$0.01')
-    expect(shortMoney(0.42)).toBe('$0.42')
-    expect(shortMoney(9.5)).toBe('$9.50')
-    expect(shortMoney(12.34)).toBe('$12.3')
-    expect(shortMoney(12.04)).toBe('$12')
-    expect(shortMoney(412)).toBe('$412')
-    expect(shortMoney(1234)).toBe('$1.2k')
-    expect(shortMoney(123_456)).toBe('$123k')
-    expect(shortMoney(2_500_000)).toBe('$2.5M')
-    expect(shortMoney(-3.5)).toBe('-$3.50')
-    expect(shortMoney(Number.NaN)).toBe('—')
-  })
-
-  test('change is how far it moved, in whole percent, and nothing without a past', () => {
-    expect(change(120, 100)).toEqual({ pct: 20, direction: 'up' })
-    expect(change(80, 100)).toEqual({ pct: 20, direction: 'down' })
-    expect(change(100, 100)).toEqual({ pct: 0, direction: 'flat' })
-    expect(change(5, 0)).toBeNull()
-    expect(change(Number.NaN, 4)).toBeNull()
-  })
 })
 
 describe('secrets', () => {
@@ -225,43 +134,29 @@ describe('secrets', () => {
     expect(redact('nothing to hide')).toBe('nothing to hide')
   })
 
-  test('redact hides the sha256 of a key, which is what the proxy knows it by, and the api_key of a url', () => {
-    const hash = '0123456789abcdef'.repeat(4)
-
-    expect(redact(`Key Hash (Token) =${hash}. Unable to find token`)).toBe('Key Hash (Token) =…. Unable to find token')
-    expect(redact(`${hash.toUpperCase()} and ${hash}`)).toBe('… and …')
-    expect(redact('fetching "http://x/user/daily/activity?user_id=jane&api_key=0123456789abcdef0123&page_size=1000"')).toBe(
-      'fetching "http://x/user/daily/activity?user_id=jane&api_key=…&page_size=1000"',
-    )
-    expect(redact('api_key=')).toBe('api_key=')
-  })
-
-  test('redact leaves alone what only looks a little like a hash', () => {
-    expect(redact('request 0123456789abcdef is done')).toBe('request 0123456789abcdef is done')
-    expect(redact(`${'a'.repeat(63)} ${'a'.repeat(65)}`)).toBe(`${'a'.repeat(63)} ${'a'.repeat(65)}`)
-  })
-
-  test('redact drops the credentials of a url', () => {
-    expect(redact('Could not reach https://bob:hunter2@litellm.test/key/info')).toBe(
-      'Could not reach https://litellm.test/key/info',
-    )
-    expect(redact('https://bob:p@ss@litellm.test')).toBe('https://litellm.test')
-    expect(redact('see https://litellm.test/a@b')).toBe('see https://litellm.test/a@b')
-  })
-
-  test('clean drops what the engine would refuse to draw, and the escape sequences with it', () => {
-    expect(clean('\u001b[31mred\u001b[0m text')).toBe('red text')
-    expect(clean('title\u001b]0;evil\u0007 here')).toBe('title here')
-    expect(clean('a\u0000b\u0007c\u007fd\u0085e')).toBe('abcde')
-    expect(clean('keeps\ttabs\nand lines, é, 日本 and 🙂')).toBe('keeps\ttabs\nand lines, é, 日本 and 🙂')
-  })
-
-  test('redact cleans too', () => {
-    expect(redact('bad \u001b[31mkey\u001b[0m')).toBe('bad key')
-  })
-
   test('truncate adds an ellipsis', () => {
     expect(truncate('abcdef', 4)).toBe('abc…')
     expect(truncate('abc', 4)).toBe('abc')
+  })
+
+  test('truncateMiddle keeps both ends, so names that differ at the end stay apart', () => {
+    const a = 'Model claude-sonnet-4-5'
+    const b = 'Model claude-sonnet-4-6'
+
+    expect(truncateMiddle(a, 16)).toBe('Model cl…net-4-5')
+    expect(truncateMiddle(a, 16)).toHaveLength(16)
+    expect(truncateMiddle(a, 16)).not.toBe(truncateMiddle(b, 16))
+    // the plain cut is what made them collide
+    expect(truncate(a, 16)).toBe(truncate(b, 16))
+    expect(truncateMiddle('abcdef', 6)).toBe('abcdef')
+  })
+
+  test('truncateMiddle is exact in the tight cases and never longer than asked', () => {
+    expect(truncateMiddle('abcdef', 2)).toBe('a…')
+    expect(truncateMiddle('abcdef', 1)).toBe('…')
+    expect(truncateMiddle('abcdef', 0)).toBe('')
+    for (let max = 0; max <= 12; max += 1) {
+      expect(truncateMiddle('abcdefghijklmnopqrstuvwxyz', max).length).toBeLessThanOrEqual(max)
+    }
   })
 })

@@ -1,0 +1,129 @@
+name: Release
+
+# Once CI is green on main, conventional commits become a release with no hands: release-please keeps one release PR
+# up to date (version, CHANGELOG), this workflow merges it, and the merge tags litellm-key--vX.Y.Z (the name
+# `claude plugin tag` uses) and publishes it. See RELEASING.md.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+# One run at a time: two overlapping runs would race to open or merge the same release PR.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: release-please
+    # `push` only: a fork PR from a branch named main also reports head_branch main.
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # the release branch, the squash merge, the tag and the GitHub release
+      pull-requests: write # the release PR and its merge
+      issues: write # its labels (autorelease: pending / tagged)
+    env:
+      # A PR opened or merged with GITHUB_TOKEN does not start other workflows, so CI would not run on the release PR.
+      # RELEASE_PLEASE_TOKEN (a fine-grained PAT, see RELEASING.md) lifts that; without it the default token is used.
+      GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+      VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
+      # Commits on main after the verified one, minus the release commits this workflow itself merges (CI never sees
+      # those with GITHUB_TOKEN). Anything else ahead, or a diverged main, counts as unverified.
+      UNVERIFIED_JQ: 'if (.status == "identical" or .status == "ahead") then [.commits[] | select(.commit.message | startswith("chore(main): release") | not)] | length else 999 end'
+    outputs:
+      release_created: ${{ steps.tag.outputs.release_created || steps.release.outputs.release_created }}
+      tag_name: ${{ steps.tag.outputs.tag_name || steps.release.outputs.tag_name }}
+    steps:
+      # Never release a commit CI has not seen: when main moved on, the run for its own CI result takes over.
+      - name: Main holds nothing CI has not verified
+        id: head
+        run: |
+          ahead="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${VERIFIED_SHA}...main" --jq "${UNVERIFIED_JQ}")"
+          echo "unverified commits on main: ${ahead}"
+          [ "${ahead}" = "0" ] || echo "stale=true" >> "${GITHUB_OUTPUT}"
+
+      - id: release
+        if: steps.head.outputs.stale != 'true'
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ env.GH_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      # Squash, like the repo's other merges. The PR comes from the REST list (the search behind `gh pr list --label`
+      # lags a fresh label) and only a release-please branch of this repo qualifies: a label alone is not a trust boundary.
+      # GitHub computes mergeability a moment after the PR changes, hence the wait; the PR state is the arbiter.
+      - name: Merge the release PR
+        id: merge
+        if: steps.head.outputs.stale != 'true'
+        run: |
+          numbers="$(gh api "repos/${GITHUB_REPOSITORY}/pulls?state=open&base=main&per_page=100" --jq '.[]
+            | select(.head.repo.full_name == env.GITHUB_REPOSITORY and (.head.ref | startswith("release-please--")))
+            | select(any(.labels[]; .name == "autorelease: pending")) | .number')"
+          [ -n "${numbers}" ] || { echo "no release PR is open"; exit 0; }
+          ahead="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${VERIFIED_SHA}...main" --jq "${UNVERIFIED_JQ}")"
+          [ "${ahead}" = "0" ] || { echo "main moved on (${ahead} unverified commits): the next run releases it"; exit 0; }
+          for number in ${numbers}; do
+            merged=false
+            for attempt in 1 2 3 4 5; do
+              gh pr merge "${number}" --repo "${GITHUB_REPOSITORY}" --squash || true
+              state="$(gh pr view "${number}" --repo "${GITHUB_REPOSITORY}" --json state --jq .state)"
+              if [ "${state}" = "MERGED" ]; then merged=true; break; fi
+              echo "attempt ${attempt}: release PR #${number} is ${state}, not merged yet"
+              sleep 6
+            done
+            [ "${merged}" = "true" ] || { echo "::error::release PR #${number} did not merge"; exit 1; }
+          done
+          echo "merged=true" >> "${GITHUB_OUTPUT}"
+
+      # A merge made with GITHUB_TOKEN starts no push workflow, so tag it here instead of waiting for one.
+      - id: tag
+        if: steps.merge.outputs.merged == 'true'
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ env.GH_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          skip-github-pull-request: true
+
+      - name: The merge produced a release
+        if: steps.merge.outputs.merged == 'true' && steps.tag.outputs.release_created != 'true'
+        run: |
+          echo "::error::the release PR merged but no release was created; re-run this job, it tags the leftover PR"
+          exit 1
+
+  # The release exists the moment the tag step runs: check it is the one the plugin tooling would have made.
+  verify-release:
+    name: verify the release
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.release-please.outputs.tag_name }}
+    steps:
+      - name: Tag, plugin.json and the marketplace entry agree
+        run: |
+          version="${TAG##*--v}"
+          fetch() { gh api "repos/${GITHUB_REPOSITORY}/contents/$1?ref=${TAG}" --jq .content | base64 -d; }
+          plugin="$(fetch plugins/litellm-key/.claude-plugin/plugin.json | jq -r .version)"
+          market="$(fetch .claude-plugin/marketplace.json | jq -r '.plugins[] | select(.name == "litellm-key") | .version')"
+          echo "tag=${TAG} plugin.json=${plugin} marketplace=${market}"
+          test "${TAG}" = "litellm-key--v${version}"
+          test "${plugin}" = "${version}"
+          test "${market}" = "${version}"
+
+      - name: The release is published, not a draft
+        run: |
+          gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" --json tagName,isDraft,url \
+            --jq '"\(.tagName) draft=\(.isDraft) \(.url)"'
+          test "$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft)" = "false"

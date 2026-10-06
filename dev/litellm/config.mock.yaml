@@ -1,0 +1,76 @@
+# Zero-key LiteLLM config for homologating litellm-key. Every deployment answers with a canned reply
+# (mock_response), so nothing leaves the machine. The shape mirrors a real "auto" setup: one weighted
+# model group, plus a fallback chain and a context-window fallback.
+#
+# Pricing is a demo number ($1 per 1k tokens) so a few requests visibly move a budget.
+
+model_list:
+  - model_name: cloud/auto
+    litellm_params: &demo
+      model: openai/mock-fast
+      api_key: mock
+      mock_response: "pong from cloud/auto (fast)"
+      input_cost_per_token: 0.001
+      output_cost_per_token: 0.001
+      weight: 8
+    model_info: { max_input_tokens: 131072 }
+  - model_name: cloud/auto
+    litellm_params:
+      <<: *demo
+      model: openai/mock-large
+      mock_response: "pong from cloud/auto (large)"
+      weight: 3
+    model_info: { max_input_tokens: 131072 }
+
+  - model_name: cloud/auto-long
+    litellm_params:
+      <<: *demo
+      model: openai/mock-long
+      mock_response: "pong from cloud/auto-long (fallback 1)"
+    model_info: { max_input_tokens: 350000 }
+
+  - model_name: cloud/openrouter-zdr
+    litellm_params:
+      <<: *demo
+      model: openai/mock-zdr
+      mock_response: "pong from cloud/openrouter-zdr (fallback 2)"
+    model_info: { max_input_tokens: 131072 }
+
+  - model_name: cloud/deepseek-v4-flash
+    litellm_params:
+      <<: *demo
+      model: openai/mock-million
+      mock_response: "pong from cloud/deepseek-v4-flash (context window fallback)"
+    model_info: { max_input_tokens: 1048576 }
+
+  # always fails with a 429, so requests to it exercise the fallback chain
+  - model_name: demo/always-429
+    litellm_params:
+      <<: *demo
+      model: openai/mock-broken
+      mock_response: "litellm.RateLimitError"
+    model_info: { max_input_tokens: 131072 }
+
+litellm_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+  drop_params: true
+  num_retries: 0
+  request_timeout: 60
+
+router_settings:
+  routing_strategy: simple-shuffle
+  allowed_fails: 2
+  cooldown_time: 30
+  fallbacks:
+    - cloud/auto: ["cloud/auto-long", "cloud/openrouter-zdr"]
+    - cloud/auto-long: ["cloud/openrouter-zdr"]
+    - demo/always-429: ["cloud/auto"]
+  context_window_fallbacks:
+    - cloud/auto: ["cloud/deepseek-v4-flash"]
+
+general_settings:
+  store_model_in_db: false
+  allow_requests_on_db_unavailable: false
+  # local only: lets a request carry mock_testing_fallbacks to force the fallback chain
+  dangerously_allow_mock_testing_request_params: true

@@ -1,11 +1,6 @@
 const BLOCKS = '▁▂▃▄▅▆▇█'
-// Left-aligned partial cells of a horizontal bar, by eighths; index 0 is unused.
-const PARTIALS = ' ▏▎▍▌▋▊▉'
-// Bottom-aligned partial cells of a vertical bar, by eighths: 0 is blank, 8 is full.
-const RISERS = ' ▁▂▃▄▅▆▇█'
+const EIGHTHS = ' ▏▎▍▌▋▊▉█'
 const DAY_MS = 86_400_000
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 const group = (digits: string): string => digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 
@@ -33,13 +28,6 @@ export const money = (value: number | null | undefined): string => {
   return `${sign}$${group(whole)}.${cents}`
 }
 
-/** A whole count with thousands grouped: 12,345. */
-export const count = (value: number): string => {
-  const rounded = Math.round(value)
-
-  return `${rounded < 0 ? '-' : ''}${group(String(Math.abs(rounded)))}`
-}
-
 export const compact = (value: number): string => {
   const abs = Math.abs(value)
 
@@ -56,113 +44,38 @@ export const compact = (value: number): string => {
   return String(Math.round(value))
 }
 
-/**
- * How much of a limit is used, in whole percent; null without one. It reaches 100 only once the limit is reached,
- * however near it is, and a limit of zero is reached from the start.
- */
-export const percent = (used: number, limit: number | null): number | null => {
-  if (limit === null || !(limit >= 0)) {
-    return null
-  }
-  if (limit === 0) {
-    return 100
-  }
-  const rounded = Math.round((used / limit) * 100)
+export const percent = (used: number, limit: number | null): number | null =>
+  limit === null || !(limit > 0) ? null : Math.round((used / limit) * 100)
 
-  return used < limit ? Math.min(99, rounded) : rounded
-}
+/** The share of a cap that is used, null with no cap; a cap of $0 is used up from the first cent, as the banner reads it. */
+export const usedShare = (used: number, limit: number | null): number | null =>
+  limit === null ? null : (percent(used, limit) ?? 100)
 
-/** The part of a limit that is used, from 0 up; a limit of zero is all used. */
-export const share = (used: number, limit: number): number => (limit > 0 ? used / limit : 1)
-
-/** A horizontal bar in two parts, so the filled part and the empty track can take their own colors. */
-export type Gauge = { filled: string; empty: string }
-
-/**
- * `width` cells, filled to `fraction` in eighths of a cell. A little use still shows (one eighth) and a nearly full
- * bar never looks full: only a fraction of 1 or more fills the last cell.
- */
-export const gauge = (fraction: number, width: number): Gauge => {
-  const cells = Math.max(0, Math.floor(width))
+/** A bar in eighths of a cell: `full` is the filled part, `track` the rest, so each can take its own color. */
+export const gauge = (fraction: number, width: number): { full: string; track: string } => {
   const clamped = Number.isFinite(fraction) ? Math.min(1, Math.max(0, fraction)) : 0
-  const most = cells * 8
-  let eighths = Math.round(clamped * most)
+  const eighths = Math.round(clamped * width * 8)
+  const whole = Math.floor(eighths / 8)
+  const part = eighths % 8
+  const full = '█'.repeat(whole) + (part > 0 ? EIGHTHS.charAt(part) : '')
 
-  if (cells === 0) {
-    return { filled: '', empty: '' }
-  }
-  if (clamped > 0 && eighths === 0) {
-    eighths = 1
-  }
-  if (clamped < 1 && eighths === most && most > 0) {
-    eighths = most - 1
-  }
-  const full = Math.floor(eighths / 8)
-  const rest = eighths % 8
-
-  return {
-    filled: '█'.repeat(full) + (rest > 0 ? PARTIALS.charAt(rest) : ''),
-    empty: '░'.repeat(cells - full - (rest > 0 ? 1 : 0)),
-  }
+  return { full, track: '░'.repeat(width - whole - (part > 0 ? 1 : 0)) }
 }
 
-export const bar = (fraction: number, width: number): string => {
-  const { filled, empty } = gauge(fraction, width)
-
-  return filled + empty
-}
-
-/** A small whole-cell meter for a line of text: `▰▰▰▱▱▱`. Same rules as `gauge`: a little shows, nearly full is not full. */
-export const miniBar = (fraction: number, width: number): string => {
-  const cells = Math.max(0, Math.floor(width))
+/** A slim bar in whole cells, low in the cell, so rows stacked on each other stay apart. Any share above zero gets a cell. */
+export const rule = (fraction: number, width: number): { full: string; track: string } => {
   const clamped = Number.isFinite(fraction) ? Math.min(1, Math.max(0, fraction)) : 0
-  let filled = Math.round(clamped * cells)
+  const cells = clamped > 0 ? Math.min(width, Math.max(1, Math.round(clamped * width))) : 0
 
-  if (!(cells > 0)) {
-    return ''
-  }
-  if (clamped > 0 && filled === 0) {
-    filled = 1
-  }
-  if (clamped < 1 && filled === cells) {
-    filled = Math.max(0, cells - 1)
-  }
-
-  return '▰'.repeat(filled) + '▱'.repeat(cells - filled)
+  return { full: '▄'.repeat(cells), track: '▁'.repeat(width - cells) }
 }
 
-/**
- * Vertical bars, one per value, scaled to the biggest, as `height` rows of text from the top down. Each bar is
- * `barWidth` cells wide with `gap` blank cells between them. Any value above zero shows at least one eighth of a row.
- */
-export const columnChart = (values: readonly number[], height: number, barWidth: number, gap = 1): string[] => {
-  const most = Math.max(0, ...values)
-  const rows: string[] = []
-
-  for (let row = height - 1; row >= 0; row -= 1) {
-    rows.push(
-      values
-        .map(value => {
-          const eighths = !(value > 0) || most <= 0 ? 0 : Math.max(1, Math.round((value / most) * height * 8))
-
-          return RISERS.charAt(Math.min(8, Math.max(0, eighths - row * 8))).repeat(barWidth)
-        })
-        .join(' '.repeat(gap)),
-    )
-  }
-
-  return rows
-}
-
+/** One block per value, scaled to the biggest; a day with nothing is a dot, so "none" never looks like "a little". */
 export const sparkline = (values: readonly number[]): string => {
   const max = Math.max(0, ...values)
 
-  if (max <= 0) {
-    return BLOCKS.charAt(0).repeat(values.length)
-  }
-
   return values
-    .map(value => BLOCKS.charAt(Math.min(7, Math.max(0, Math.round((value / max) * 7)))))
+    .map(value => (value <= 0 ? '·' : BLOCKS.charAt(Math.min(7, Math.max(0, Math.round((value / max) * 7))))))
     .join('')
 }
 
@@ -202,87 +115,8 @@ export const clock = (ms: number): string => {
   return `${two(date.getHours())}:${two(date.getMinutes())}:${two(date.getSeconds())}`
 }
 
-/** How long ago, as a status wants it: "just now" under five seconds. */
-export const ago = (at: number, now: number): string => (now - at < 5000 ? 'just now' : `${span(now - at)} ago`)
-
 export const utcDay = (now: number, back: number): string =>
   new Date(now - back * DAY_MS).toISOString().slice(0, 10)
-
-const dayStart = (date: string): number | null => {
-  const parsed = Date.parse(`${date}T00:00:00Z`)
-
-  return Number.isNaN(parsed) ? null : parsed
-}
-
-/** "Tue" for a `YYYY-MM-DD` day (UTC, as the proxy counts days); empty when it is not a day. */
-export const weekday = (date: string): string => {
-  const start = dayStart(date)
-
-  return start === null ? '' : (WEEKDAYS[new Date(start).getUTCDay()] ?? '')
-}
-
-/** "Oct 3" for a `YYYY-MM-DD` day. */
-export const shortDate = (date: string): string => {
-  const start = dayStart(date)
-
-  if (start === null) {
-    return date
-  }
-  const when = new Date(start)
-
-  return `${MONTHS[when.getUTCMonth()] ?? ''} ${when.getUTCDate()}`
-}
-
-/** The `YYYY-MM-DD` day (UTC) a timestamp falls on. */
-export const isoDay = (ms: number): string => new Date(ms).toISOString().slice(0, 10)
-
-/** A money amount in about six cells, for chart axes and narrow columns: $0, $0.42, $12.3, $412, $1.2k. */
-export const shortMoney = (value: number): string => {
-  if (!Number.isFinite(value)) {
-    return '—'
-  }
-  const sign = value < 0 ? '-' : ''
-  const abs = Math.abs(value)
-
-  if (abs === 0) {
-    return '$0'
-  }
-  if (abs >= 1e6) {
-    return `${sign}$${trim(abs / 1e6)}M`
-  }
-  if (abs >= 1e3) {
-    return `${sign}$${trim(abs / 1e3)}k`
-  }
-  if (abs >= 100) {
-    return `${sign}$${abs.toFixed(0)}`
-  }
-  if (abs >= 10) {
-    return `${sign}$${abs.toFixed(1).replace(/\.0$/, '')}`
-  }
-
-  return abs >= 0.01 ? `${sign}$${abs.toFixed(2)}` : `${sign}<$0.01`
-}
-
-export type Change = { pct: number; direction: 'up' | 'down' | 'flat' }
-
-/** How far `current` moved from `previous`, in whole percent; null when there is nothing to compare with. */
-export const change = (current: number, previous: number): Change | null => {
-  if (!(previous > 0) || !Number.isFinite(current)) {
-    return null
-  }
-  const pct = Math.round(((current - previous) / previous) * 100)
-
-  return { pct: Math.abs(pct), direction: pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat' }
-}
-
-/** How many times one amount is another, to a tenth under ten: "0.4×", "4.7×", "12×". */
-export const times = (ratio: number): string => {
-  if (!Number.isFinite(ratio)) {
-    return '—'
-  }
-
-  return `${ratio >= 10 ? Math.round(ratio) : ratio.toFixed(1).replace(/\.0$/, '')}×`
-}
 
 export const maskKey = (key: string): string => {
   const trimmed = key.trim()
@@ -294,36 +128,37 @@ export const maskKey = (key: string): string => {
   return `${trimmed.startsWith('sk-') ? 'sk-' : ''}…${trimmed.slice(-4)}`
 }
 
-// The engine refuses a text child that holds a control character, and a pane it cannot draw is closed.
-const ESCAPE_SEQUENCES = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b]*(?:\u0007|\u001b\\)?)/g
-const CONTROLS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g
-
-/** The text without its terminal escape sequences and other control characters, which are never drawn. */
-export const clean = (text: string): string => text.replace(ESCAPE_SEQUENCES, '').replace(CONTROLS, '')
-
 export const redact = (text: string, secrets: readonly string[] = []): string => {
-  let masked = clean(text)
+  let clean = text
 
   for (const secret of secrets) {
     if (secret.length >= 6) {
-      masked = masked.split(secret).join(maskKey(secret))
+      clean = clean.split(secret).join(maskKey(secret))
     }
   }
 
-  return (
-    masked
-      .replace(/\b([a-z][a-z\d+.-]*:\/\/)[^/\s]*@/gi, '$1')
-      .replace(/\bsk-[A-Za-z0-9_-]{6,}/g, 'sk-…')
-      .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, 'Bearer …')
-      // The sha256 of a key is the name the proxy knows it by, and a 401 says it ("Key Hash (Token) =…"): kept out too,
-      // whole or cut short in the url of a request that an error names.
-      .replace(/\b(api_key=)[^&\s"']+/gi, '$1…')
-      .replace(/\b[0-9a-f]{64}\b/gi, '…')
-  )
+  return clean
+    .replace(/\bsk-[A-Za-z0-9_-]{6,}/g, 'sk-…')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, 'Bearer …')
 }
 
 export const truncate = (text: string, max: number): string =>
   text.length <= max ? text : `${text.slice(0, Math.max(0, max - 1))}…`
+
+/** Cuts from the middle, so names that differ at the end (claude-sonnet-4-5, claude-sonnet-4-6) stay apart. */
+export const truncateMiddle = (text: string, max: number): string => {
+  if (text.length <= max) {
+    return text
+  }
+  if (max <= 1) {
+    return max === 1 ? '…' : ''
+  }
+  const room = max - 1
+  const head = Math.ceil(room / 2)
+  const tail = room - head
+
+  return `${text.slice(0, head)}…${tail > 0 ? text.slice(-tail) : ''}`
+}
 
 export const plural = (count: number, word: string): string =>
   `${count} ${word}${count === 1 ? '' : 's'}`

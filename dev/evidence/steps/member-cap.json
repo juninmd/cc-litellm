@@ -1,0 +1,15 @@
+[
+  {"wait_for": "BUDGET USED UP", "timeout": 60},
+  {"shot": "member-banner", "title": "A team that caps each member: the key is fine, the member is not"},
+
+  {"send": "/litellm\r"},
+  {"wait_for": "Member", "timeout": 20},
+  {"shot": "member-pane", "title": "/litellm: the Member meter and the organization"},
+
+  {"key": "esc"},
+  {"send": "/litellm models\r"},
+  {"wait_for": "dollars per million", "timeout": 20},
+  {"shot": "models-prices", "title": "/litellm models: price in and out, context window"},
+
+  {"send": "/exit\r"}
+]

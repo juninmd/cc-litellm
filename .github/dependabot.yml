@@ -1,0 +1,17 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(deps)"
+
+  # The local lab pins the LiteLLM image the plugin was checked against: a bump here is a version
+  # change: the `lab` CI job runs the smoke test on the PR, but still read the release notes before merging it.
+  - package-ecosystem: docker-compose
+    directory: /dev/litellm
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "chore(deps)"

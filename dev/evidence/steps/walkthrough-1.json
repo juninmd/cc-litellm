@@ -1,0 +1,24 @@
+[
+  {"wait": 10},
+  {"shot": "01-statusline", "title": "Claude Code + LiteLLM (cloud/auto): the key's budget under the prompt"},
+
+  {"send": "/litellm\r"},
+  {"wait_for": "Budget", "timeout": 30},
+  {"wait": 3},
+  {"shot": "02-pane", "title": "/litellm"},
+  {"key": "esc"},
+
+  {"send": "/litellm models\r"},
+  {"wait": 3},
+  {"shot": "03-models", "title": "/litellm models"},
+
+  {"send": "/litellm keys\r"},
+  {"wait": 4},
+  {"shot": "04-keys", "title": "/litellm keys"},
+
+  {"send": "/litellm fallbacks\r"},
+  {"wait": 4},
+  {"shot": "05-fallbacks", "title": "/litellm fallbacks"},
+
+  {"send": "/exit\r"}
+]

@@ -1,0 +1,57 @@
+name: Bug report
+description: Something in the pane, the status line, the banner or a command does not behave as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Never paste a key.** `/litellm debug` masks keys, but read what you paste before you send it. Anything that looks like `sk-...` in full must be removed.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The command you ran, or the state of the key (capped, over budget, expired, blocked...). A screenshot helps.
+    validations:
+      required: true
+  - type: textarea
+    id: debug
+    attributes:
+      label: Output of `/litellm debug`
+      description: It names where the URL and the key come from, with the key masked.
+      render: text
+  - type: input
+    id: plugin
+    attributes:
+      label: Plugin version
+      placeholder: "0.3.0"
+    validations:
+      required: true
+  - type: input
+    id: claude
+    attributes:
+      label: Claude Code version
+      placeholder: "2.1.289"
+    validations:
+      required: true
+  - type: input
+    id: litellm
+    attributes:
+      label: LiteLLM proxy version
+      placeholder: "v1.104.0"
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where you saw it
+      options: [Terminal, Desktop app, VS Code, Mobile]
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and terminal
+      placeholder: "Windows 11, Windows Terminal"

@@ -1,0 +1,27 @@
+name: PR title
+
+# The squash-merge commit is what release-please reads, so the title has to be a Conventional Commit.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  conventional:
+    name: conventional title
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: The rule passes its own examples
+        run: bash dev/check-pr-title.sh --self-test
+
+      - name: Check the title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: bash dev/check-pr-title.sh "$PR_TITLE"

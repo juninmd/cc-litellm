@@ -1,196 +1,176 @@
-import type { Elements, RenderElement, UiPressArgument } from 'claude-code'
+import type { Elements } from 'claude-code'
 
-import type { Failure, MetricName, Session, Snapshot, SortName, ViewName } from '../types'
-import { gauge, percent, share, truncate } from './format'
-import type { Row, Tone } from './summary'
-import { RANGES, nextRange } from './usage'
+import { gauge, money, rule, truncateMiddle, usedShare } from './format'
+import type { Variant } from './layout'
+import { MARK_WIDTH, readingWidth } from './layout'
+import type { Meter, Tone } from './summary'
 
-export type Ui = Pick<Elements['terminal'], 'Box' | 'Text' | 'Button' | 'Link' | 'Code'> & {
-  /** Every surface's table has one, but only some draw it (see `hasField`). */
-  Input?: Elements['terminal']['Input']
-}
-
-export type Placement = 'dock' | 'inline'
-
-export type DashboardProps = {
-  snapshot: Snapshot | null
-  failure: Failure | null
-  isLoading: boolean
-  now: number
-  columns: number
-  placement: Placement
-  /** The pane holds the keyboard, so its hotkeys work. */
-  isFocused: boolean
-  /** The surface draws a text field. The mobile app does not yet, and its table only holds a stand-in that draws nothing. */
-  hasField: boolean
-  /** The surface is a terminal, the one place where keys and focus work as the footer says. */
-  isTerminal: boolean
-  /** The person asked for the compact layout (the `compact_pane` option); off, the pane keeps the stacked one. */
-  isCompact: boolean
-  /** Whether the pace and the forecast are drawn (the `show_forecast` option). */
-  isForecast: boolean
-  /** Whether the usage history is read at all (the `show_usage` option). */
-  isUsageShown: boolean
-  warnPercent: number
-  /** What today may spend before it is flagged (the `daily_alert` option); zero leaves it out. */
-  dailyAlert: number
-  refreshSeconds: number
-  tab: ViewName
-  /** Days of usage the Usage and Models tabs show: 7, 14 or 30. */
-  range: number
-  sort: SortName
-  /** What the chart of the Usage tab counts per day. */
-  metric: MetricName
-  filter: string
-  /** The day picked under the chart, as `YYYY-MM-DD`. */
-  day: string | null
-  session: Session | null
-  onRefresh: () => void
-  onClose: () => void
-  /** Puts text on the clipboard of the surface the press came from, and says what it was ("the summary"). */
-  onCopy: (text: string, what: string, press: UiPressArgument) => void
-  onTab: (tab: ViewName) => void
-  onRange: (range: number) => void
-  onSort: (sort: SortName) => void
-  onMetric: (metric: MetricName) => void
-  onFilter: (text: string) => void
-  onDay: (date: string) => void
-  /** Moves the keyboard to the filter field. */
-  onFocusFilter: () => void
-}
-
-export type Layout = {
-  /** Cells across the body. */
-  columns: number
-  /** Wide enough for the meters to sit in a table, one line each. */
-  isWide: boolean
-  /** The compact layout is in force: one line a meter, no blank rows. */
-  isCompact: boolean
-  /** Blank rows between the blocks of a tab: none when compact. */
-  gap: number
-}
-
-// Body columns from which the meters sit in a table, one line each.
-export const WIDE = 118
-// Fewest body columns the compact layout serves: a meter needs its label, its bar and the amounts on one line.
-export const COMPACT_MIN = 70
+export type Ui = Pick<Elements['terminal'], 'Box' | 'Text' | 'Button'>
 
 type Tint = { color?: string; dimColor?: boolean }
 
-/**
- * How the pane lays itself out. The compact layout serves only inline above the prompt, where rows are scarce and the
- * table has no room (below WIDE); narrower than COMPACT_MIN a meter's text would not fit beside its bar, so the stacked
- * layout, with the text on a line of its own, serves better there.
- */
-export const layoutOf = (props: Pick<DashboardProps, 'columns' | 'placement' | 'isCompact'>): Layout => {
-  const isCompact =
-    props.isCompact && props.placement === 'inline' && props.columns >= COMPACT_MIN && props.columns < WIDE
-
-  return { columns: props.columns, isWide: props.columns >= WIDE, isCompact, gap: isCompact ? 0 : 1 }
-}
-
+// Theme keys, not raw colors: the host's theme decides the exact shades, so a light and a dark terminal both stay legible.
 export const tint = (tone: Tone): Tint =>
   tone === 'warn' ? { color: 'warning' } : tone === 'error' ? { color: 'error' } : {}
 
 export const barTint = (tone: Tone): Tint => (tone === 'ok' ? { color: 'success' } : tint(tone))
 
-/** A mark that says the tone without color: a dot, a triangle, a cross. */
-export const glyph = (tone: Tone): string => (tone === 'error' ? '✗' : tone === 'warn' ? '▲' : '●')
+/** Color is never the only signal: a mark sits beside every number that is not fine. */
+const MARK: Record<Tone, string> = { ok: ' ', warn: '▲', error: '✖' }
+// Past this the share reads "999%+": the column is four cells wide, and a fifth would touch the amounts.
+const SHARE_MAX = 999
 
-export const heading = ({ Box, Text }: Ui, label: string, columns: number): RenderElement => (
-  <Box>
-    <Text bold>{label}</Text>
-    <Text dimColor wrap="truncate-end">{` ${'─'.repeat(Math.max(0, columns - label.length - 1))}`}</Text>
+/** The bar: the filled part in the tone's color, the track dim, so 0% reads as empty and 100% as full. */
+const Gauge = ({ Box, Text }: Ui, fraction: number, width: number, tone: Tone) => {
+  const { full, track } = gauge(fraction, width)
+
+  return (
+    <Box flexShrink={0}>
+      {full !== '' && <Text {...barTint(tone)}>{full}</Text>}
+      {track !== '' && <Text dimColor>{track}</Text>}
+    </Box>
+  )
+}
+
+/** A title and a hairline to the edge: the sections of the roomy pane. */
+export const SectionTitle = ({ Box, Text }: Ui, title: string, columns: number) => (
+  <Box marginTop={1}>
+    <Text bold>{title}</Text>
+    <Text dimColor> {'─'.repeat(Math.max(0, columns - title.length - 1))}</Text>
   </Box>
 )
 
-/**
- * The filled part of a bar in the color of its tone (or `accent`, for a bar that is no verdict), the empty track muted,
- * and the percentage; "no cap" without one.
- */
-export const gaugeText = (
-  { Text }: Ui,
-  tone: Tone,
-  used: number,
-  limit: number | null,
-  width: number,
-  accent?: string,
-): RenderElement => {
-  const pct = percent(used, limit)
+/** A solid chip: bold, reversed, in the tone's color; the word carries the meaning, the color only underlines it. */
+export const Pill = ({ Text }: Ui, text: string, tone: Tone) => (
+  <Text bold inverse {...barTint(tone)}>
+    {` ${text} `}
+  </Text>
+)
 
-  if (pct === null || limit === null) {
-    return <Text dimColor>no cap</Text>
-  }
-  const { filled, empty } = gauge(share(used, limit), width)
-
-  return (
-    <Text {...(accent === undefined ? barTint(tone) : { color: accent })}>
-      {filled}
-      <Text color="inactive">{empty}</Text> {pct}%
-    </Text>
-  )
+export type MeterLayout = {
+  variant: Variant
+  labelWidth: number
+  barWidth: number
+  columns: number
 }
 
-/** The cells a gauge takes, percentage included, and what the arrow of `gaugeArrow` adds beside it. */
-export const GAUGE_EXTRA = 6
-export const ARROW_WIDTH = 7
-
-/** Where a budget is heading, after its percentage: `→ 119%`. Only for one that will pass its cap before it resets. */
-export const gaugeArrow = ({ Text }: Ui, projectedPct: number | null): RenderElement | null =>
-  projectedPct !== null && projectedPct >= 100 ? <Text {...tint('warn')}> → {projectedPct}%</Text> : null
-
-/** A share of a whole as a bar and a percentage, in one accent color. */
-export const shareText = ({ Text }: Ui, share: number | null, width: number): RenderElement => {
-  if (share === null) {
-    return <Text dimColor>—</Text>
-  }
-  const { filled, empty } = gauge(share, width)
-
-  return (
-    <Text color="suggestion">
-      {filled}
-      <Text color="inactive">{empty}</Text> {String(Math.round(share * 100)).padStart(3)}%
-    </Text>
+/** A meter: label, bar, percentage, and the amounts. One line in a table or compact, two when stacked. */
+export const MeterRow = (ui: Ui, meter: Meter, layout: MeterLayout) => {
+  const { Box, Text } = ui
+  const { variant, labelWidth, barWidth, columns } = layout
+  const pct = usedShare(meter.used, meter.limit)
+  const label = (
+    <Box width={labelWidth + 1} flexShrink={0}>
+      <Text bold>{truncateMiddle(meter.label, labelWidth)}</Text>
+    </Box>
   )
-}
+  const mark = (
+    <Box width={MARK_WIDTH} flexShrink={0}>
+      <Text {...tint(meter.tone)}>{MARK[meter.tone]}</Text>
+    </Box>
+  )
+  const reading =
+    pct === null ? (
+      <Text italic>no cap</Text>
+    ) : (
+      <Box gap={1} flexShrink={0}>
+        {Gauge(ui, pct / 100, barWidth, meter.tone)}
+        <Text bold {...barTint(meter.tone)}>
+          {(pct > SHARE_MAX ? `${SHARE_MAX}%+` : `${pct}%`).padStart(4)}
+        </Text>
+      </Box>
+    )
 
-/** Labeled rows in two columns: the label, then what it says in the color of its tone. */
-export const factRows = ({ Box, Text }: Ui, rows: readonly Row[], labelWidth: number): RenderElement[] =>
-  rows.map(row => (
+  if (variant === 'compact') {
+    const room = columns - MARK_WIDTH - (labelWidth + 1) - readingWidth(barWidth)
+
+    return (
+      <Box>
+        {mark}
+        {label}
+        <Box width={readingWidth(barWidth)} flexShrink={0}>
+          {reading}
+        </Box>
+        <Box flexGrow={1} flexShrink={1}>
+          <Text wrap="truncate-end">{meter.text.length <= room ? meter.text : meter.brief}</Text>
+        </Box>
+      </Box>
+    )
+  }
+
+  return variant === 'table' ? (
     <Box>
-      <Box width={labelWidth + 2} flexShrink={0}>
-        <Text bold>{truncate(row.label, labelWidth)}</Text>
+      {mark}
+      {label}
+      <Box width={readingWidth(barWidth)} flexShrink={0}>
+        {reading}
       </Box>
       <Box flexGrow={1} flexShrink={1}>
-        <Text {...tint(row.tone)}>{row.text}</Text>
+        <Text {...tint(meter.tone)}>{meter.detail}</Text>
       </Box>
     </Box>
-  ))
+  ) : (
+    <Box flexDirection="column">
+      <Box>
+        {mark}
+        {label}
+        {reading}
+      </Box>
+      <Box paddingLeft={2}>
+        <Text {...tint(meter.tone)}>{meter.detail}</Text>
+      </Box>
+    </Box>
+  )
+}
 
-export const noteLines = ({ Text }: Ui, notes: readonly string[]): RenderElement[] =>
-  notes.map(note => <Text dimColor>· {note}</Text>)
+export type ModelShare = { model: string; spend: number; share: number }
 
-/** 7d, 14d and 30d side by side: the current one marked, the others a click away, and `d` steps to the next. */
-export const rangeSelector = ({ Box, Text, Button }: Ui, props: DashboardProps): RenderElement => {
-  const next = nextRange(props.range)
+/** A share bar: slim, in the default color (it compares parts, it does not judge them), over a dim track. */
+const Rule = ({ Box, Text }: Ui, fraction: number, width: number) => {
+  const { full, track } = rule(fraction, width)
 
   return (
-    <Box gap={2}>
-      {RANGES.map(range =>
-        range === props.range ? (
-          <Text inverse bold>{` ${range}d `}</Text>
-        ) : (
-          <Button
-            key={`range-${range}`}
-            label={`${range}d`}
-            plain
-            {...(range === next ? { hotkey: 'd' } : {})}
-            onPress={() => {
-              props.onRange(range)
-            }}
-          />
-        ),
+    <Box flexShrink={0}>
+      {full !== '' && <Text>{full}</Text>}
+      {track !== '' && <Text dimColor>{track}</Text>}
+    </Box>
+  )
+}
+
+/** A model's week: name, a share bar, the share, and the amount. */
+export const ModelRow = (
+  ui: Ui,
+  item: ModelShare,
+  layout: { labelWidth: number; barWidth: number; isOneLine: boolean },
+) => {
+  const { Box, Text } = ui
+  const amount = <Text bold>{money(item.spend)}</Text>
+  const head = (
+    <Box>
+      <Box width={MARK_WIDTH} flexShrink={0}>
+        <Text> </Text>
+      </Box>
+      <Box width={layout.labelWidth + 1} flexShrink={0}>
+        <Text bold>{truncateMiddle(item.model, layout.labelWidth)}</Text>
+      </Box>
+      <Box gap={1} flexShrink={0}>
+        {Rule(ui, item.share / 100, layout.barWidth)}
+        <Text bold>{`${item.share}%`.padStart(4)}</Text>
+      </Box>
+      {layout.isOneLine && (
+        <Box paddingLeft={1} flexShrink={0}>
+          {amount}
+        </Box>
       )}
+    </Box>
+  )
+
+  return layout.isOneLine ? (
+    head
+  ) : (
+    <Box flexDirection="column">
+      {head}
+      <Box paddingLeft={MARK_WIDTH}>{amount}</Box>
     </Box>
   )
 }

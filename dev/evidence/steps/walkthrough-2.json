@@ -1,0 +1,26 @@
+[
+  {"wait": 9},
+  {"send": "/litellm key new ci-runner --budget 5 --every 7d --rpm 60 --user ana@example.com --dry-run\r"},
+  {"wait": 4},
+  {"shot": "06-key-new-preview", "title": "/litellm key new ... --dry-run  (preview, nothing changes)"},
+
+  {"send": "/litellm key new ci-runner --budget 5 --every 7d --rpm 60 --user ana@example.com\r"},
+  {"wait": 4},
+  {"shot": "07-key-new-dialog", "title": "/litellm key new ...  (native confirmation)"},
+  {"key": "enter"},
+  {"wait": 5},
+  {"shot": "08-key-new-done", "title": "The secret goes to the clipboard, never to the transcript"},
+
+  {"send": "/litellm grant 10 --key claude-code-ana\r"},
+  {"wait": 4},
+  {"shot": "09-grant-dialog", "title": "/litellm grant 10 --key claude-code-ana"},
+  {"key": "enter"},
+  {"wait": 6},
+  {"shot": "10-grant-done", "title": "Extra budget applied and read back; the status line follows"},
+
+  {"send": "/litellm fallbacks cloud/auto\r"},
+  {"wait": 4},
+  {"shot": "11-fallbacks-filtered", "title": "/litellm fallbacks cloud/auto"},
+
+  {"send": "/exit\r"}
+]

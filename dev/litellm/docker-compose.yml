@@ -1,0 +1,56 @@
+# A real LiteLLM proxy (with Postgres, so virtual keys, budgets and spend work) on 127.0.0.1:${LITELLM_PORT:-4000}.
+#
+#   docker compose -f dev/litellm/docker-compose.yml up -d
+#   LITELLM_CONFIG=config.cluster.yaml docker compose -f dev/litellm/docker-compose.yml up -d
+#   LITELLM_PORT=4001 docker compose -p other -f dev/litellm/docker-compose.yml up -d   # side by side
+#
+# Tested against litellm-database v1.104.0 + postgres 18; bump both only after dev/litellm/smoke.ts passes.
+#
+# Default config is config.mock.yaml: no provider keys, answers are canned. See dev/litellm/README.md.
+name: cc-litellm-dev
+
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: litellm-local
+      POSTGRES_DB: litellm
+    volumes:
+      # Postgres 18+ keeps PGDATA in a versioned subdirectory and refuses to start on a /data mount.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm -d litellm"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  litellm:
+    image: ghcr.io/berriai/litellm-database:v1.104.0
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${LITELLM_PORT:-4000}:4000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://litellm:litellm-local@db:5432/litellm
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-local-master-key}
+      UI_USERNAME: admin
+      UI_PASSWORD: ${LITELLM_MASTER_KEY:-sk-local-master-key}
+      STORE_MODEL_IN_DB: "False"
+      LITELLM_LOG: ERROR
+    volumes:
+      - ./${LITELLM_CONFIG:-config.mock.yaml}:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--host", "0.0.0.0", "--port", "4000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:4000/health/liveliness')"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+volumes:
+  pgdata:
