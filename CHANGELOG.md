@@ -2,6 +2,13 @@
 
 <!-- Written by release-please from Conventional Commits (see RELEASING.md). Edit the release PR, not this file. -->
 
+## [0.5.0](https://github.com/juninmd/cc-litellm/compare/litellm-key--v0.4.0...litellm-key--v0.5.0) (2026-10-06)
+
+
+### Added
+
+* **litellm-key:** read 30 days, proxy health and latency; harden text from the proxy ([49c1b9d](https://github.com/juninmd/cc-litellm/commit/49c1b9d056032bfe288088ccee8c91f52ace446c))
+
 ## [0.4.0](https://github.com/juninmd/cc-litellm/compare/litellm-key--v0.3.0...litellm-key--v0.4.0) (2026-10-04)
 
 
