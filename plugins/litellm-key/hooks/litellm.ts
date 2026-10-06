@@ -1,20 +1,18 @@
 import type { Failure, Snapshot } from '../types'
-import { HISTORY_DAYS } from './activity'
+import { hasMoreRows, historyDays, parseUsage, usageQuery } from './activity'
 import type { Credentials } from './credentials'
 import { hostOf } from './credentials'
 import { classify, describeError, failure, looksLikeLiteLLM } from './failures'
-import { maskKey, utcDay, withoutCredentials } from './format'
+import { maskKey, withoutCredentials } from './format'
 import type { Json } from './json'
 import { isObject, parse, scrub } from './json'
 import {
-  hasMoreRows,
   parseHealth,
   parseKey,
   parseMember,
   parseModelPrices,
   parseModels,
   parseTeam,
-  parseUsage,
   parseUser,
   parseUserRole,
 } from './parsers'
@@ -135,17 +133,7 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
       return undefined
     }
   }
-  const days = Array.from({ length: HISTORY_DAYS }, (_, at) => utcDay(now, HISTORY_DAYS - 1 - at))
-  const [first = '', last = ''] = [days[0], days[days.length - 1]]
-  const usageQuery = [
-    `start_date=${first}`,
-    `end_date=${last}`,
-    `user_id=${encodeURIComponent(keyInfo.userId ?? '')}`,
-    keyInfo.keyHash ? `api_key=${keyInfo.keyHash}` : '',
-    'page_size=1000',
-  ]
-    .filter(Boolean)
-    .join('&')
+  const days = historyDays(now)
   const { previous, refreshSlow, wantRelated } = request
   const wantUsage = request.wantUsage && keyInfo.userId !== null
   const [userBody, teamBody, models, usage, priceBody, proxy] = await Promise.all([
@@ -162,7 +150,7 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
       ? Promise.resolve(null)
       : refreshSlow
         ? attempt('usage history', async () => {
-            const body = await get(`/user/daily/activity?${usageQuery}`)
+            const body = await get(`/user/daily/activity?${usageQuery(keyInfo, days)}`)
 
             if (hasMoreRows(body)) {
               notes.push(PARTIAL_USAGE)

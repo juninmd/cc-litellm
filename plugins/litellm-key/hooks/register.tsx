@@ -8,6 +8,7 @@ import { runCommand } from './commands'
 import { exceededItems } from './exceeded'
 import type { Reply } from './litellm'
 import type { Init, Ports } from './ports'
+import { ping } from './probe'
 import type { Session } from './session'
 import { createSession } from './session'
 import { configOf } from './settings'
@@ -85,6 +86,15 @@ const contextOf = ($: EngineInterface, session: Session): CommandContext => {
       await $.ui.close({ id: PANE })
     },
     sleep: ms => $.clock.sleep(ms),
+    view: async () => ({ tab: 'overview', range: 7 }),
+    copy: async text => {
+      try {
+        return await $.ui.copy({ text })
+      } catch {
+        return { isCopied: false, reason: 'refused' } // a clipboard that throws is one that refuses
+      }
+    },
+    ping: () => ping(session, ports),
     admin: () =>
       adminLink(session, ports, {
         surfaces: () => $.session.surfaces(),
@@ -104,7 +114,7 @@ export const register: Register = (on, options) => {
     await $.command.register({
       name: 'litellm',
       description: 'Show your LiteLLM virtual key: budget, limits, models and usage',
-      argumentHint: '[refresh|info|models|keys|key|grant|org|fallbacks|debug|close|help]',
+      argumentHint: '[refresh|info|status|pace|usage|compare|day|models|check|json|csv|copy|share|ping|keys|key|grant|org|fallbacks|debug|close|help]',
     })
     state.ticker?.cancel()
     state.ticker = $.clock.every(state.config.refreshSeconds * 1000, () => {

@@ -8,10 +8,10 @@ const NAME_WIDTH = 40
 const dollars = (value: number): string => `$${value.toFixed(4).replace(/(\.\d\d\d*?)0*$/, '$1')}`
 
 /** One line per model: what a million tokens cost in and out, and how much the model reads at once. */
-export const modelsTable = (snapshot: Snapshot, names: readonly string[]): string => {
+export const modelsTable = (snapshot: Snapshot, names: readonly string[], title = `Models (${names.length})`): string => {
   const { prices } = snapshot
   const priced = names.filter(name => prices?.[name] !== undefined)
-  const head = `Models (${names.length})`
+  const head = title
 
   if (!prices || priced.length === 0) {
     return `${head}: ${names.join(', ')}`

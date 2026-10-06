@@ -167,6 +167,15 @@ export type Failure = {
   at: number
 }
 
+/** The tabs of the pane. */
+export type ViewName = 'overview' | 'usage' | 'models' | 'details'
+
+/** What the usage chart counts per day. */
+export type MetricName = 'spend' | 'requests' | 'tokens'
+
+/** How the model list is ordered. */
+export type SortName = 'spend' | 'name'
+
 declare module 'claude-code' {
   interface PluginState {
     'litellm-key': {

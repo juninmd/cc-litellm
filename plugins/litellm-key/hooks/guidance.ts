@@ -1,4 +1,4 @@
-import type { ActivityDay, Budget, SessionSpend, Snapshot } from '../types'
+import type { ActivityDay, Budget, SessionSpend, Snapshot, Usage } from '../types'
 import { isoDay } from './calendar'
 import { ago, clock, count, money, plural, times } from './format'
 import { runway } from './runway'
@@ -87,8 +87,8 @@ export const headroomText = (snapshot: Snapshot): string | null => {
 }
 
 /** The day still going: the last of the history, when it is the day `now` falls on (UTC, as the proxy counts). */
-export const todayOf = (snapshot: Snapshot, now: number): ActivityDay | null => {
-  const last = snapshot.usage?.history[snapshot.usage.history.length - 1]
+export const todayOf = (usage: Usage | null, now: number): ActivityDay | null => {
+  const last = usage?.history[usage.history.length - 1]
 
   return last !== undefined && last.date === isoDay(now) ? last : null
 }
@@ -97,8 +97,8 @@ export const todayOf = (snapshot: Snapshot, now: number): ActivityDay | null => 
  * What the key spent per day lately: the last full days, up to a week, counted from the first one with any spend, so a
  * young key is not averaged with the days before it existed. Null when none of them spent anything.
  */
-export const recentDaily = (snapshot: Snapshot): number | null => {
-  const done = (snapshot.usage?.history ?? []).slice(0, -1).slice(-7)
+export const recentDaily = (usage: Usage | null): number | null => {
+  const done = (usage?.history ?? []).slice(0, -1).slice(-7)
   const first = done.findIndex(day => day.spend > 0)
 
   if (first < 0) {
@@ -115,12 +115,12 @@ export const isSpike = (spend: number, usual: number): boolean =>
 
 /** What today has cost, against the usual day: a day well above it is marked. Null while today did nothing. */
 export const todayRow = (snapshot: Snapshot, now: number): Row | null => {
-  const today = todayOf(snapshot, now)
+  const today = todayOf(snapshot.usage, now)
 
   if (today === null || (today.spend <= 0 && today.requests <= 0)) {
     return null
   }
-  const usual = recentDaily(snapshot)
+  const usual = recentDaily(snapshot.usage)
   const parts = [money(today.spend), plural(today.requests, 'request')]
   // A usual day of a cent or less is no measure: "9000× the usual day" would say nothing.
   const hasUsual = usual !== null && usual >= USUAL_MIN
@@ -134,7 +134,7 @@ export const todayRow = (snapshot: Snapshot, now: number): Row | null => {
 
 /** Today's spend, when it has reached the daily alert the person set. Null with no alert set or a day under it. */
 export const dailyOver = (snapshot: Snapshot, now: number, dailyAlert: number): number | null => {
-  const today = todayOf(snapshot, now)
+  const today = todayOf(snapshot.usage, now)
 
   return dailyAlert > 0 && today !== null && today.spend >= dailyAlert ? today.spend : null
 }

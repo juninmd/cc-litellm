@@ -14,6 +14,8 @@ export type Setup = {
   open?: { isPlaced: boolean; reason?: string }
   /** The clipboard call itself fails (no OSC 52, no helper), instead of answering isCopied. */
   copyThrows?: boolean
+  /** What the clipboard answers when it takes nothing: it takes the text unless this says otherwise. */
+  copy?: { isCopied: false; reason: 'no-surface' | 'no-clipboard' | 'refused' }
 }
 
 export const boot = (on: On, setup: Setup = {}) => {
@@ -70,6 +72,9 @@ export const boot = (on: On, setup: Setup = {}) => {
   on('ui.copy', (_$, e) => {
     if (setup.copyThrows) {
       throw new Error('clipboard unavailable')
+    }
+    if (setup.copy) {
+      return { value: setup.copy }
     }
     log.copies.push(e.text)
 

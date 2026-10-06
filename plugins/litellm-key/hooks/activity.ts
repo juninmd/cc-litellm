@@ -1,5 +1,5 @@
-import type { ActivityDay, Usage } from '../types'
-import { clean } from './format'
+import type { ActivityDay, KeyInfo, Usage } from '../types'
+import { clean, utcDay } from './format'
 import { isObject, num } from './json'
 
 // The pane lists this many models of the week; past that the long tail is noise.
@@ -8,6 +8,22 @@ const TOP_MODELS = 5
 export const WEEK = 7
 /** How many days of history the proxy is asked for. */
 export const HISTORY_DAYS = 30
+
+/** The days the history covers, up to the one `now` falls on (UTC, as the proxy counts), the oldest first. */
+export const historyDays = (now: number): string[] =>
+  Array.from({ length: HISTORY_DAYS }, (_, at) => utcDay(now, HISTORY_DAYS - 1 - at))
+
+/** What to ask /user/daily/activity: the days, this key's user and, when it is known, this key alone by its hash. */
+export const usageQuery = (key: Pick<KeyInfo, 'userId' | 'keyHash'>, days: readonly string[]): string =>
+  [
+    `start_date=${days[0] ?? ''}`,
+    `end_date=${days[days.length - 1] ?? ''}`,
+    `user_id=${encodeURIComponent(key.userId ?? '')}`,
+    key.keyHash ? `api_key=${key.keyHash}` : '',
+    'page_size=1000',
+  ]
+    .filter(Boolean)
+    .join('&')
 
 const quiet = (date: string): ActivityDay => ({
   date,

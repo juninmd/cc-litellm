@@ -116,23 +116,23 @@ describe('today', () => {
   test('is the last day of the history when it is the day now falls on', async () => {
     const base = await spending(12.5)
 
-    expect(todayOf(base, NOW)?.date).toBe('2026-10-03')
-    expect(todayOf(base, NOW + DAY)).toBeNull()
-    expect(todayOf({ ...base, usage: null }, NOW)).toBeNull()
-    expect(todayOf(withHistory(base, () => []), NOW)).toBeNull()
+    expect(todayOf(base.usage, NOW)?.date).toBe('2026-10-03')
+    expect(todayOf(base.usage, NOW + DAY)).toBeNull()
+    expect(todayOf(null, NOW)).toBeNull()
+    expect(todayOf(withHistory(base, () => []).usage, NOW)).toBeNull()
   })
 
   test('is told against the usual day, which is the last full days counted from the first one with spend', async () => {
     const base = await spending(12.5)
 
-    near(recentDaily(base), (1.5 + 4 + 0) / 3)
+    near(recentDaily(base.usage), (1.5 + 4 + 0) / 3)
     expect(todayRow(base, NOW)).toEqual({
       label: 'Today',
       text: '$8.70 · 90 requests · 4.7× the usual day ($1.83)',
       tone: 'warn',
     })
-    expect(recentDaily(withHistory(base, days => days.map(day => ({ ...day, spend: 0 }))))).toBeNull()
-    expect(recentDaily({ ...base, usage: null })).toBeNull()
+    expect(recentDaily(withHistory(base, days => days.map(day => ({ ...day, spend: 0 }))).usage)).toBeNull()
+    expect(recentDaily(null)).toBeNull()
   })
 
   test('marks a day that is three times the usual and a dollar more, and no other', () => {
