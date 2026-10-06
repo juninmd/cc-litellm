@@ -114,7 +114,7 @@ The pane has four tabs. Overview is the dashboard above; **Usage** draws the las
  claude-opus-4-1    ▄▄▄▄▄▄▁▁▁▁▁▁▁▁▁▁▁▁▁▁  28%  $11.58 ▲ 34% · 99 requests
 ```
 
-**Models** lists what the key may call with what each spent over the range (sort by spend or name, and type in the filter to narrow a long list); **Details** groups what the proxy said of the key, its LiteLLM version and database state, and how long `/key/info` took. The tab, range, sort and chart you pick are kept for next time.
+**Models** lists what the key may call with what each spent over the range (sort by spend or name, and type in the filter to narrow a long list); **Details** groups what the proxy said of the key, its LiteLLM version and database state, and how long `/key/info` took. The range, sort and chart you pick are kept for next time, and `/litellm` opens the pane on the tab you left it.
 
 ### Ask for a report, or hand it to a script
 
@@ -218,7 +218,7 @@ Everything above is the real LiteLLM v1.99.1 admin UI reflecting what the plugin
 | `/litellm compare [7\|14]` | The last full days against the same number before them, as a whole and model by model. |
 | `/litellm day [when]` | One day by model: `today`, `yesterday`, `2026-10-03`, `10-03` or a weekday (`mon`). |
 | `/litellm models [text]` | List the models this key can call, with their price per million tokens and context window; with a text, only those whose name has it. |
-| `/litellm check [warn%]` | `OK`, `WARNING`, `CRITICAL` or `UNKNOWN`, and the exit code of a `claude -p` run: 0, 1, 2, 3. |
+| `/litellm check [warn%]` | `OK`, `WARNING`, `CRITICAL` or `UNKNOWN`, and the exit code of a `claude -p` run: 0, 1, 2, 3. A budget over its cap, or a key the proxy says is blocked, expired or rejected, is `CRITICAL`; a proxy that does not answer is `UNKNOWN`. |
 | `/litellm json` | Everything the plugin knows of the key as JSON (no key, no hash). |
 | `/litellm csv [7\|14\|30]` | The days as CSV. |
 | `/litellm copy [what]` | Put a report on the clipboard: `overview`, `usage`, `models`, `details`, `pace`, `compare`, `csv` or `json`. |
@@ -355,8 +355,10 @@ All options are optional (Claude Code says at install that they are "not set"; t
 | `/user/info`, `/team/info` | Budget of the key's user and team, and the team's per-member cap, when capped. Every read. |
 | `/v1/models` | The models actually allowed. Every 10 min. |
 | `/model_group/info` | Price per token and context window of those models (the proxy answers for all of its models; the plugin keeps the allowed ones). Every 10 min. |
-| `/user/daily/activity` | Spend, requests, tokens and models of the last 30 days, day by day. Every 10 min (every 3 with a `daily_alert`). |
+| `/user/daily/activity` | Spend, requests, tokens and models of the last 30 days, day by day. Every 10 min. |
 | `/health/readiness` | LiteLLM's version and whether its database is connected. Every 10 min; when the proxy will not say, nothing is shown, not even a note. |
+
+The reads marked every 10 min happen every 3 minutes while a `daily_alert` is set: today's spend is what it watches.
 
 **Managing** only happens when you type an admin command: `GET /key/list`, `/key/info`, `/user/info`, `/team/info`, `/v2/team/list`, `/organization/info`, `/organization/list`, `/router/settings`, and `POST /key/generate`, `/key/delete` (rollback only), `/key/block`, `/key/unblock`, `/key/update`, `/key/{hash}/reset_spend`, `/user/update`, `/team/update`, `PATCH /organization/update`.
 

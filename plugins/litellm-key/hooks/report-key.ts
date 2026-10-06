@@ -1,6 +1,6 @@
 import type { Failure, Snapshot } from '../types'
 import { SOON_MS, facts } from './facts'
-import { ago, money, percent, until } from './format'
+import { ago, money, until, usedShare } from './format'
 import { allowance, allowanceText, dailyOver } from './guidance'
 import { table } from './report-days'
 import { runwayAlert } from './runway'
@@ -56,7 +56,7 @@ export const checkAlerts = (snapshot: Snapshot, now: number, warnPercent: number
     found.push({ tone: isExpired ? 'error' : 'warn', text: `The key ${isExpired ? 'expired' : 'expires'} ${until(key.expiresAt, now)}` })
   }
   for (const meter of meters(snapshot, now, warnPercent)) {
-    const pct = percent(meter.used, meter.limit)
+    const pct = usedShare(meter.used, meter.limit)
     const name = meter.label === 'Budget' ? 'Key budget' : meter.label
     const amounts = `${money(meter.used)} of ${money(meter.limit)}`
 
@@ -83,6 +83,9 @@ export const checkAlerts = (snapshot: Snapshot, now: number, warnPercent: number
 
 export type Level = 'ok' | 'warning' | 'critical' | 'unknown'
 
+// The proxy answered, and what it said is that the key does not work: that is a verdict, not a failure to find one out.
+const REFUSED: readonly string[] = ['blocked', 'expired', 'auth']
+
 /** Words and exit codes of the Nagios convention, which every monitoring script already reads: 0, 1, 2, 3. */
 export type Verdict = { level: Level; exitCode: 0 | 1 | 2 | 3; text: string }
 
@@ -108,6 +111,9 @@ export const checkVerdict = (
   warnPercent: number,
   dailyAlert: number,
 ): Verdict => {
+  if (failure !== null && REFUSED.includes(failure.kind)) {
+    return { level: 'critical', exitCode: 2, text: `CRITICAL · ${failure.message}${failure.hint ? `\n${failure.hint}` : ''}` }
+  }
   if (snapshot === null || failure !== null) {
     const seen = snapshot === null ? '' : ` (last good reading ${ago(snapshot.fetchedAt, now)}: ${oneLine(snapshot, now)})`
     const hint = failure?.hint ? `\n${failure.hint}` : ''

@@ -8,6 +8,8 @@ const HOUR_MS = 3_600_000
 const DAY_MS = 86_400_000
 // Fewest requests of the last week that make their average price worth building a count of what is left on.
 const HEADROOM_MIN_REQUESTS = 10
+// More requests than this are no count anyone could use: the week's price per request must have been noise.
+const MOST_REQUESTS = 1e9
 // The smallest usual day, in dollars, that today can be compared with.
 const USUAL_MIN = 0.01
 // A day is a spike once it passes this many times the usual day, and by enough money for that to mean something.
@@ -83,6 +85,11 @@ export const headroomText = (snapshot: Snapshot): string | null => {
   }
   const left = Math.floor(((budget.limit - budget.spend) * usage.requests) / usage.spend)
 
+  // Amounts of absurd size make an absurd quotient, or Infinity: there is nothing to say then.
+  if (!(left <= MOST_REQUESTS)) {
+    return null
+  }
+
   return `about ${count(left)} more requests at ${eachText(usage.spend, usage.requests)} each`
 }
 
@@ -117,7 +124,8 @@ export const isSpike = (spend: number, usual: number): boolean =>
 export const todayRow = (snapshot: Snapshot, now: number): Row | null => {
   const today = todayOf(snapshot.usage, now)
 
-  if (today === null || (today.spend <= 0 && today.requests <= 0)) {
+  // Without the key's hash the usage covers every key of the user, and its day is not this key's.
+  if (today === null || snapshot.key.keyHash === null || (today.spend <= 0 && today.requests <= 0)) {
     return null
   }
   const usual = recentDaily(snapshot.usage)
@@ -136,22 +144,25 @@ export const todayRow = (snapshot: Snapshot, now: number): Row | null => {
 export const dailyOver = (snapshot: Snapshot, now: number, dailyAlert: number): number | null => {
   const today = todayOf(snapshot.usage, now)
 
-  return dailyAlert > 0 && today !== null && today.spend >= dailyAlert ? today.spend : null
+  return dailyAlert > 0 && snapshot.key.keyHash !== null && today !== null && today.spend >= dailyAlert ? today.spend : null
 }
 
 export const beginSession = (at: number, spend: number): SessionSpend => ({ since: at, spend: 0, last: spend })
 
 /**
- * What a new reading adds. One far below the last (under half of it) means the budget reset, so all of it is new; a
- * small step back is the proxy's counters disagreeing for a moment, and adds nothing.
+ * What a new reading adds. One far below the last (under half of it) means the budget reset, so all of it is new and
+ * counting starts again from it. A small step back is the proxy's counters disagreeing for a moment: it adds nothing,
+ * and the high mark stays, so that coming back to it adds nothing either.
  */
-const added = (last: number, spend: number): number => (spend >= last ? spend - last : spend < last / 2 ? spend : 0)
+export const advanceSession = (session: SessionSpend, spend: number): SessionSpend => {
+  const isReset = spend < session.last / 2
 
-export const advanceSession = (session: SessionSpend, spend: number): SessionSpend => ({
-  since: session.since,
-  spend: session.spend + added(session.last, spend),
-  last: spend,
-})
+  return {
+    since: session.since,
+    spend: session.spend + (isReset ? spend : Math.max(0, spend - session.last)),
+    last: isReset ? spend : Math.max(session.last, spend),
+  }
+}
 
 /** What the session spent, and how fast, once it has run long enough to have a rate. */
 export const sessionText = (session: SessionSpend, now: number): string => {

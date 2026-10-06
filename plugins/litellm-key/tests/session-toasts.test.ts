@@ -92,3 +92,40 @@ describe('the toasts of the reading cycle', () => {
     expect(run.published().snapshot?.session).toEqual({ since: NOW, spend: 0, last: 12.5 })
   })
 })
+
+describe('the session of another key', () => {
+  test('starts again from nothing when the key changes, with what that key had spent already', async () => {
+    const keys = { current: KEY }
+    const other = 'sk-other-key-0000000000'
+    const net = router({
+      ...standardRoutes(),
+      '/key/info': (_url, headers) => reply(200, keyBody({ spend: headers.authorization === `Bearer ${other}` ? 30 : 12.5 })),
+    })
+    const run = cycle({})
+
+    run.ports.env = async () => ({ ANTHROPIC_BASE_URL: BASE, ANTHROPIC_AUTH_TOKEN: keys.current })
+    run.ports.fetch = (url, init) => net.http(url, init.headers)
+
+    await run.session.load(run.ports, 'force')
+    expect(run.published().snapshot?.session).toEqual({ since: NOW, spend: 0, last: 12.5 })
+
+    keys.current = other
+    await run.session.load(run.ports, 'force')
+
+    // not a jump of $17.50 on the first key's session: the other key's own count begins here
+    expect(run.published().snapshot?.session).toEqual({ since: NOW, spend: 0, last: 30 })
+  })
+
+  test('goes on counting while the key stays', async () => {
+    const spend = { now: 12.5 }
+    const net = router({ ...standardRoutes(), '/key/info': () => reply(200, keyBody({ spend: spend.now })) })
+    const run = cycle({})
+
+    run.ports.fetch = (url, init) => net.http(url, init.headers)
+    await run.session.load(run.ports, 'force')
+    spend.now = 13
+    await run.session.load(run.ports, 'force')
+
+    expect(run.published().snapshot?.session).toEqual({ since: NOW, spend: 0.5, last: 13 })
+  })
+})

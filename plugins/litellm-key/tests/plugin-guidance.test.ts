@@ -20,7 +20,7 @@ describe('the daily alert', () => {
   })
 
   test('is not told again in a later session of the same day', { options: { daily_alert: 5 } }, async ($, on) => {
-    const { log, clock } = boot(on, { store: { notified: ['daily:2026-10-03:5'] } })
+    const { log, clock } = boot(on, { store: { notified: ['daily:sk-...7890:2026-10-03:5'] } })
 
     await start($, clock)
 
@@ -28,11 +28,19 @@ describe('the daily alert', () => {
   })
 
   test('is told again when the limit changes: a new limit is a new warning', { options: { daily_alert: 6 } }, async ($, on) => {
-    const { log, clock } = boot(on, { store: { notified: ['daily:2026-10-03:5'] } })
+    const { log, clock } = boot(on, { store: { notified: ['daily:sk-...7890:2026-10-03:5'] } })
 
     await start($, clock)
 
     expect(toldOf(log.toasts)).toEqual(["Today's spend is $8.70, over your daily alert of $6.00"])
+  })
+
+  test('is told for each key: what was said of another key does not swallow it', { options: { daily_alert: 5 } }, async ($, on) => {
+    const { log, clock } = boot(on, { store: { notified: ['daily:sk-...0000:2026-10-03:5'] } })
+
+    await start($, clock)
+
+    expect(toldOf(log.toasts)).toEqual([ALERT])
   })
 
   test('puts today on the status line while it is over, and nothing is said while it is under', { options: { daily_alert: 5 } }, async ($, on) => {

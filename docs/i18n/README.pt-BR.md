@@ -118,7 +118,7 @@ O painel tem quatro abas. Overview é o painel acima; **Usage** desenha os últi
  claude-opus-4-1    ▄▄▄▄▄▄▁▁▁▁▁▁▁▁▁▁▁▁▁▁  28%  $11.58 ▲ 34% · 99 requests
 ```
 
-**Models** lista o que a chave pode chamar com o que cada modelo gastou no período (ordene por gasto ou nome, e digite no filtro para estreitar uma lista longa); **Details** agrupa o que o proxy disse da chave, a versão e o estado do banco do LiteLLM e quanto tempo o `/key/info` levou. A aba, o período, a ordenação e o gráfico que você escolhe ficam guardados para a próxima vez.
+**Models** lista o que a chave pode chamar com o que cada modelo gastou no período (ordene por gasto ou nome, e digite no filtro para estreitar uma lista longa); **Details** agrupa o que o proxy disse da chave, a versão e o estado do banco do LiteLLM e quanto tempo o `/key/info` levou. O período, a ordenação e o gráfico que você escolhe ficam guardados para a próxima vez, e `/litellm` abre o painel na aba em que você o deixou.
 
 ### Peça um relatório, ou entregue-o a um script
 
@@ -222,7 +222,7 @@ Tudo acima é a UI de admin real do LiteLLM v1.99.1 refletindo o que o plugin fe
 | `/litellm compare [7\|14]` | Os últimos dias completos contra o mesmo número de dias antes deles, no todo e modelo a modelo. |
 | `/litellm day [quando]` | Um dia por modelo: `today`, `yesterday`, `2026-10-03`, `10-03` ou um dia da semana (`mon`). |
 | `/litellm models [texto]` | Lista os modelos que esta chave pode chamar, com o preço por milhão de tokens e a janela de contexto; com um texto, só os que o têm no nome. |
-| `/litellm check [warn%]` | `OK`, `WARNING`, `CRITICAL` ou `UNKNOWN`, e o código de saída de uma execução `claude -p`: 0, 1, 2, 3. |
+| `/litellm check [warn%]` | `OK`, `WARNING`, `CRITICAL` ou `UNKNOWN`, e o código de saída de uma execução `claude -p`: 0, 1, 2, 3. Um orçamento acima do teto, ou uma chave que o proxy diz estar bloqueada, expirada ou rejeitada, é `CRITICAL`; um proxy que não responde é `UNKNOWN`. |
 | `/litellm json` | Tudo o que o plugin sabe da chave em JSON (sem a chave, sem o hash). |
 | `/litellm csv [7\|14\|30]` | Os dias em CSV. |
 | `/litellm copy [o quê]` | Põe um relatório na área de transferência: `overview`, `usage`, `models`, `details`, `pace`, `compare`, `csv` ou `json`. |
@@ -363,8 +363,10 @@ Todas as opções são opcionais (o Claude Code avisa na instalação que elas e
 | `/user/info`, `/team/info` | Orçamento do usuário e do time da chave, e o limite por membro do time, quando há limite. A cada leitura. |
 | `/v1/models` | Os modelos realmente permitidos. A cada 10 min. |
 | `/model_group/info` | Preço por token e janela de contexto desses modelos (o proxy responde por todos os seus modelos; o plugin guarda os permitidos). A cada 10 min. |
-| `/user/daily/activity` | Gasto, requisições, tokens e modelos dos últimos 30 dias, dia a dia. A cada 10 min (a cada 3 com um `daily_alert`). |
+| `/user/daily/activity` | Gasto, requisições, tokens e modelos dos últimos 30 dias, dia a dia. A cada 10 min. |
 | `/health/readiness` | A versão do LiteLLM e se o banco dele está conectado. A cada 10 min; quando o proxy não diz, nada aparece, nem uma nota. |
+
+As leituras marcadas como a cada 10 min acontecem a cada 3 minutos enquanto houver um `daily_alert`: o gasto de hoje é o que ele vigia.
 
 **Gerenciar** só acontece quando você digita um comando de admin: `GET /key/list`, `/key/info`, `/user/info`, `/team/info`, `/v2/team/list`, `/organization/info`, `/organization/list`, `/router/settings`, e `POST /key/generate`, `/key/delete` (somente rollback), `/key/block`, `/key/unblock`, `/key/update`, `/key/{hash}/reset_spend`, `/user/update`, `/team/update`, `PATCH /organization/update`.
 

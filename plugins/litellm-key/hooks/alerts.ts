@@ -1,7 +1,7 @@
 import type { Snapshot } from '../types'
 import { isoDay } from './calendar'
 import { isSpentUp } from './exceeded'
-import { money, percent, until } from './format'
+import { money, until, usedShare } from './format'
 import { dailyOver } from './guidance'
 
 const DAY_MS = 86_400_000
@@ -12,7 +12,8 @@ export type Alert = { id: string; message: string }
 export const alertsOf = (snapshot: Snapshot, now: number, warnPercent: number, dailyAlert = 0): Alert[] => {
   const { key } = snapshot
   const who = key.keyName ?? snapshot.keyHint
-  const pct = percent(key.budget.spend, key.budget.limit)
+  // A cap of $0 is used up from the first cent, as the banner and the status line read it.
+  const pct = usedShare(key.budget.spend, key.budget.limit)
   const alerts: Alert[] = []
 
   if (pct !== null) {
@@ -38,7 +39,7 @@ export const alertsOf = (snapshot: Snapshot, now: number, warnPercent: number, d
   if (over !== null) {
     // Once a day, and again the day after; a new limit is a new warning.
     alerts.push({
-      id: `daily:${isoDay(now)}:${dailyAlert}`,
+      id: `daily:${who}:${isoDay(now)}:${dailyAlert}`,
       message: `Today's spend is ${money(over)}, over your daily alert of ${money(dailyAlert)}`,
     })
   }

@@ -32,7 +32,7 @@ export const details = (snapshot: Snapshot, now: number, refreshSeconds: number)
   group('Key', add => {
     add('Alias', key.alias)
     add('Name', key.keyName ?? snapshot.keyHint)
-    add('Hash', key.keyHash === null ? null : `${key.keyHash.slice(0, 8)}…${key.keyHash.slice(-4)} (sha256)`)
+    add('Hash', key.keyHash === null ? null : `${key.keyHash.slice(0, 8)}… (sha256)`)
     add('Status', key.status, key.status === 'active' ? 'ok' : 'error')
     add('Type', key.keyType)
     add('User', key.userId)

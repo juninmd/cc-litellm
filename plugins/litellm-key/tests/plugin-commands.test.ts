@@ -13,6 +13,9 @@ const run = async ($: Engine, args: string) => {
   return { ...result, text: result.text ?? '' }
 }
 
+/** What /key/info answers to a key the proxy refuses, in the shape LiteLLM sends. */
+const refused = (message: string, type: string) => ({ '/key/info': reply(401, { error: { message, type, code: '401', param: 'None' } }) })
+
 const read = async ($: Engine, clock: Parameters<typeof start>[1], args: string) => {
   await start($, clock)
 
@@ -138,12 +141,44 @@ describe('/litellm check', () => {
     expect(result.text).toContain('✗ Key budget is over its cap')
   })
 
-  test('is UNKNOWN with 3 when the proxy did not answer', async ($, on) => {
-    const { clock } = boot(on, { routes: { '/key/info': reply(401, { error: { message: 'bad', type: 'auth_error', code: '401', param: 'None' } }) } })
+  test('is UNKNOWN with 3 when the proxy did not answer: there is nothing to say of the key', async ($, on) => {
+    const { clock } = boot(on, { routes: { '/key/info': reply(502, 'Bad Gateway') } })
     const result = await read($, clock, 'check')
 
     expect(result.exitCode).toBe(3)
-    expect(result.text).toMatch(/^UNKNOWN · The proxy rejected the key/)
+    expect(result.text).toMatch(/^UNKNOWN · /)
+  })
+
+  test('is CRITICAL with 2 for a key the proxy rejects: it answered, and what it said is a verdict', async ($, on) => {
+    const { clock } = boot(on, { routes: refused('bad', 'auth_error') })
+    const result = await read($, clock, 'check')
+
+    expect(result.exitCode).toBe(2)
+    expect(result.text).toBe('CRITICAL · The proxy rejected the key (401): bad\nThe key may be invalid, expired or blocked. Check ANTHROPIC_AUTH_TOKEN.')
+  })
+
+  test('is CRITICAL with 2 for a key that is blocked', async ($, on) => {
+    const { clock } = boot(on, { routes: refused("Authentication Error, Key is blocked. Update via `/key/unblock` if you're an admin.", 'auth_error') })
+    const result = await read($, clock, 'check')
+
+    expect(result.exitCode).toBe(2)
+    expect(result.text).toMatch(/^CRITICAL · The proxy says this key is blocked\./)
+  })
+
+  test('is CRITICAL with 2 for a key that has expired', async ($, on) => {
+    const { clock } = boot(on, { routes: refused('Authentication Error - Expired Key. Key Expiry time 2026-10-04 03:47:58+00:00', 'expired_key') })
+    const result = await read($, clock, 'check')
+
+    expect(result.exitCode).toBe(2)
+    expect(result.text).toMatch(/^CRITICAL · The proxy says this key has expired\./)
+  })
+
+  test('is CRITICAL for a cap of $0 that has been spent past, as the banner and the status line say', async ($, on) => {
+    const { clock } = boot(on, { routes: { ...standardRoutes(), '/key/info': reply(200, keyBody({ max_budget: 0, spend: 0.5 })) } })
+    const result = await read($, clock, 'check')
+
+    expect(result.exitCode).toBe(2)
+    expect(result.text).toContain('✗ Key budget is over its cap: $0.50 of $0.00')
   })
 
   test('takes the daily alert of the options into account', { options: { daily_alert: 5 } }, async ($, on) => {

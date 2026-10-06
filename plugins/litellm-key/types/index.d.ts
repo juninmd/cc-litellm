@@ -116,7 +116,7 @@ export type SessionSpend = {
   /** When the first reading of this session was made. */
   since: number
   spend: number
-  /** The key's spend at the last reading, to tell what a new one adds. */
+  /** The highest spend the readings showed since a reset, to tell what a new reading adds. */
   last: number
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { boot, start } from './boot'
+import { activity } from './activity-fixtures'
 import type { Reads } from './pane-kit'
 import { mount, texts } from './pane-kit'
 import { KEY, reply, standardRoutes, withKey } from './support'
@@ -85,11 +86,42 @@ describe('the models tab', () => {
     await ui.press({ key: 'filter-focus' })
   })
 
-  test('counts spend over the range that is chosen', async ($, on) => {
+  test('counts spend over the range that is chosen: a model that spent only three weeks ago shows at 30 days', async ($, on) => {
+    // $10 on one day 24 days ago, and nothing since: 75% of it on the first model
+    const spends = Array.from({ length: 30 }, (_, at) => (at === 5 ? 10 : 0))
+    const { ui } = await modelsTab($, on, { routes: { ...standardRoutes(), '/user/daily/activity': activity(spends) } })
+    const spent = /^\$7\.50 · 75 requests$/
+
+    expect(await ui.find({ type: 'Text', text: spent })).toBeUndefined()
+    await ui.press({ key: 'range-14' })
+    expect(await ui.find({ type: 'Text', text: spent })).toBeUndefined()
+    await ui.press({ key: 'range-30' })
+    expect(await ui.find({ type: 'Text', text: spent })).toBeDefined()
+    await ui.press({ key: 'range-7' })
+    expect(await ui.find({ type: 'Text', text: spent })).toBeUndefined()
+  })
+
+  test('starts sorted the way it remembers, and ignores a sort it does not know', async ($, on) => {
+    const named = await modelsTab($, on, { store: { prefs: { sort: 'name' } } })
+
+    expect(await rowsOf(named.ui)).toEqual(['claude-haiku-4-5', 'claude-opus-4-1', 'claude-sonnet-4-5'])
+    expect((await named.ui.find({ key: 'sort' }))?.props.label).toBe('sort: name')
+  })
+
+  test('ignores a stored sort it does not know', async ($, on) => {
+    const { ui } = await modelsTab($, on, { store: { prefs: { sort: 'size' } } })
+
+    expect(await rowsOf(ui)).toEqual(['claude-sonnet-4-5', 'claude-opus-4-1', 'claude-haiku-4-5'])
+    expect((await ui.find({ key: 'sort' }))?.props.label).toBe('sort: spend')
+  })
+
+  test('keeps the filter clean of control characters, which the engine would refuse to draw', async ($, on) => {
     const { ui } = await modelsTab($, on)
 
-    await ui.press({ key: 'range-14' })
-    expect(await ui.find({ type: 'Text', text: /^\$10\.65 · 0 requests$/ })).toBeDefined()
+    await ui.input({ key: 'filter', text: 'op\u001b[31mus\u0007', kind: 'change' })
+    expect((await ui.find({ key: 'filter' }))?.props.value).toBe('opus')
+    expect(await rowsOf(ui)).toEqual(['claude-opus-4-1'])
+    expect(await ui.find({ key: 'filter-clear' })).toBeDefined()
   })
 
   test('shows the cap a model has', async ($, on) => {
@@ -145,7 +177,7 @@ describe('the details tab', () => {
     for (const group of ['Key', 'Budget', 'Limits', 'Connection']) {
       expect(await ui.find({ type: 'Text', text: new RegExp(`^${group}$`) })).toBeDefined()
     }
-    expect(await ui.find({ type: 'Text', text: /^01234567…cdef \(sha256\)$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^01234567… \(sha256\)$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /^via ANTHROPIC_AUTH_TOKEN \(sk-…7890\)$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /^12:00:00 \(just now\) · every 60s$/ })).toBeDefined()
     expect((await ui.findAll({ type: 'Link' })).map(link => link.props.href)).toEqual(['https://litellm.test/ui'])

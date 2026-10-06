@@ -180,8 +180,28 @@ describe('the session', () => {
     const session = advanceSession(beginSession(NOW, 40), 39.9)
 
     expect(session.spend).toBe(0)
-    expect(session.last).toBe(39.9)
-    near(advanceSession(session, 40.5).spend, 0.6)
+    // the high mark stays, so that coming back to it adds nothing: only what grew past it is new
+    expect(session.last).toBe(40)
+    near(advanceSession(session, 40.5).spend, 0.5)
+  })
+
+  test('counts nothing of counters that keep disagreeing, however many times they swing', () => {
+    let session = beginSession(NOW, 10)
+
+    for (const reading of [9.9, 10, 9.9, 10, 9.9, 10]) {
+      session = advanceSession(session, reading)
+    }
+
+    expect(session.spend).toBe(0)
+    near(advanceSession(session, 10.2).spend, 0.2)
+  })
+
+  test('starts counting again from the reading after a reset, and counts what grows from there', () => {
+    const reset = advanceSession(beginSession(NOW, 40), 3)
+
+    near(reset.spend, 3)
+    expect(reset.last).toBe(3)
+    near(advanceSession(reset, 5).spend, 5)
   })
 
   test('says what it spent since when, and the rate once it has run half an hour', () => {
@@ -234,8 +254,8 @@ describe('the daily alert', () => {
     const base = await spending(12.5)
     const [first] = alertsOf(base, NOW, 80, 5).filter(alert => alert.id.startsWith('daily:'))
 
-    expect(first).toEqual({ id: 'daily:2026-10-03:5', message: "Today's spend is $8.70, over your daily alert of $5.00" })
-    expect(alertsOf(base, NOW, 80, 6).find(alert => alert.id.startsWith('daily:'))?.id).toBe('daily:2026-10-03:6')
+    expect(first).toEqual({ id: 'daily:sk-...7890:2026-10-03:5', message: "Today's spend is $8.70, over your daily alert of $5.00" })
+    expect(alertsOf(base, NOW, 80, 6).find(alert => alert.id.startsWith('daily:'))?.id).toBe('daily:sk-...7890:2026-10-03:6')
     expect(alertsOf(base, NOW, 80, 20).some(alert => alert.id.startsWith('daily:'))).toBe(false)
     expect(alertsOf(base, NOW, 80).some(alert => alert.id.startsWith('daily:'))).toBe(false)
   })

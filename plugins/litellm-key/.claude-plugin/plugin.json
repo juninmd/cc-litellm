@@ -80,7 +80,7 @@
     "show_usage": {
       "type": "boolean",
       "title": "Usage history",
-      "description": "Also read /user/daily/activity for the last 7 days of spend and tokens (beta endpoint).",
+      "description": "Also read /user/daily/activity for the last 30 days of spend, requests and tokens (beta endpoint).",
       "default": true
     },
     "compact_pane": {

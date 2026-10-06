@@ -116,12 +116,34 @@ describe('checkVerdict', () => {
   })
 
   test('is UNKNOWN, with 3, when there is nothing read', () => {
-    expect(checkVerdict(null, failure('auth', 'Check the key.'), NOW, 80, 0)).toEqual({
+    expect(checkVerdict(null, failure('network', 'Check the proxy.'), NOW, 80, 0)).toEqual({
       level: 'unknown',
       exitCode: 3,
-      text: 'UNKNOWN · The proxy is down\nCheck the key.',
+      text: 'UNKNOWN · The proxy is down\nCheck the proxy.',
     })
     expect(checkVerdict(null, null, NOW, 80, 0).text).toBe('UNKNOWN · nothing was read yet')
+    for (const kind of ['not-configured', 'not-litellm', 'forbidden', 'not-found', 'db', 'rate-limit', 'http'] as const) {
+      expect(checkVerdict(null, failure(kind), NOW, 80, 0).exitCode).toBe(3)
+    }
+  })
+
+  test('is CRITICAL, with 2, when the proxy answered that the key does not work: rejected, blocked or expired', () => {
+    for (const kind of ['auth', 'blocked', 'expired'] as const) {
+      expect(checkVerdict(null, failure(kind, 'Ask an admin.'), NOW, 80, 0)).toEqual({
+        level: 'critical',
+        exitCode: 2,
+        text: 'CRITICAL · The proxy is down\nAsk an admin.',
+      })
+    }
+  })
+
+  test('has a spent-up cap of $0 among its alerts: it is an error as the banner reads it, not a gap', async () => {
+    const snapshot = await snapshotOf(withKey({ max_budget: 0, spend: 0.5 }))
+    const verdict = checkVerdict(snapshot, null, NOW, 80, 0)
+
+    expect(verdict).toMatchObject({ level: 'critical', exitCode: 2 })
+    expect(checkAlerts(snapshot, NOW, 80, 0)).toEqual([{ tone: 'error', text: 'Key budget is over its cap: $0.50 of $0.00' }])
+    expect(JSON.parse(jsonReport(snapshot, NOW, { warnPercent: 80, dailyAlert: 0 })).level).toBe('critical')
   })
 
   test('is UNKNOWN too when the reading is old, and says what it last saw', async () => {

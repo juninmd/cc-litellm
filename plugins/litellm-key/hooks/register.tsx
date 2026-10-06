@@ -8,6 +8,7 @@ import { overBudgetBand } from './band'
 import type { CommandContext } from './commands'
 import { runCommand } from './commands'
 import { exceededItems } from './exceeded'
+import { clean } from './format'
 import type { Reply } from './litellm'
 import type { Init, Ports } from './ports'
 import { parsePrefs } from './prefs'
@@ -107,7 +108,10 @@ const portsOf = ($: EngineInterface): Ports => ({
   },
 })
 
-const contextOf = ($: EngineInterface, session: Session): CommandContext => {
+/** What the pane was last told about Esc: whether it closes the pane (it does, except on the tab with the field). */
+type PaneMode = { escapes: boolean }
+
+const contextOf = ($: EngineInterface, session: Session, pane: PaneMode): CommandContext => {
   const ports = portsOf($)
 
   return {
@@ -122,7 +126,11 @@ const contextOf = ($: EngineInterface, session: Session): CommandContext => {
         await update($, viewState, () => tab)
       }
 
-      return $.ui.open(paneArgs(tab ?? (await read($, viewState))))
+      const shown = tab ?? (await read($, viewState))
+
+      pane.escapes = shown !== 'models'
+
+      return $.ui.open(paneArgs(shown))
     },
     closePane: async () => {
       await $.ui.close({ id: PANE })
@@ -148,6 +156,7 @@ const contextOf = ($: EngineInterface, session: Session): CommandContext => {
 
 export const register: Register = (on, options) => {
   const session = createSession()
+  const pane: PaneMode = { escapes: true }
   const { state } = session
 
   state.config = configOf(options)
@@ -178,7 +187,7 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  on('command.run', { command: 'litellm' }, ($, e) => runCommand(contextOf($, session), e.args))
+  on('command.run', { command: 'litellm' }, ($, e) => runCommand(contextOf($, session, pane), e.args))
 
   // Unlike a toast, this stays for as long as a budget is spent up, and goes only when the next reading is normal.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
@@ -235,12 +244,20 @@ export const register: Register = (on, options) => {
           .catch(() => undefined)
       },
       onTab: next => {
-        void update($, viewState, () => next).then(() => {
-          // Open again to change what Esc does, only when going to or from the one tab that has a field.
-          if ((next === 'models') !== (tab === 'models')) {
-            $.ui.open(paneArgs(next)).catch(() => undefined)
-          }
-        })
+        void update($, viewState, () => next)
+          .then(() => read($, viewState))
+          .then(shown => {
+            // Open again to change what Esc does, when the tab that is really showing (two presses can land before a
+            // redraw) is not the kind the pane was told about: the one tab that has a field keeps Esc to itself.
+            if ((shown !== 'models') !== pane.escapes) {
+              pane.escapes = shown !== 'models'
+
+              return $.ui.open(paneArgs(shown))
+            }
+
+            return undefined
+          })
+          .catch(() => undefined)
       },
       onRange: next => {
         void update($, rangeState, () => next).then(() => savePrefs($))
@@ -252,7 +269,8 @@ export const register: Register = (on, options) => {
         void update($, metricState, () => next).then(() => savePrefs($))
       },
       onFilter: text => {
-        void update($, filterState, () => text)
+        // Typed or pasted, it goes into a field the engine refuses to draw if it holds a control character.
+        void update($, filterState, () => clean(text))
       },
       onDay: date => {
         void update($, dayState, () => date)

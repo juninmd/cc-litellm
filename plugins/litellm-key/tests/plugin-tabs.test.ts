@@ -86,7 +86,7 @@ describe('tabs', () => {
     expect(log.toasts).toEqual(['Could not copy the summary (no-clipboard)'])
   })
 
-  test('draw the same on every surface, whatever the tab, and survive a proxy that sends escape sequences and absurd dates', async ($, on) => {
+  test('survive a proxy that sends escape sequences and absurd dates, on every surface and tab', async ($, on) => {
     const esc = '\u001b[31m'
     const routes = {
       ...standardRoutes(),
@@ -105,6 +105,42 @@ describe('tabs', () => {
       }
       await ui.unmount()
     }
+  })
+
+  test('say the same words on every surface, whatever the tab', async ($, on) => {
+    const { clock } = boot(on)
+
+    await start($, clock)
+    for (const tab of ['usage', 'details', 'overview']) {
+      const said: string[][] = []
+      const first = await mount($, 'terminal')
+
+      // the tab is the plugin's, not a surface's: one press moves every pane
+      await first.press({ key: `tab-${tab}` })
+      for (const surface of SURFACES) {
+        const ui = surface === 'terminal' ? first : await mount($, surface)
+
+        said.push((await ui.findAll({ type: 'Text' })).map(item => item.text))
+        await ui.unmount()
+      }
+      expect(said[1]).toEqual(said[0])
+      expect(said[2]).toEqual(said[0])
+      expect(said[3]).toEqual(said[0])
+      expect(said[0]?.length).toBeGreaterThan(10)
+    }
+  })
+
+  test('have no Copy where there is nothing to copy: the usage tab of a key with no history', async ($, on) => {
+    const { clock } = boot(on, { routes: { ...standardRoutes(), '/user/daily/activity': reply(404, 'x') } })
+
+    await start($, clock)
+    const ui = await mount($, 'terminal')
+
+    expect(await keysOf(ui)).toContain('copy')
+    await ui.press({ key: 'tab-usage' })
+    expect(await keysOf(ui)).toEqual(['tab-overview', 'tab-models', 'tab-details', 'refresh', 'close'])
+    await ui.press({ key: 'tab-models' })
+    expect(await keysOf(ui)).toContain('copy')
   })
 
   test('the failure state has no tabs: there is nothing to look at', async ($, on) => {
@@ -150,6 +186,20 @@ describe('/litellm tab', () => {
     await ui.press({ key: 'tab-details' })
     await ui.press({ key: 'tab-overview' })
     expect(log.escapes).toEqual([true, false, true])
+  })
+
+  test('follows the tab that is showing for Esc, even when two presses land before the pane is drawn again', async ($, on) => {
+    const { log, clock } = boot(on)
+
+    await start($, clock)
+    await run($, 'tab usage')
+    const ui = await mount($, 'terminal')
+
+    await Promise.all([ui.press({ key: 'tab-models' }), ui.press({ key: 'tab-details' })])
+
+    // however the two interleave, the pane ends up told what Esc does on the tab it ends on: it closes the pane
+    expect(log.escapes.at(-1)).toBe(true)
+    expect(await ui.find({ type: 'Text', text: / 4: Details / })).toBeDefined()
   })
 
   test('opens straight on the models tab without Esc closing it', async ($, on) => {

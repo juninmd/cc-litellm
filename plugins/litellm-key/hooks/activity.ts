@@ -25,6 +25,15 @@ export const usageQuery = (key: Pick<KeyInfo, 'userId' | 'keyHash'>, days: reado
     .filter(Boolean)
     .join('&')
 
+// No day of a key spends or counts past this: a figure beyond it is noise, and sums of such would reach Infinity.
+const MOST = 1e15
+
+const amount = (value: unknown): number => {
+  const found = num(value) ?? 0
+
+  return Math.abs(found) <= MOST ? found : 0
+}
+
 const quiet = (date: string): ActivityDay => ({
   date,
   spend: 0,
@@ -58,30 +67,30 @@ export const parseUsage = (body: unknown, days: readonly string[]): Usage | null
       continue
     }
     const metrics = isObject(result.metrics) ? result.metrics : {}
-    const spend = num(metrics.spend) ?? 0
+    const spend = amount(metrics.spend)
 
     day.spend += spend
-    day.requests += num(metrics.api_requests) ?? 0
-    day.failed += num(metrics.failed_requests) ?? 0
-    day.tokens += num(metrics.total_tokens) ?? 0
-    day.inputTokens += num(metrics.prompt_tokens) ?? 0
-    day.outputTokens += num(metrics.completion_tokens) ?? 0
-    day.cacheReadTokens += num(metrics.cache_read_input_tokens) ?? 0
+    day.requests += amount(metrics.api_requests)
+    day.failed += amount(metrics.failed_requests)
+    day.tokens += amount(metrics.total_tokens)
+    day.inputTokens += amount(metrics.prompt_tokens)
+    day.outputTokens += amount(metrics.completion_tokens)
+    day.cacheReadTokens += amount(metrics.cache_read_input_tokens)
     if (week.has(date)) {
       total.spend += spend
-      total.requests += num(metrics.api_requests) ?? 0
-      total.tokens += num(metrics.total_tokens) ?? 0
-      total.input += num(metrics.prompt_tokens) ?? 0
-      total.output += num(metrics.completion_tokens) ?? 0
-      total.cacheRead += num(metrics.cache_read_input_tokens) ?? 0
+      total.requests += amount(metrics.api_requests)
+      total.tokens += amount(metrics.total_tokens)
+      total.input += amount(metrics.prompt_tokens)
+      total.output += amount(metrics.completion_tokens)
+      total.cacheRead += amount(metrics.cache_read_input_tokens)
     }
     const models = isObject(result.breakdown) && isObject(result.breakdown.models) ? result.breakdown.models : {}
 
     for (const [name, entry] of Object.entries(models)) {
       const model = clean(name)
       const own = isObject(entry) && isObject(entry.metrics) ? entry.metrics : {}
-      const modelSpend = num(own.spend) ?? 0
-      const requests = num(own.api_requests) ?? 0
+      const modelSpend = amount(own.spend)
+      const requests = amount(own.api_requests)
 
       if (week.has(date)) {
         perModel.set(model, (perModel.get(model) ?? 0) + modelSpend)
@@ -94,9 +103,9 @@ export const parseUsage = (body: unknown, days: readonly string[]): Usage | null
       if (held) {
         held.spend += modelSpend
         held.requests += requests
-        held.tokens += num(own.total_tokens) ?? 0
+        held.tokens += amount(own.total_tokens)
       } else {
-        day.models.push({ model, spend: modelSpend, requests, tokens: num(own.total_tokens) ?? 0 })
+        day.models.push({ model, spend: modelSpend, requests, tokens: amount(own.total_tokens) })
       }
     }
   }

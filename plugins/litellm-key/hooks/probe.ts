@@ -101,7 +101,7 @@ export const probeEndpoints = async (request: ProbeRequest): Promise<Probe[]> =>
         const ms = reply.ms !== undefined && reply.ms > 0 ? Math.round(reply.ms) : null
 
         if (reply.status === 200) {
-          return { path: target.path, status: 200, ms, ok: true, detail: target.sum(json) }
+          return { path: target.path, status: 200, ms, ok: true, detail: truncate(redact(target.sum(json), [key]), 60) }
         }
         const why = truncate(redact(messageOf(json, reply.text).replace(/\s+/g, ' '), [key]), 60)
         const hint = HINTS[target.path]

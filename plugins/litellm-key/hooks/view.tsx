@@ -63,12 +63,14 @@ export const dashboard = (ui: Ui, props: DashboardProps): RenderElement => {
   // Titles and hairlines cost rows: only the dock, which has them to spare, gets them.
   const hasSections = !compact && props.placement === 'dock'
   const gap = compact ? 0 : 1
+  // A tab with nothing in it has nothing to copy: the usage report of no history is a sentence, not a report.
+  const canCopy = snapshot !== null && !(props.tab === 'usage' && snapshot.usage === null)
   // The key sits in the label because no surface draws a hotkey itself.
-  const labels = [LABEL.refresh, ...(snapshot ? [LABEL.copy] : []), LABEL.close]
+  const labels = [LABEL.refresh, ...(canCopy ? [LABEL.copy] : []), LABEL.close]
   const buttons = (
     <Box gap={1} flexWrap="wrap">
       <Button key="refresh" label={LABEL.refresh} hotkey="r" variant="primary" onPress={props.onRefresh} />
-      {snapshot && (
+      {snapshot && canCopy && (
         <Button
           key="copy"
           label={LABEL.copy}

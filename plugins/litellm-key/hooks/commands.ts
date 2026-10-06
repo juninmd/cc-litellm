@@ -16,7 +16,7 @@ import {
   usageCommand,
 } from './commands-reports'
 import { copyCommand, shareCommand } from './commands-share'
-import { clock, maskKey, money, redact, truncate } from './format'
+import { clock, maskKey, money, redact, truncate, withoutCredentials } from './format'
 import { oneLine, summaryText } from './summary'
 import { textOf } from './tab-text'
 import { closest, splitWords } from './words'
@@ -97,7 +97,7 @@ const debugText = async (ctx: CommandContext): Promise<string> => {
     `Alerts   toasts ${config.isToastShown ? 'on' : 'off'} · warn at ${config.warnPercent}% · daily alert ${config.dailyAlert > 0 ? money(config.dailyAlert) : 'off'}`,
     `Pane     ${view.tab} tab · ${view.range} days`,
     diagnostics
-      ? `Proxy    ${diagnostics.host} (tries ${diagnostics.roots.join(', ')}${pinnedRoot ? `; using ${pinnedRoot}` : ''})`
+      ? `Proxy    ${diagnostics.host} (tries ${diagnostics.roots.map(withoutCredentials).join(', ')}${pinnedRoot ? `; using ${withoutCredentials(pinnedRoot)}` : ''})`
       : 'Proxy    not resolved',
     diagnostics ? `Key      ${diagnostics.keyHint} from ${diagnostics.keySource}` : 'Key      not resolved',
     config.adminKey

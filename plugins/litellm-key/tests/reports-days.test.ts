@@ -216,8 +216,10 @@ describe('details', () => {
   test('shows the hash cut short, and nothing of the key itself', async () => {
     const text = detailsText(await snapshotOf(), NOW, 60)
 
-    expect(text).toMatch(/Hash +01234567…cdef \(sha256\)/)
+    expect(text).toMatch(/Hash +01234567… \(sha256\)/)
     expect(text).not.toContain('sk-test-secret')
+    // eight characters are what `/litellm keys` shows of a key that has no alias; the rest of the hash stays out
+    expect(text).not.toContain('0123456789abcdef')
   })
 
   test('says the version and database of the proxy when it said them, warning of a database that is down', async () => {

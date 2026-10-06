@@ -139,7 +139,7 @@ describe('the usage tab', () => {
     expect(log.copies).toEqual([])
   })
 
-  test('remembers the range for the next session, and starts on the one it remembers', async ($, on) => {
+  test('remembers the range for the next session', async ($, on) => {
     const first = boot(on)
 
     await start($, first.clock)
@@ -156,11 +156,17 @@ describe('the usage tab', () => {
     expect(await ui.find({ type: 'Text', text: /^By model, last 14 days/ })).toBeDefined()
   })
 
-  test('ignores a stored range, sort or metric it does not know', async ($, on) => {
+  test('ignores a stored range or metric it does not know', async ($, on) => {
     const { ui } = await usageTab($, on, { store: { prefs: { range: 9, sort: 'size', metric: 'joy' } } })
 
     expect(await ui.find({ type: 'Text', text: /^By model, last 7 days/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /^Spend per day/ })).toBeDefined()
+  })
+
+  test('starts on the metric it remembers', async ($, on) => {
+    const { ui } = await usageTab($, on, { store: { prefs: { metric: 'tokens' } } })
+
+    expect(await ui.find({ type: 'Text', text: /^Tokens per day \(UTC\)$/ })).toBeDefined()
   })
 
   test('copies the days as CSV', async ($, on) => {
