@@ -32,7 +32,7 @@ describe('fetchSnapshot', () => {
     expect(JSON.stringify(result)).not.toContain(KEY)
   })
 
-  test('asks for the usage of this key by its hash, over a 7 day window', async () => {
+  test('asks for the usage of this key by its hash, over a 30 day window', async () => {
     const { http, calls } = router(standardRoutes())
 
     await fetchSnapshot(request(http))
@@ -40,7 +40,7 @@ describe('fetchSnapshot', () => {
 
     expect(usage?.url).toContain(`api_key=${HASH}`)
     expect(usage?.url).toContain('user_id=jane')
-    expect(usage?.url).toContain('start_date=2026-09-27')
+    expect(usage?.url).toContain('start_date=2026-09-04')
     expect(usage?.url).toContain('end_date=2026-10-03')
   })
 
@@ -74,7 +74,7 @@ describe('fetchSnapshot', () => {
     const { http, calls } = router(standardRoutes())
 
     await fetchSnapshot(request(http, { wantRelated: false, wantUsage: false }))
-    expect(calls.map(call => call.url.replace(BASE, ''))).toEqual(['/key/info', '/v1/models', '/model_group/info'])
+    expect(calls.map(call => call.url.replace(BASE, ''))).toEqual(['/key/info', '/v1/models', '/model_group/info', '/health/readiness'])
   })
 
   test('says when the usage history does not fit in one page of the proxy', async () => {

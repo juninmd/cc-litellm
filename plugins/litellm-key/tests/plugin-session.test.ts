@@ -217,7 +217,7 @@ describe('options', () => {
 
     await start($, clock)
 
-    expect(urls(net)).toEqual(['/key/info', '/v1/models', '/model_group/info'])
+    expect(urls(net)).toEqual(['/key/info', '/v1/models', '/model_group/info', '/health/readiness'])
   })
 
   test('refresh_seconds sets the interval', { options: { refresh_seconds: 30 } }, async ($, on) => {

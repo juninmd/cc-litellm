@@ -1,5 +1,5 @@
 import type { Failure, FailureKind } from '../types'
-import { redact, truncate } from './format'
+import { clean, redact, truncate } from './format'
 import { isObject } from './json'
 
 export const failure = (
@@ -9,8 +9,8 @@ export const failure = (
   extra: { hint?: string; status?: number } = {},
 ): Failure => ({
   kind,
-  message,
-  hint: extra.hint ?? null,
+  message: clean(message),
+  hint: extra.hint === undefined ? null : clean(extra.hint),
   status: extra.status ?? null,
   at: now,
 })
@@ -99,6 +99,7 @@ export const classify = (status: number, json: unknown, text: string, key: strin
 }
 
 const NETWORK_ERRORS: readonly [RegExp, string][] = [
+  [/Malformed_HTTP_Response/i, 'the proxy sent an answer that is not HTTP'],
   [/ECONNREFUSED/i, 'connection refused'],
   [/ENOTFOUND|EAI_AGAIN/i, 'host not found'],
   [/ECONNRESET|socket hang up/i, 'connection reset'],

@@ -1,13 +1,26 @@
 import type { Failure, Snapshot } from '../types'
+import { HISTORY_DAYS } from './activity'
 import type { Credentials } from './credentials'
 import { hostOf } from './credentials'
 import { classify, describeError, failure, looksLikeLiteLLM } from './failures'
-import { maskKey, utcDay } from './format'
+import { maskKey, utcDay, withoutCredentials } from './format'
 import type { Json } from './json'
-import { isObject, parse } from './json'
-import { hasMoreRows, parseKey, parseMember, parseModelPrices, parseModels, parseTeam, parseUsage, parseUser, parseUserRole } from './parsers'
+import { isObject, parse, scrub } from './json'
+import {
+  hasMoreRows,
+  parseHealth,
+  parseKey,
+  parseMember,
+  parseModelPrices,
+  parseModels,
+  parseTeam,
+  parseUsage,
+  parseUser,
+  parseUserRole,
+} from './parsers'
 
-export type Reply = { status: number; text: string }
+/** What the proxy answered, and how long it took when the caller timed it. */
+export type Reply = { status: number; text: string; ms?: number }
 export type Http = (url: string, headers: Record<string, string>) => Promise<Reply>
 
 export type Fetched =
@@ -36,7 +49,7 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
       ? [pinnedRoot, ...credentials.roots.filter(root => root !== pinnedRoot)]
       : credentials.roots
   const mismatches: Failure[] = []
-  let found: { root: string; body: Json; info: Json } | null = null
+  let found: { root: string; body: Json; info: Json; ms: number | null } | null = null
   let rejected: Failure | null = null
 
   for (const root of roots) {
@@ -55,7 +68,8 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
     const json = parse(reply.text)
 
     if (reply.status === 200 && isObject(json) && isObject(json.info)) {
-      found = { root, body: json, info: json.info }
+      // A reading that took no time at all is a clock that did not move, not a proxy that answered at once.
+      found = { root, body: json, info: json.info, ms: reply.ms !== undefined && reply.ms > 0 ? reply.ms : null }
       break
     }
     if (looksLikeLiteLLM(reply.status, json)) {
@@ -89,7 +103,7 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
         failure('network', 'No LiteLLM endpoint answered.', now),
     }
   }
-  const { root, body, info } = found
+  const { root, body, info, ms } = found
   const keyInfo = parseKey(body, info, now)
   const get = async (path: string, isOptional = false): Promise<unknown> => {
     const reply = await http(`${root}${path}`, headers)
@@ -103,17 +117,26 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
 
     return parse(reply.text)
   }
-  const attempt = async <T>(label: string, run: () => Promise<T>): Promise<T | null> => {
+  // A read that fails is undefined, to tell it from one that found nothing: the last good answer stands in for it.
+  const attempt = async <T>(label: string, run: () => Promise<T>): Promise<T | undefined> => {
     try {
       return await run()
     } catch (error) {
       notes.push(`${label} unavailable: ${describeError(error, key)}`)
 
-      return null
+      return undefined
     }
   }
-  const days = [6, 5, 4, 3, 2, 1, 0].map(back => utcDay(now, back))
-  const [first = '', last = ''] = [days[0], days[6]]
+  // What the proxy says of itself is a courtesy: when it will not say, nothing is worth a note.
+  const quiet = async <T>(run: () => Promise<T>): Promise<T | undefined> => {
+    try {
+      return await run()
+    } catch {
+      return undefined
+    }
+  }
+  const days = Array.from({ length: HISTORY_DAYS }, (_, at) => utcDay(now, HISTORY_DAYS - 1 - at))
+  const [first = '', last = ''] = [days[0], days[days.length - 1]]
   const usageQuery = [
     `start_date=${first}`,
     `end_date=${last}`,
@@ -125,7 +148,7 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
     .join('&')
   const { previous, refreshSlow, wantRelated } = request
   const wantUsage = request.wantUsage && keyInfo.userId !== null
-  const [userBody, teamBody, models, usage, priceBody] = await Promise.all([
+  const [userBody, teamBody, models, usage, priceBody, proxy] = await Promise.all([
     wantRelated && keyInfo.userId
       ? attempt('user budget', () => get(`/user/info?user_id=${encodeURIComponent(keyInfo.userId ?? '')}`, true))
       : Promise.resolve(null),
@@ -149,30 +172,43 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
           })
         : Promise.resolve(previous?.usage ?? null),
     refreshSlow ? attempt('model prices', () => get('/model_group/info', true)) : Promise.resolve(null),
+    refreshSlow ? quiet(async () => parseHealth(await get('/health/readiness'))) : Promise.resolve(previous?.proxy ?? null),
   ])
 
   // the fast ticks reuse the last usage, partial or not, so they keep saying so
   if (wantUsage && !refreshSlow && previous?.notes.includes(PARTIAL_USAGE)) {
     notes.push(PARTIAL_USAGE)
   }
+  // A read that failed leaves what the last good one held (for this key's user and team), and a note.
+  const sameUser = previous !== null && previous.key.userId === keyInfo.userId
+  const sameTeam = previous !== null && previous.key.teamId === keyInfo.teamId
+  const kept = <T,>(read: T | undefined, before: T | null | undefined): T | null => (read === undefined ? (before ?? null) : read)
 
   return {
     ok: true,
     root,
-    snapshot: {
+    // What the proxy sent is drawn as it came, so it goes out clean: a control character in it would close the pane.
+    snapshot: scrub({
       fetchedAt: now,
       host: credentials.host,
+      root: withoutCredentials(root),
       keySource: credentials.keySource,
       keyHint: maskKey(key),
       key: keyInfo,
-      user: parseUser(userBody),
-      userRole: parseUserRole(userBody),
-      team: parseTeam(teamBody),
-      member: parseMember(teamBody, keyInfo),
-      models,
-      prices: refreshSlow ? parseModelPrices(priceBody, models) : (previous?.prices ?? null),
-      usage,
+      user: userBody === undefined ? (sameUser ? (previous?.user ?? null) : null) : parseUser(userBody),
+      userRole: userBody === undefined ? (sameUser ? (previous?.userRole ?? null) : null) : parseUserRole(userBody),
+      team: teamBody === undefined ? (sameTeam ? (previous?.team ?? null) : null) : parseTeam(teamBody),
+      member: teamBody === undefined ? (sameTeam ? (previous?.member ?? null) : null) : parseMember(teamBody, keyInfo),
+      models: kept(models, previous?.models),
+      prices: refreshSlow
+        ? priceBody === undefined
+          ? (previous?.prices ?? null)
+          : parseModelPrices(priceBody, kept(models, previous?.models))
+        : (previous?.prices ?? null),
+      usage: kept(usage, previous?.usage),
+      proxy: kept(proxy, previous?.proxy),
+      latencyMs: ms,
       notes,
-    },
+    }),
   }
 }

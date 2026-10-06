@@ -29,7 +29,8 @@ export type Resolved = { ok: true; credentials: Credentials } | { ok: false; fai
 
 const PASS_THROUGH = /\/(?:anthropic|bedrock|vertex[_-]ai|gemini|openai|azure|cohere|v1)(?:\/.*)?$/i
 
-export const hostOf = (url: string): string => /^https?:\/\/(?:[^@/]*@)?([^/]+)/i.exec(url)?.[1] ?? url
+// The userinfo runs to the last "@" before the path: a password may hold one.
+export const hostOf = (url: string): string => /^https?:\/\/(?:[^/]*@)?([^/]+)/i.exec(url)?.[1] ?? url
 const originOf = (url: string): string | null => /^(https?:\/\/[^/]+)/i.exec(url)?.[1] ?? null
 
 const customHeader = (raw: string | undefined, name: string): string | null => {

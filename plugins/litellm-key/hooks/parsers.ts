@@ -1,11 +1,9 @@
-import type { Budget, BudgetWindow, KeyInfo, KeyStatus, Limits, ModelBudget, ModelPrice, Related, Usage } from '../types'
+import type { Budget, BudgetWindow, KeyInfo, KeyStatus, Limits, ModelBudget, ModelPrice, ProxyInfo, Related } from '../types'
 import type { Json } from './json'
 import { date, isObject, num, str, strings } from './json'
 
 const STATUSES: readonly KeyStatus[] = ['active', 'expired', 'revoked', 'deleted']
 const SHA256 = /^[0-9a-f]{64}$/i
-// The pane lists this many models of the week; past that the long tail is noise.
-const TOP_MODELS = 5
 
 const budgetOf = (row: Json, table: Json | null): Budget => ({
   spend: num(row.spend) ?? 0,
@@ -198,68 +196,24 @@ export const parseModelPrices = (body: unknown, allowed: readonly string[] | nul
   return prices
 }
 
-/** The activity endpoint pages its rows: more than one page means the week is not all in the answer. */
-export const hasMoreRows = (body: unknown): boolean =>
-  isObject(body) && isObject(body.metadata) && body.metadata.has_more === true
+/** What `/health/readiness` says of the proxy: its version and how it stands with its database. */
+export const parseHealth = (body: unknown): ProxyInfo | null => {
+  if (!isObject(body)) {
+    return null
+  }
+  const version = str(body.litellm_version) ?? str(body.version)
+  const db = str(body.db)
+
+  return version === null && db === null ? null : { version, db }
+}
 
 export const parseModels = (body: unknown): string[] | null => {
   if (!isObject(body) || !Array.isArray(body.data)) {
     return null
   }
-  const ids = body.data.flatMap(item => (isObject(item) && typeof item.id === 'string' ? [item.id] : []))
+  const ids = body.data.flatMap(item => (isObject(item) ? (str(item.id) ?? []) : []))
 
   return [...new Set(ids)].sort()
 }
 
-export const parseUsage = (body: unknown, days: readonly string[]): Usage | null => {
-  if (!isObject(body) || !Array.isArray(body.results)) {
-    return null
-  }
-  const perDay = new Map<string, number>()
-  const perModel = new Map<string, number>()
-  const total = { spend: 0, requests: 0, tokens: 0, input: 0, output: 0, cacheRead: 0 }
-
-  for (const result of body.results) {
-    if (!isObject(result)) {
-      continue
-    }
-    const day = String(result.date ?? '').slice(0, 10)
-
-    if (!days.includes(day)) {
-      continue
-    }
-    const metrics = isObject(result.metrics) ? result.metrics : {}
-    const spend = num(metrics.spend) ?? 0
-
-    perDay.set(day, (perDay.get(day) ?? 0) + spend)
-    total.spend += spend
-    total.requests += num(metrics.api_requests) ?? 0
-    total.tokens += num(metrics.total_tokens) ?? 0
-    total.input += num(metrics.prompt_tokens) ?? 0
-    total.output += num(metrics.completion_tokens) ?? 0
-    total.cacheRead += num(metrics.cache_read_input_tokens) ?? 0
-
-    const models = isObject(result.breakdown) && isObject(result.breakdown.models) ? result.breakdown.models : {}
-
-    for (const [model, entry] of Object.entries(models)) {
-      const modelMetrics = isObject(entry) && isObject(entry.metrics) ? entry.metrics : {}
-
-      perModel.set(model, (perModel.get(model) ?? 0) + (num(modelMetrics.spend) ?? 0))
-    }
-  }
-
-  return {
-    days: days.map(day => ({ date: day, spend: perDay.get(day) ?? 0 })),
-    spend: total.spend,
-    requests: total.requests,
-    tokens: total.tokens,
-    inputTokens: total.input,
-    outputTokens: total.output,
-    cacheReadTokens: total.cacheRead,
-    topModels: [...perModel.entries()]
-      .filter(([, spend]) => spend > 0)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, TOP_MODELS)
-      .map(([model, spend]) => ({ model, spend })),
-  }
-}
+export { hasMoreRows, parseUsage } from './activity'
