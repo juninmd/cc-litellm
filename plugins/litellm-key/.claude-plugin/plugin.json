@@ -51,6 +51,20 @@
       "min": 1,
       "max": 99
     },
+    "daily_alert": {
+      "type": "number",
+      "title": "Daily spend alert ($)",
+      "description": "Warn once today's spend on the key reaches this many dollars (a toast once a day, the status line and the pane). 0 turns it off. Needs the usage history; with it on, the history is read every 3 minutes.",
+      "default": 0,
+      "min": 0,
+      "max": 1000000
+    },
+    "show_toasts": {
+      "type": "boolean",
+      "title": "Warning toasts",
+      "description": "Show the toasts that warn about the budget, the daily alert, an expiring key and a proxy that fails. Off keeps the warnings to the status line and the pane.",
+      "default": true
+    },
     "show_status_line": {
       "type": "boolean",
       "title": "Status line",

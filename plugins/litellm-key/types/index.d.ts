@@ -111,6 +111,15 @@ export type ProxyInfo = {
   db: string | null
 }
 
+/** What this Claude Code session has spent: the readings' growth, counted here and never read from the proxy. */
+export type SessionSpend = {
+  /** When the first reading of this session was made. */
+  since: number
+  spend: number
+  /** The key's spend at the last reading, to tell what a new one adds. */
+  last: number
+}
+
 export type Snapshot = {
   fetchedAt: number
   host: string
@@ -133,6 +142,7 @@ export type Snapshot = {
   proxy: ProxyInfo | null
   /** How long `/key/info` took to answer, when the reading could tell. */
   latencyMs: number | null
+  session: SessionSpend | null
   notes: string[]
 }
 

@@ -15,6 +15,9 @@ export const configOf = (options: PluginOptions) => ({
   adminKey: text(options.litellm_admin_key),
   refreshSeconds: Math.round(bounded(options.refresh_seconds, 60, 15, 3600)),
   warnPercent: Math.round(bounded(options.warn_percent, 80, 1, 99)),
+  // Dollars a day, to the cent; zero is off.
+  dailyAlert: Math.round(bounded(options.daily_alert, 0, 0, 1_000_000) * 100) / 100,
+  isToastShown: options.show_toasts !== false,
   isStatusShown: options.show_status_line !== false,
   isRelatedShown: options.show_related !== false,
   isUsageShown: options.show_usage !== false,

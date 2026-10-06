@@ -208,6 +208,7 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
       usage: kept(usage, previous?.usage),
       proxy: kept(proxy, previous?.proxy),
       latencyMs: ms,
+      session: null,
       notes,
     }),
   }

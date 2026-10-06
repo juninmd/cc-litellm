@@ -1,5 +1,6 @@
 import type { Snapshot } from '../types'
 import { compact, money, plural, sparkline, until } from './format'
+import { allowanceRow, headroomText, sessionText, todayRow } from './guidance'
 import { runway, runwayRow } from './runway'
 import type { ModelShare } from './parts'
 import type { Row, Tone } from './summary'
@@ -104,12 +105,20 @@ export const facts = (snapshot: Snapshot, now: number): Row[] => {
     key.expiresAt === null ? 'ok' : key.expiresAt < now ? 'error' : key.expiresAt - now < SOON_MS ? 'warn' : 'ok',
   )
   add('Runway', pace && pace.text, pace?.tone)
+  const room = allowanceRow(snapshot, now)
+
+  add('Allowance', room && room.text, room?.tone)
+  add('Headroom', headroomText(snapshot))
   add('Models', `${modelsText(snapshot)}${snapshot.models ? ` (${snapshot.models.length})` : ''}`)
   if (key.lifetimeSpend !== null && key.lifetimeSpend > key.budget.spend + 0.005) {
     add('Lifetime', `${money(key.lifetimeSpend)} across budget resets`)
   }
+  const today = todayRow(snapshot, now)
+
+  add('Today', today && today.text, today?.tone)
   add('Last 7 days', usageText(snapshot))
   add('Top models', topModelsText(snapshot))
+  add('Session', snapshot.session && sessionText(snapshot.session, now))
 
   return rows
 }
