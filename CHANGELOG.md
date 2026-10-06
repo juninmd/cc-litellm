@@ -2,6 +2,13 @@
 
 <!-- Written by release-please from Conventional Commits (see RELEASING.md). Edit the release PR, not this file. -->
 
+## [0.6.0](https://github.com/juninmd/cc-litellm/compare/litellm-key--v0.5.0...litellm-key--v0.6.0) (2026-10-06)
+
+
+### Added
+
+* **litellm-key:** usage tabs, report commands, daily alert and exit codes for scripts ([#12](https://github.com/juninmd/cc-litellm/issues/12)) ([d30fce9](https://github.com/juninmd/cc-litellm/commit/d30fce973de51419409641d20be1fc20d4dbaa87))
+
 ## [0.5.0](https://github.com/juninmd/cc-litellm/compare/litellm-key--v0.4.0...litellm-key--v0.5.0) (2026-10-06)
 
 
