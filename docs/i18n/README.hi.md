@@ -29,7 +29,7 @@
 
 # cc-litellm
 
-यह उन लोगों के लिए एक [Claude Code](https://code.claude.com) plugin है जो अपने models तक **[LiteLLM](https://docs.litellm.ai) proxy** के ज़रिए पहुँचते हैं। यह दिखाता है कि Claude Code जिस **virtual key** का इस्तेमाल कर रहा है, उसके बारे में proxy क्या जानता है (budget, spend, limits, expiry, models, 7-day usage), और admins को terminal छोड़े बिना **keys बनाने और edit करने, किसी को extra budget देने, किसी key को block करने और router की fallback chains पढ़ने** की सुविधा देता है।
+यह उन लोगों के लिए एक [Claude Code](https://code.claude.com) plugin है जो अपने models तक **[LiteLLM](https://docs.litellm.ai) proxy** के ज़रिए पहुँचते हैं। यह दिखाता है कि Claude Code जिस **virtual key** का इस्तेमाल कर रहा है, उसके बारे में proxy क्या जानता है (budget, spend, limits, expiry, models, 30-day usage), और admins को terminal छोड़े बिना **keys बनाने और edit करने, किसी को extra budget देने, किसी key को block करने और router की fallback chains पढ़ने** की सुविधा देता है।
 
 यह repository एक plugin marketplace (`cc-litellm`) है, जिसमें एक ही plugin है: [`litellm-key`](../../plugins/litellm-key)।
 
@@ -43,8 +43,13 @@
 | --- | --- | --- |
 | 👀 **निगरानी** | **Status line** prompt के नीचे, हमेशा दिखती है | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
 | | **`/litellm` pane** | key, team, user और **team-member** budgets के meters, user का **role**, limits, expiry, models, 7-day sparkline, हफ़्ते के **top models** और **runway** forecast; अपने आप refresh होता है |
-| | **Toasts** | 80% (configurable), 95% और 100% पर; key की expiry नज़दीक होने पर; key के blocked या expired होने पर। हर budget window में सिर्फ़ एक बार, अलग-अलग sessions में भी |
+| | **Pane tabs** | **Usage** (spend, requests या tokens प्रति दिन bars में, 7, 14 या 30 दिनों के लिए, चुनने के लिए एक दिन, हर model कैसे बदला), **Models** (हर एक ने कितना खर्च किया, एक filter, एक sort), **Details** (key के fields, LiteLLM का version और database, latency) |
+| | **Guidance** | **Allowance** (reset तक टिकने के लिए रोज़ कितना खर्च करें), **Headroom** (cap में और कितने requests समाते हैं), **Today** सामान्य दिन के मुक़ाबले, **Session** (इस Claude Code session ने कितना खर्च किया, और किस रफ़्तार से) |
+| | **Toasts** | 80% (configurable), 95% और 100% पर; key की expiry नज़दीक होने पर; key के blocked या expired होने पर; आज का spend आपके **daily alert** से ऊपर जाने पर। हर budget window में सिर्फ़ एक बार, अलग-अलग sessions में भी |
 | | **Over-budget banner** | prompt के ऊपर एक लाल band जो **जब तक कोई budget पूरी तरह खर्च हो चुका है तब तक बना रहता है** (key, user, team, window या model) और numbers सामान्य होने पर ही हटता है |
+| 📊 **रिपोर्ट** | **`/litellm pace`**, `usage`, `compare`, `day`, `status` | budget किस ओर जा रहा है, दिन और models tables में, पिछले दिनों के मुक़ाबले क्या बदला, model के हिसाब से एक दिन |
+| | **`/litellm check`** | `OK`, `WARNING`, `CRITICAL` या `UNKNOWN` **और `claude -p` run का exit code** (0 से 3), scripts और monitoring के लिए |
+| | **`/litellm json`** / `csv` | सब कुछ JSON में, दिन CSV में; **`copy`** किसी भी report को clipboard पर रखता है, **`share`** उसे Claude को सौंपता है ताकि आप उसके बारे में पूछ सकें |
 | 🛠️ **प्रबंधन** *(admin)* | **`/litellm key new`** | virtual key बनाएँ; secret आपके **clipboard** में जाता है, **transcript में कभी नहीं** |
 | | **`/litellm grant`** | किसी key, user, team या organization के लिए extra budget, preview और confirmation के साथ |
 | | **`/litellm key set`** / `reset-spend` | key के models, limits, expiry या alias बदलें; उसका spend counter शून्य करें |
@@ -83,6 +88,55 @@ Install किए बिना clone से आज़माएँ: `claude --plu
 <p align="center">
   <img src="../evidence/keys.png" alt="/litellm models और /litellm keys का output" width="92%">
 </p>
+
+### करीब से देखें: usage, models, details
+
+Pane में चार tabs हैं। Overview ऊपर वाला dashboard है; **Usage** पिछले 7, 14 या 30 दिनों को bars में खींचता है, spend, requests या tokens गिनता है, किसी दिन के models देखने के लिए आपको वह दिन चुनने देता है, और बताता है कि पिछले दिनों के मुक़ाबले कौन-सा model बदला:
+
+```text
+ 1: Overview   2: Usage   3: Models  4: Details
+
+ Spend per day (UTC)                7d   d: 14d  30d  m: chart: spend  v: CSV
+
+ $11.4                                                               ██████
+                                       ▁▁▁▁▁▁    ▇▇▇▇▇▇              ██████
+                                       ██████    ██████              ██████
+                   ▇▇▇▇▇▇              ██████    ██████    ▃▃▃▃▃▃    ██████
+         ▅▅▅▅▅▅    ██████              ██████    ██████    ██████    ██████
+    $0   ██████    ██████              ██████    ██████    ██████    ██████
+           Wed       Thu       Fri       Sat       Sun       Mon       Tue
+         $3.10     $5.40       ·       $7.90     $9.20     $4.40     $11.4
+
+ Spend        $41.37 · $5.91/day
+ Requests     369 · $0.112 each
+ Failed       4 requests (1.1%)
+ Peak day     $11.37 on Tue Oct 6
+ Trend        ▲ 34% vs the 7 days before (full days)
+
+ By model, last 7 days · ▲▼ vs the 7 before ─────────────────────────────────
+ claude-sonnet-4-5  ▄▄▄▄▄▄▄▄▄▄▁▁▁▁▁▁▁▁▁▁  52%  $21.51 ▲ 34% · 189 requests
+ claude-opus-4-1    ▄▄▄▄▄▄▁▁▁▁▁▁▁▁▁▁▁▁▁▁  28%  $11.58 ▲ 34% · 99 requests
+```
+
+**Models** वह सब list करता है जो key call कर सकती है, साथ में हर model ने इस range में कितना खर्च किया (spend या नाम से sort करें, और लंबी list को छोटा करने के लिए filter में टाइप करें); **Details** में वह है जो proxy ने key के बारे में बताया, उसका LiteLLM version और database की स्थिति, और `/key/info` में कितना समय लगा। आपकी चुनी range, sort और chart अगली बार के लिए याद रखे जाते हैं, और `/litellm` pane को उसी tab पर खोलता है जिस पर आपने उसे छोड़ा था।
+
+### Report माँगें, या उसे किसी script को सौंपें
+
+```text
+/litellm pace
+Budget     $41.37 / $50.00 (83%) · $8.63 left · resets in 9d 3h (30d)
+Runway     out in 1d 6h at $6.75/day · resets in 9d 3h
+Allowance  $0.95/day to last · 86% less than lately
+Headroom   about 76 more requests at $0.112 each
+Today      $11.37 · 102 requests · 2.2× the usual day ($5.21)
+Session    +$0.40 since 03:03 (12m ago)
+```
+
+```bash
+claude -p "/litellm check"; echo $?    # WARNING · 83% of budget … (exit 1)
+claude -p "/litellm json" | jq .budget.percent
+claude -p "/litellm csv 30" > usage.csv
+```
 
 ### गड़बड़ी जल्दी पकड़ें, और उसका सही नाम बताएँ
 
@@ -158,10 +212,22 @@ Team हर member के खर्च पर cap लगा सकती है 
 
 | कमांड | क्या करता है |
 | --- | --- |
-| `/litellm` | Pane खोलता है (और एक line का summary देता है)। Screen न हो तो: summary print करता है। |
+| `/litellm` | Pane को उसी tab पर खोलता है जिस पर आपने उसे छोड़ा था (और एक line का summary देता है)। Screen न हो तो: उस tab को text के रूप में print करता है। |
+| `/litellm tab <name>` | Pane को `overview`, `usage`, `models` या `details` पर खोलता है (या 1 से 4)। |
 | `/litellm refresh` | अभी दोबारा पढ़ता है। |
 | `/litellm info` | पूरा summary transcript में print करता है। |
-| `/litellm models` | इस key से call हो सकने वाले models की list, हर model की प्रति million tokens कीमत और context window के साथ। |
+| `/litellm status` | Status line को text के रूप में print करता है। |
+| `/litellm pace` | Budget किस ओर जा रहा है, टिके रहने के लिए वह रोज़ कितना खर्च कर सकता है, और यही team और user के लिए भी। |
+| `/litellm usage [7\|14\|30]` | रोज़ का spend, requests और tokens एक table में, totals और models के साथ। |
+| `/litellm compare [7\|14]` | पिछले पूरे दिन, उनसे पहले के उतने ही दिनों के मुक़ाबले, कुल मिलाकर और model-दर-model। |
+| `/litellm day [when]` | Model के हिसाब से एक दिन: `today`, `yesterday`, `2026-10-03`, `10-03` या हफ़्ते का कोई दिन (`mon`)। |
+| `/litellm models [text]` | इस key से call हो सकने वाले models की list, हर model की प्रति million tokens कीमत और context window के साथ; text देने पर सिर्फ़ वे जिनके नाम में वह text हो। |
+| `/litellm check [warn%]` | `OK`, `WARNING`, `CRITICAL` या `UNKNOWN`, और `claude -p` run का exit code: 0, 1, 2, 3। अपनी cap से ऊपर गया budget, या ऐसी key जिसे proxy blocked, expired या rejected बताता है, `CRITICAL` है; जो proxy जवाब नहीं देता वह `UNKNOWN` है। |
+| `/litellm json` | Key के बारे में plugin जो कुछ जानता है, JSON में (key नहीं, hash नहीं)। |
+| `/litellm csv [7\|14\|30]` | दिन CSV में। |
+| `/litellm copy [what]` | किसी report को clipboard पर रखता है: `overview`, `usage`, `models`, `details`, `pace`, `compare`, `csv` या `json`। |
+| `/litellm share [what]` | किसी report को Claude को नज़र से बाहर सौंपता है, ताकि अगला सवाल उसी के बारे में हो सके। |
+| `/litellm ping` | Plugin जो हर endpoint पढ़ता है उसे आज़माता है, उसके status और समय के साथ। |
 | `/litellm debug` | दिखाता है कि URL और keys कहाँ से आ रही हैं (हमेशा masked), क्या-क्या आज़माया गया और नतीजा क्या रहा। |
 | `/litellm close` | Pane बंद करता है। |
 | `/litellm keys [--user ID \| --team ID \| --all]` | Keys की list। Default: आपके अपने user की keys। 🔐 |
@@ -173,7 +239,9 @@ Team हर member के खर्च पर cap लगा सकती है 
 | `/litellm org [id\|alias]` | किसी organization का budget; नाम न दें तो: key की अपनी organization, वरना list। 🔐 |
 | `/litellm fallbacks [model]` | Router की fallback chains, चाहें तो नाम से मेल खाने वाले models के लिए। 🔐 |
 
-🔐 = admin command, नीचे देखें। Pane में (click से या `ctrl+x` `tab` से focus करें): `r` refresh करता है, `c` summary copy करता है, `q` बंद करता है, arrow keys से scroll होता है; हर button अपनी key का नाम बताता है (`Refresh (r)`, `Copy (c)`, `Close (q)`)। खाली prompt पर `Esc` भी इसे बंद कर देता है।
+🔐 = admin command, नीचे देखें। Pane में (click से या `ctrl+x` `tab` से focus करें): `1` से `4` tab बदलते हैं, `r` refresh करता है, `c` आप जिस tab पर हैं उसे copy करता है, `q` बंद करता है, arrow keys से scroll होता है; हर button अपनी key का नाम बताता है (`Refresh (r)`, `Copy (c)`, `Close (q)`)। Usage पर `d` 7, 14 और 30 दिनों में घूमता है, `m` spend, requests और tokens में, `v` दिनों को CSV के रूप में copy करता है; Models पर `s` sort करता है और `f` filter पर जाता है। खाली prompt पर `Esc` भी pane को बंद कर देता है (Models पर वह सिर्फ़ filter से बाहर निकलता है)।
+
+Command में typo हो तो एक सुझाव मिलता है (`Did you mean "usage"?`)। जो काम माँगा गया, वह न हो सके तो एक वाक्य में बता दिया जाता है; और scripts के लिए बने commands (`check`, `json`, `csv`, `ping`) में बताने को कुछ न हो तो exit code 3 मिलता है।
 
 Pane उपलब्ध जगह के हिसाब से ढल जाता है: conversation के बगल में (full screen, 110 columns से) हर meter दो lines लेता है; prompt के ऊपर, 122 columns से, meters एक table बन जाते हैं; और संकरे terminals में यह हर meter के लिए दो lines ही रखता है, या `compact_pane` enable करने पर **compact** हो जाता है। Conversation के बगल में pane में titles वाले sections (`BUDGETS`, `KEY`, `LAST 7 DAYS`, `TOP MODELS`) दिखते हैं और हफ़्ते के हर दिन के नीचे एक letter होता है; `TOP MODELS` सबसे ज़्यादा spend करने वाले पाँच models को rank करता है, हर model के साथ हफ़्ते में उसका हिस्सा एक bar के रूप में। लंबा नाम बीच से काट दिया जाता है, ताकि `claude-sonnet-4-5` और `claude-sonnet-4-6` अलग-अलग पहचाने जा सकें। Color कभी अकेला signal नहीं होता: `▲` उस budget को दिखाता है जो अपनी cap के क़रीब है, `✖` उसे जो पूरी तरह खर्च हो चुका है, और बिना spend वाला दिन `·` होता है, कभी छोटा bar नहीं।
 
@@ -278,9 +346,11 @@ Plugin वही URL और key पढ़ता है जो Claude Code इस
 | `litellm_admin_key` | खाली | `keys`, `key new/set/reset-spend/block/unblock`, `grant`, `org`, `fallbacks` के लिए admin key। 🔒 वही storage। कभी print नहीं होती। |
 | `refresh_seconds` | 60 | पढ़ने का interval (15 से 3600)। हर turn के बाद भी पढ़ता है, ज़्यादा से ज़्यादा हर 20 s में। |
 | `warn_percent` | 80 | पहली budget warning (95% और 100% पर भी warn करता है)। |
+| `daily_alert` | 0 (बंद) | key का आज का spend इतने dollars तक पहुँचते ही warn करता है: दिन में एक toast, status line और pane। चालू होने पर usage history हर 3 मिनट में पढ़ी जाती है। |
+| `show_toasts` | yes | वे toasts जो budget, daily alert, expiry के क़रीब पहुँची key और failing proxy के बारे में warn करते हैं। बंद होने पर warnings status line और pane में ही रहती हैं। |
 | `show_status_line` | yes | Prompt के नीचे की line। |
 | `show_related` | yes | `/user/info` और `/team/info` पढ़ें: वे budgets भी requests को block कर सकते हैं। |
-| `show_usage` | yes | 7-day usage के लिए `/user/daily/activity` (LiteLLM का एक beta endpoint) पढ़ें। |
+| `show_usage` | yes | `/user/daily/activity` (LiteLLM का एक beta endpoint) पढ़ें: पिछले 30 दिनों का usage, जिस पर Usage और Models tabs, reports, runway और daily alert टिके हैं। |
 | `compact_pane` | no | संकरे terminals (74 से 121 columns) में prompt के ऊपर compact pane: हर line पर एक meter, facts अगल-बगल। |
 
 ## डेटा कहाँ से आता है
@@ -293,7 +363,10 @@ Plugin वही URL और key पढ़ता है जो Claude Code इस
 | `/user/info`, `/team/info` | Key के user और team का budget, और team की per-member cap, जब cap लगा हो। हर read पर। |
 | `/v1/models` | वे models जो वाकई allowed हैं। हर 10 मिनट में। |
 | `/model_group/info` | उन models की प्रति token कीमत और context window (proxy अपने सभी models के लिए जवाब देता है; plugin सिर्फ़ allowed वाले रखता है)। हर 10 मिनट में। |
-| `/user/daily/activity` | पिछले 7 दिनों का spend, requests और tokens, और model के हिसाब से spend। हर 10 मिनट में। |
+| `/user/daily/activity` | पिछले 30 दिनों का spend, requests, tokens और models, दिन-ब-दिन। हर 10 मिनट में। |
+| `/health/readiness` | LiteLLM का version और उसका database जुड़ा है या नहीं। हर 10 मिनट में; proxy न बताए तो कुछ नहीं दिखता, कोई note भी नहीं। |
+
+“हर 10 मिनट में” वाले reads तब हर 3 मिनट में होते हैं जब `daily_alert` सेट हो: वह आज के spend पर नज़र रखता है।
 
 **Managing** तभी होता है जब आप कोई admin command टाइप करते हैं: `GET /key/list`, `/key/info`, `/user/info`, `/team/info`, `/v2/team/list`, `/organization/info`, `/organization/list`, `/router/settings`, और `POST /key/generate`, `/key/delete` (सिर्फ़ rollback के लिए), `/key/block`, `/key/unblock`, `/key/update`, `/key/{hash}/reset_spend`, `/user/update`, `/team/update`, `PATCH /organization/update`।
 
@@ -316,7 +389,7 @@ Plugin वही URL और key पढ़ता है जो Claude Code इस
 | "does not look like a LiteLLM proxy" | URL किसी और चीज़ की तरफ़ इशारा कर रहा है। `litellm_url` को proxy root पर set करें। |
 | "key blocked" / "key expired" | ठीक वही। किसी admin से कहें, या किसी दूसरे session से `/litellm key unblock` चलाएँ। |
 | "key rejected (401)" | Invalid key। |
-| 7-day history नहीं दिख रही | Key का कोई `user_id` नहीं है, या आपके LiteLLM version में beta endpoint मौजूद नहीं है। |
+| Usage history नहीं दिख रही | Key का कोई `user_id` नहीं है, या आपके LiteLLM version में beta endpoint मौजूद नहीं है। |
 | Admin command कहता है कि admin key चाहिए | `litellm_admin_key` set करें। |
 | Admin command "until the proxy accepts this session's key" पर रुका रहता है | यह by design है: admin key सिर्फ़ उसी proxy को भेजी जाती है जिसने आपकी अपनी key accept की हो। उस key को किसी दूसरे session या LiteLLM UI से ठीक करें। |
 
@@ -346,7 +419,7 @@ tsc -p plugins/litellm-key                              # types (.claude-plugin/
 bash dev/check-file-size.sh                             # no source file over 300 lines
 ```
 
-Plugin का layout: `hooks/register.tsx` अकेली ऐसी file है जो Claude Code के `$` को छूती है; यह injected ports (`hooks/ports.ts`) बनाती है और events, commands, timers और toasts को जोड़ती है। बाक़ी सब plain functions हैं जो उन ports को लेती हैं, इसलिए वे engine boot किए बिना test में चलती हैं। `hooks/session.ts` reading cycle है (config, ticker, queue में लगा forced refresh); `hooks/credentials.ts` और `hooks/settings.ts` key और options resolve करते हैं; `hooks/litellm.ts` proxy को पढ़ता है, `hooks/parsers.ts` और `hooks/json.ts` जवाबों को normalize करते हैं और `hooks/failures.ts` बताता है कि क्या गड़बड़ हुई; `hooks/alerts.ts` तय करता है कि कौन-से toasts दिखें। `hooks/commands.ts` `/litellm` की command table है और `hooks/admin*.ts` admin commands हैं (`admin.ts` proxy के reads, `admin-targets.ts` key, user और team के lookups, `admin-writes.ts` उसके writes, `admin-plan.ts` previews और plans, `admin-link.ts` admin key का proxy से link, `admin-commands.ts` flow, `args.ts` argument parser)। `hooks/exceeded.ts` और `hooks/band.tsx` over-budget banner हैं; `hooks/summary.ts` text बनाता है, `hooks/view.tsx` और `hooks/parts.tsx` pane बनाते हैं (gauge, section titles, status chip, meter rows); `hooks/format.ts` में pure formatters हैं; `types/index.d.ts` state contract है।
+Plugin का layout: `hooks/register.tsx` अकेली ऐसी file है जो Claude Code के `$` को छूती है; यह injected ports (`hooks/ports.ts`) बनाती है और events, commands, timers और toasts को जोड़ती है। बाक़ी सब plain functions हैं जो उन ports को लेती हैं, इसलिए वे engine boot किए बिना test में चलती हैं। `hooks/session.ts` reading cycle है (config, ticker, queue में लगा forced refresh); `hooks/credentials.ts` और `hooks/settings.ts` key और options resolve करते हैं; `hooks/litellm.ts` proxy को पढ़ता है, `hooks/parsers.ts` और `hooks/json.ts` जवाबों को normalize करते हैं और `hooks/failures.ts` बताता है कि क्या गड़बड़ हुई; `hooks/alerts.ts` तय करता है कि कौन-से toasts दिखें। `hooks/commands.ts` `/litellm` की command table है और `hooks/admin*.ts` admin commands हैं (`admin.ts` proxy के reads, `admin-targets.ts` key, user और team के lookups, `admin-writes.ts` उसके writes, `admin-plan.ts` previews और plans, `admin-link.ts` admin key का proxy से link, `admin-commands.ts` flow, `args.ts` argument parser)। `hooks/exceeded.ts` और `hooks/band.tsx` over-budget banner हैं; `hooks/summary.ts` text बनाता है, `hooks/view.tsx` और `hooks/parts.tsx` pane बनाते हैं (gauge, section titles, status chip, meter rows); `hooks/format.ts` में pure formatters हैं; `types/index.d.ts` state contract है। Tabs `hooks/tab-*.tsx` हैं (`tab-overview.tsx` वह dashboard है जो tabs से पहले pane में था, `parts-tabs.tsx` उनके साझा हिस्से, `chart.ts` bars); reports `hooks/report-*.ts`, `details.ts` और `probe.ts` (`/litellm ping`) हैं, जो `history.ts` (30 दिन, totals और comparisons) और `guidance.ts` (allowance, headroom, today और session) के ऊपर बने हैं। `hooks/commands-reports.ts` और `commands-share.ts` वे commands हैं जो किसी report को print करते हैं या सौंपते हैं।
 
 ## ज्ञात सीमाएँ
 
@@ -355,7 +428,8 @@ Plugin का layout: `hooks/register.tsx` अकेली ऐसी file है
 - Per-model budgets (`model_max_budget`), temporary budget increases और key regeneration proxy की तरफ़ से सिर्फ़ enterprise में हैं, इसलिए इन्हें offer नहीं किया जाता ([Budgets](#budgets-what-litellm-can-and-cannot-do) देखें)। Fallback chains को edit करने के लिए proxy पर `STORE_MODEL_IN_DB=True` चाहिए, इसलिए `/litellm fallbacks` read-only ही रहता है।
 - किसी **organization** का budget key के अपने जवाब में नहीं होता और virtual key उसे पढ़ ही न पाए, ऐसा हो सकता है, इसलिए pane सिर्फ़ organization का नाम बताता है; `/litellm org` उसे admin key से पढ़ता है। Admin key अब भी सिर्फ़ तब भेजी जाती है जब आप admin command टाइप करें, refresh timer पर कभी नहीं।
 - किसी team **member** का total virtual key को नहीं बताया जाता: `Member` meter सिर्फ़ इस key का spend गिनता है, इसलिए वह कम दिख सकता है: अगर user की team में कई keys हैं, तो proxy meter के बताने से पहले भी block कर सकता है। जिस cap का reset होता है उसके सामने वह ज़्यादा भी दिख सकता है (reset member का spend शून्य करता है, key का नहीं), इसलिए वहाँ वह चेतावनी देता है और banner शांत रहता है।
-- 7-day history proxy की activity rows का एक ही page पढ़ती है; ज़्यादा होने पर pane बताता है कि यह अधूरी है।
+- Usage history proxy की activity rows का एक page पढ़ती है; ज़्यादा rows होने पर pane बताता है कि वह अधूरी है। दिन UTC के हैं, जैसे proxy उन्हें गिनता है; आज का दिन अभी चल रहा है, इसलिए comparisons उसे छोड़ देते हैं।
+- **Session** row गिनती है कि इस Claude Code session की पहली reading के बाद से key का spend कितना बढ़ा। वह इस session के spend को उसी key वाले किसी दूसरे session के spend से अलग नहीं कर सकती।
 - Over-budget banner terminal और desktop surfaces पर बनता है (Claude Code band सिर्फ़ वहीं देता है); बाक़ी जगह status line और pane यही बात बताते हैं।
 - Status line से पहले का `⚠` Claude Code हर plugin status entry के लिए ख़ुद बनाता है; इसका मतलब यह नहीं कि key मुसीबत में है (यह बात text बताता है)।
 - Claude Code का plugin API early-access है और versions के बीच बदल सकता है।

@@ -29,7 +29,7 @@
 
 # cc-litellm
 
-Modellerine bir **[LiteLLM](https://docs.litellm.ai) proxy'si** üzerinden erişenler için bir [Claude Code](https://code.claude.com) eklentisi. Claude Code'un kullandığı **sanal anahtar** hakkında proxy'nin bildiklerini (bütçe, harcama, limitler, son kullanma tarihi, modeller, 7 günlük kullanım) gösterir. Adminler için ise terminalden çıkmadan **anahtar oluşturma ve düzenleme, birine ek bütçe verme, bir anahtarı engelleme ve router'ın fallback zincirlerini okuma** imkânı sunar.
+Modellerine bir **[LiteLLM](https://docs.litellm.ai) proxy'si** üzerinden erişenler için bir [Claude Code](https://code.claude.com) eklentisi. Claude Code'un kullandığı **sanal anahtar** hakkında proxy'nin bildiklerini (bütçe, harcama, limitler, son kullanma tarihi, modeller, 30 günlük kullanım) gösterir. Adminler için ise terminalden çıkmadan **anahtar oluşturma ve düzenleme, birine ek bütçe verme, bir anahtarı engelleme ve router'ın fallback zincirlerini okuma** imkânı sunar.
 
 Bu depo, tek eklentili bir eklenti marketplace'idir (`cc-litellm`): [`litellm-key`](../../plugins/litellm-key).
 
@@ -43,8 +43,13 @@ Bu depo, tek eklentili bir eklenti marketplace'idir (`cc-litellm`): [`litellm-ke
 | --- | --- | --- |
 | 👀 **İzleyin** | **Durum satırı** prompt'un altında, her zaman görünür | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
 | | **`/litellm` paneli** | anahtar, takım, kullanıcı ve **takım üyesi** bütçeleri için göstergeler, kullanıcının **rolü**, limitler, son kullanma, modeller, 7 günlük sparkline, haftanın **en çok harcayan modelleri** ve **runway** tahmini; kendini yeniler |
-| | **Toast bildirimleri** | %80'de (yapılandırılabilir), %95'te, %100'de; anahtarın süresi dolmak üzere; anahtar engellenmiş veya süresi dolmuş. Bütçe penceresi başına bir kez, oturumlar arasında bile |
+| | **Panel sekmeleri** | **Usage** (günlük harcama, istek veya token çubuklar olarak, 7, 14 veya 30 gün boyunca, seçilecek bir gün, her modelin nasıl değiştiği), **Models** (her birinin harcadığı, bir filtre, bir sıralama), **Details** (anahtarın alanları, LiteLLM'in sürümü ve veritabanı, gecikme) |
+| | **Yönlendirme** | **Allowance** (sıfırlanmaya kadar yetmesi için günde ne harcanabilir), **Headroom** (limitin kaç istek daha taşıdığı), **Today** olağan günle karşılaştırılmış, **Session** (bu Claude Code oturumunun harcadığı ve hangi hızla) |
+| | **Toast bildirimleri** | %80'de (yapılandırılabilir), %95'te, %100'de; anahtarın süresi dolmak üzere; anahtar engellenmiş veya süresi dolmuş; bugünkü harcama **günlük uyarınızı** aşmış. Bütçe penceresi başına bir kez, oturumlar arasında bile |
 | | **Bütçe aşımı banner'ı** | prompt'un üzerinde, **bir bütçe tükendiği sürece ekranda kalan** (anahtar, kullanıcı, takım, pencere veya model) ve yalnızca değerler yeniden normale döndüğünde kalkan kırmızı bir bant |
+| 📊 **Raporlayın** | **`/litellm pace`**, `usage`, `compare`, `day`, `status` | bütçenin nereye gittiği, günler ve modeller tablo olarak, önceki günlere göre ne değiştiği, modele göre bir gün |
+| | **`/litellm check`** | `OK`, `WARNING`, `CRITICAL` veya `UNKNOWN` **ve bir `claude -p` çalıştırmasının çıkış kodu** (0 ile 3 arası), betikler ve izleme için |
+| | **`/litellm json`** / `csv` | her şey JSON olarak, günler CSV olarak; **`copy`** herhangi bir raporu panoya koyar, **`share`** onu Claude'a verir, böylece hakkında soru sorabilirsiniz |
 | 🛠️ **Yönetin** *(admin)* | **`/litellm key new`** | sanal anahtar oluşturur; secret **panonuza gider, transkripte asla** |
 | | **`/litellm grant`** | bir anahtar, kullanıcı, takım veya organizasyon için ek bütçe; önizleme ve onay ile |
 | | **`/litellm key set`** / `reset-spend` | bir anahtarın modellerini, limitlerini, son kullanma tarihini veya alias'ını değiştirir; harcama sayacını sıfırlar |
@@ -83,6 +88,55 @@ Claude Code zaten LiteLLM ile konuşuyorsa **yapılandıracak bir şey yok**: ek
 <p align="center">
   <img src="../evidence/keys.png" alt="/litellm models ve /litellm keys çıktısı" width="92%">
 </p>
+
+### Yakından bakın: kullanım, modeller, ayrıntılar
+
+Panelin dört sekmesi var. Overview yukarıdaki gösterge tablosudur; **Usage** son 7, 14 veya 30 günü çubuklarla çizer, harcamayı, istekleri veya token'ları sayar, modellerini görmek için bir gün seçmenize izin verir ve önceki günlere göre hangi modelin değiştiğini söyler:
+
+```text
+ 1: Overview   2: Usage   3: Models  4: Details
+
+ Spend per day (UTC)                7d   d: 14d  30d  m: chart: spend  v: CSV
+
+ $11.4                                                               ██████
+                                       ▁▁▁▁▁▁    ▇▇▇▇▇▇              ██████
+                                       ██████    ██████              ██████
+                   ▇▇▇▇▇▇              ██████    ██████    ▃▃▃▃▃▃    ██████
+         ▅▅▅▅▅▅    ██████              ██████    ██████    ██████    ██████
+    $0   ██████    ██████              ██████    ██████    ██████    ██████
+           Wed       Thu       Fri       Sat       Sun       Mon       Tue
+         $3.10     $5.40       ·       $7.90     $9.20     $4.40     $11.4
+
+ Spend        $41.37 · $5.91/day
+ Requests     369 · $0.112 each
+ Failed       4 requests (1.1%)
+ Peak day     $11.37 on Tue Oct 6
+ Trend        ▲ 34% vs the 7 days before (full days)
+
+ By model, last 7 days · ▲▼ vs the 7 before ─────────────────────────────────
+ claude-sonnet-4-5  ▄▄▄▄▄▄▄▄▄▄▁▁▁▁▁▁▁▁▁▁  52%  $21.51 ▲ 34% · 189 requests
+ claude-opus-4-1    ▄▄▄▄▄▄▁▁▁▁▁▁▁▁▁▁▁▁▁▁  28%  $11.58 ▲ 34% · 99 requests
+```
+
+**Models** anahtarın çağırabildiklerini, aralık boyunca her modelin harcadığıyla birlikte listeler (harcamaya veya ada göre sıralayın, uzun bir listeyi daraltmak için filtreye yazın); **Details** proxy'nin anahtar hakkında söylediklerini, LiteLLM sürümünü ve veritabanı durumunu, ayrıca `/key/info`'nun ne kadar sürdüğünü bir araya getirir. Seçtiğiniz aralık, sıralama ve grafik bir sonraki sefer için hatırlanır ve `/litellm` paneli bıraktığınız sekmede açar.
+
+### Rapor isteyin ya da bir betiğe verin
+
+```text
+/litellm pace
+Budget     $41.37 / $50.00 (83%) · $8.63 left · resets in 9d 3h (30d)
+Runway     out in 1d 6h at $6.75/day · resets in 9d 3h
+Allowance  $0.95/day to last · 86% less than lately
+Headroom   about 76 more requests at $0.112 each
+Today      $11.37 · 102 requests · 2.2× the usual day ($5.21)
+Session    +$0.40 since 03:03 (12m ago)
+```
+
+```bash
+claude -p "/litellm check"; echo $?    # WARNING · 83% of budget … (exit 1)
+claude -p "/litellm json" | jq .budget.percent
+claude -p "/litellm csv 30" > usage.csv
+```
 
 ### Sorunu erkenden yakalayın ve adını koyun
 
@@ -158,10 +212,22 @@ Yukarıdakilerin hepsi, eklentinin yaptıklarını yansıtan gerçek LiteLLM v1.
 
 | Komut | Ne yapar |
 | --- | --- |
-| `/litellm` | Paneli açar (ve tek satırlık bir özetle yanıt verir). Ekran yoksa özeti yazdırır. |
+| `/litellm` | Paneli bıraktığınız sekmede açar (ve tek satırlık bir özetle yanıt verir). Ekran yoksa o sekmeyi metin olarak yazdırır. |
+| `/litellm tab <name>` | Paneli `overview`, `usage`, `models` veya `details` sekmesinde açar (ya da 1 ile 4 arası). |
 | `/litellm refresh` | Şimdi yeniden okur. |
 | `/litellm info` | Tam özeti transkripte yazdırır. |
-| `/litellm models` | Bu anahtarın çağırabileceği modelleri, milyon token başına fiyatları ve context window ile birlikte listeler. |
+| `/litellm status` | Durum satırını metin olarak yazdırır. |
+| `/litellm pace` | Bütçenin nereye gittiğini, yetmesi için günde ne harcayabileceğini ve aynısını takım ile kullanıcı için gösterir. |
+| `/litellm usage [7\|14\|30]` | Günlük harcama, istek ve token'ı bir tablo olarak, toplamlar ve modellerle birlikte gösterir. |
+| `/litellm compare [7\|14]` | Son tam günleri, öncesindeki aynı sayıda günle karşılaştırır; bütün olarak ve model model. |
+| `/litellm day [when]` | Modele göre bir gün: `today`, `yesterday`, `2026-10-03`, `10-03` veya haftanın bir günü (`mon`). |
+| `/litellm models [text]` | Bu anahtarın çağırabileceği modelleri, milyon token başına fiyatları ve context window ile birlikte listeler; bir metin verilirse yalnızca adında o metin geçenleri. |
+| `/litellm check [warn%]` | `OK`, `WARNING`, `CRITICAL` veya `UNKNOWN` ve bir `claude -p` çalıştırmasının çıkış kodu: 0, 1, 2, 3. Limitini aşmış bir bütçe ya da proxy'nin engellenmiş, süresi dolmuş veya reddedilmiş dediği bir anahtar `CRITICAL`'dır; yanıt vermeyen bir proxy `UNKNOWN`'dur. |
+| `/litellm json` | Eklentinin anahtar hakkında bildiği her şeyi JSON olarak yazdırır (anahtar ve hash olmadan). |
+| `/litellm csv [7\|14\|30]` | Günleri CSV olarak yazdırır. |
+| `/litellm copy [what]` | Bir raporu panoya koyar: `overview`, `usage`, `models`, `details`, `pace`, `compare`, `csv` veya `json`. |
+| `/litellm share [what]` | Bir raporu Claude'a görünmeden verir, böylece sonraki soru onun hakkında olabilir. |
+| `/litellm ping` | Eklentinin okuduğu her endpoint'i durumu ve süresiyle birlikte dener. |
 | `/litellm debug` | URL'nin ve anahtarların nereden geldiğini (her zaman maskeli), nelerin denendiğini ve sonucu gösterir. |
 | `/litellm close` | Paneli kapatır. |
 | `/litellm keys [--user ID \| --team ID \| --all]` | Anahtarları listeler. Varsayılan: kendi kullanıcınızın anahtarları. 🔐 |
@@ -173,7 +239,9 @@ Yukarıdakilerin hepsi, eklentinin yaptıklarını yansıtan gerçek LiteLLM v1.
 | `/litellm org [id\|alias]` | Bir organizasyonun bütçesi; ad verilmezse: anahtarın kendi organizasyonu, yoksa liste. 🔐 |
 | `/litellm fallbacks [model]` | Router fallback zincirleri; isteğe bağlı olarak adı eşleşen modeller için. 🔐 |
 
-🔐 = yönetici komutu, aşağıya bakın. Panelde (tıklayarak veya `ctrl+x` `tab` ile odaklanın): `r` yeniler, `c` özeti kopyalar, `q` kapatır, ok tuşları kaydırır; her düğme kendi tuşunu belirtir (`Refresh (r)`, `Copy (c)`, `Close (q)`). `Esc` de boş bir prompt'ta paneli kapatır.
+🔐 = yönetici komutu, aşağıya bakın. Panelde (tıklayarak veya `ctrl+x` `tab` ile odaklanın): `1` ile `4` arası sekme değiştirir, `r` yeniler, `c` bulunduğunuz sekmeyi kopyalar, `q` kapatır, ok tuşları kaydırır; her düğme kendi tuşunu belirtir (`Refresh (r)`, `Copy (c)`, `Close (q)`). Usage'da `d` 7, 14 ve 30 günü dolaşır, `m` harcama, istek ve token arasında geçer, `v` günleri CSV olarak kopyalar; Models'ta `s` sıralar, `f` filtreye gider. `Esc` de boş bir prompt'ta paneli kapatır (Models'ta yalnızca filtreden çıkar).
+
+Yanlış yazılmış bir komut bir tahmin alır (`Did you mean "usage"?`). İstenileni yapamayan bir komut bunu tek cümleyle söyler; betikler için tasarlananlar (`check`, `json`, `csv`, `ping`) bildirilecek bir şey olmadığında 3 çıkış koduyla biter.
 
 Panel, mevcut alana uyum sağlar: konuşmanın yanında (tam ekran, 110 sütundan itibaren) her gösterge iki satır kaplar; prompt'un üzerinde, 122 sütundan itibaren göstergeler tabloya dönüşür; daha dar terminallerde gösterge başına iki satırı korur ya da `compact_pane` seçeneğini etkinleştirirseniz **kompakt** hâle gelir. Konuşmanın yanında panel, başlıklı bölümler (`BUDGETS`, `KEY`, `LAST 7 DAYS`, `TOP MODELS`) gösterir ve haftanın her gününün altına bir harf koyar; `TOP MODELS` en çok harcayan beş modeli sıralar, her birinin haftadaki payını bir çubuk olarak gösterir. Uzun bir ad ortadan kısaltılır, böylece `claude-sonnet-4-5` ile `claude-sonnet-4-6` birbirinden ayırt edilebilir kalır. Renk hiçbir zaman tek sinyal değildir: `▲` üst sınırına yaklaşmış bir bütçeyi, `✖` tükenmiş bir bütçeyi işaretler; harcama olmayan gün kısa bir çubuk değil, bir `·` olarak görünür.
 
@@ -278,9 +346,11 @@ Tüm seçenekler isteğe bağlıdır (Claude Code kurulumda bunların "ayarlanma
 | `litellm_admin_key` | boş | `keys`, `key new/set/reset-spend/block/unblock`, `grant`, `org`, `fallbacks` için admin anahtarı. 🔒 aynı depolama. Asla yazdırılmaz. |
 | `refresh_seconds` | 60 | Okuma aralığı (15 ila 3600). Her turdan sonra da okur, en fazla 20 sn'de bir. |
 | `warn_percent` | 80 | İlk bütçe uyarısı (%95 ve %100'de de uyarır). |
+| `daily_alert` | 0 (kapalı) | Anahtarın bugünkü harcaması bu dolar tutarına ulaştığında uyarır: günde bir toast, durum satırı ve panel. Açıkken kullanım geçmişi 3 dakikada bir okunur. |
+| `show_toasts` | evet | Bütçe, günlük uyarı, süresi dolmak üzere olan anahtar ve çalışmayan proxy hakkında uyaran toast'lar. Kapalıyken uyarılar durum satırında ve panelde kalır. |
 | `show_status_line` | evet | Prompt'un altındaki satır. |
 | `show_related` | evet | `/user/info` ve `/team/info` okunur: bu bütçeler de istekleri engelleyebilir. |
-| `show_usage` | evet | 7 günlük kullanım için `/user/daily/activity` okunur (beta bir LiteLLM endpoint'i). |
+| `show_usage` | evet | `/user/daily/activity` okunur (beta bir LiteLLM endpoint'i): Usage ve Models sekmelerinin, raporların, runway'in ve günlük uyarının dayandığı son 30 günlük kullanım. |
 | `compact_pane` | hayır | Dar terminallerde (74 ila 121 sütun) prompt'un üzerinde kompakt panel: satır başına bir gösterge, bilgiler yan yana. |
 
 ## Verilerin geldiği yer
@@ -293,7 +363,10 @@ Tüm seçenekler isteğe bağlıdır (Claude Code kurulumda bunların "ayarlanma
 | `/user/info`, `/team/info` | Anahtarın kullanıcısının ve takımının bütçesi ile takımın üye başına üst sınırı (üst sınır varsa). Her okumada. |
 | `/v1/models` | Gerçekte izin verilen modeller. 10 dakikada bir. |
 | `/model_group/info` | Bu modellerin token başına fiyatı ve context window'u (proxy tüm modelleri için yanıt verir, eklenti izin verilenleri tutar). 10 dakikada bir. |
-| `/user/daily/activity` | Son 7 günün harcaması, istek ve token sayıları, ayrıca model başına harcama. 10 dakikada bir. |
+| `/user/daily/activity` | Son 30 günün harcaması, istek ve token sayıları ile modelleri, gün gün. 10 dakikada bir. |
+| `/health/readiness` | LiteLLM'in sürümü ve veritabanının bağlı olup olmadığı. 10 dakikada bir; proxy söylemezse hiçbir şey gösterilmez, bir not bile. |
+
+“10 dakikada bir” olarak işaretlenen okumalar, bir `daily_alert` ayarlıyken 3 dakikada bir yapılır: izlediği şey bugünkü harcamadır.
 
 **Yönetim** yalnızca bir yönetici komutu yazdığınızda gerçekleşir: `GET /key/list`, `/key/info`, `/user/info`, `/team/info`, `/v2/team/list`, `/organization/info`, `/organization/list`, `/router/settings` ve `POST /key/generate`, `/key/delete` (yalnızca rollback), `/key/block`, `/key/unblock`, `/key/update`, `/key/{hash}/reset_spend`, `/user/update`, `/team/update`, `PATCH /organization/update`.
 
@@ -316,7 +389,7 @@ Her istek en fazla 4 sn bekler (yönetici komutlarında 15 sn). Başarısız ola
 | "does not look like a LiteLLM proxy" | URL başka bir şeye işaret ediyor. `litellm_url` değerini proxy köküne ayarlayın. |
 | "key blocked" / "key expired" | Tam olarak bu. Bir admin'e danışın ya da başka bir oturumdan `/litellm key unblock` çalıştırın. |
 | "key rejected (401)" | Geçersiz anahtar. |
-| 7 günlük geçmiş yok | Anahtarın `user_id` değeri yok ya da beta endpoint LiteLLM sürümünüzde bulunmuyor. |
+| Kullanım geçmişi yok | Anahtarın `user_id` değeri yok ya da beta endpoint LiteLLM sürümünüzde bulunmuyor. |
 | Yönetici komutu admin anahtarı gerektiğini söylüyor | `litellm_admin_key` ayarlayın. |
 | Yönetici komutu "until the proxy accepts this session's key" diye bekliyor | Tasarım gereği, admin anahtarı yalnızca sizin kendi anahtarınızı kabul etmiş bir proxy'ye gönderilir. O anahtarı başka bir oturumdan veya LiteLLM arayüzünden düzeltin. |
 
@@ -346,7 +419,7 @@ tsc -p plugins/litellm-key                              # types (.claude-plugin/
 bash dev/check-file-size.sh                             # no source file over 300 lines
 ```
 
-Eklentinin yapısı: `hooks/register.tsx`, Claude Code'un `$` nesnesine dokunan tek dosyadır; enjekte edilen portları (`hooks/ports.ts`) oluşturur ve olayları, komutları, zamanlayıcıları ve toast'ları bağlar. Geri kalan her şey bu portları alan düz fonksiyonlardır; bu yüzden motoru başlatmadan testte çalışırlar. `hooks/session.ts` okuma döngüsüdür (yapılandırma, ticker, kuyruğa alınmış zorunlu yenileme); `hooks/credentials.ts` ve `hooks/settings.ts` anahtarı ve seçenekleri çözer; `hooks/litellm.ts` proxy'yi okur, `hooks/parsers.ts` ve `hooks/json.ts` yanıtları normalleştirir, `hooks/failures.ts` neyin ters gittiğini adlandırır; `hooks/alerts.ts` toast'lara karar verir. `hooks/commands.ts` `/litellm` komut tablosudur, `hooks/admin*.ts` ise yönetici komutlarıdır (`admin.ts` proxy okumaları, `admin-targets.ts` anahtar, kullanıcı ve takım aramaları, `admin-writes.ts` yazmaları, `admin-plan.ts` önizlemeler ve planlar, `admin-link.ts` admin anahtarının proxy'ye bağlantısı, `admin-commands.ts` akış, `args.ts` argüman ayrıştırıcı). `hooks/exceeded.ts` ve `hooks/band.tsx` bütçe aşımı banner'ıdır; `hooks/summary.ts` metni, `hooks/view.tsx` ve `hooks/parts.tsx` paneli (kadran, bölüm başlıkları, durum çipi, gösterge satırları) oluşturur; `hooks/format.ts` saf biçimlendiricileri içerir; `types/index.d.ts` state sözleşmesidir.
+Eklentinin yapısı: `hooks/register.tsx`, Claude Code'un `$` nesnesine dokunan tek dosyadır; enjekte edilen portları (`hooks/ports.ts`) oluşturur ve olayları, komutları, zamanlayıcıları ve toast'ları bağlar. Geri kalan her şey bu portları alan düz fonksiyonlardır; bu yüzden motoru başlatmadan testte çalışırlar. `hooks/session.ts` okuma döngüsüdür (yapılandırma, ticker, kuyruğa alınmış zorunlu yenileme); `hooks/credentials.ts` ve `hooks/settings.ts` anahtarı ve seçenekleri çözer; `hooks/litellm.ts` proxy'yi okur, `hooks/parsers.ts` ve `hooks/json.ts` yanıtları normalleştirir, `hooks/failures.ts` neyin ters gittiğini adlandırır; `hooks/alerts.ts` toast'lara karar verir. `hooks/commands.ts` `/litellm` komut tablosudur, `hooks/admin*.ts` ise yönetici komutlarıdır (`admin.ts` proxy okumaları, `admin-targets.ts` anahtar, kullanıcı ve takım aramaları, `admin-writes.ts` yazmaları, `admin-plan.ts` önizlemeler ve planlar, `admin-link.ts` admin anahtarının proxy'ye bağlantısı, `admin-commands.ts` akış, `args.ts` argüman ayrıştırıcı). `hooks/exceeded.ts` ve `hooks/band.tsx` bütçe aşımı banner'ıdır; `hooks/summary.ts` metni, `hooks/view.tsx` ve `hooks/parts.tsx` paneli (kadran, bölüm başlıkları, durum çipi, gösterge satırları) oluşturur; `hooks/format.ts` saf biçimlendiricileri içerir; `types/index.d.ts` state sözleşmesidir. Sekmeler `hooks/tab-*.tsx` dosyalarıdır (`tab-overview.tsx` panelin sekmelerden önceki gösterge tablosu, `parts-tabs.tsx` ortak parçaları, `chart.ts` çubuklar); raporlar `hooks/report-*.ts`, `details.ts` ve `probe.ts` (`/litellm ping`) dosyalarıdır ve `history.ts` (30 gün, toplamlar ve karşılaştırmalar) ile `guidance.ts` (allowance, headroom, today ve oturum) üzerinde durur. `hooks/commands-reports.ts` ve `commands-share.ts`, bir raporu yazdıran veya veren komutlardır.
 
 ## Bilinen sınırlar
 
@@ -355,7 +428,8 @@ Eklentinin yapısı: `hooks/register.tsx`, Claude Code'un `$` nesnesine dokunan 
 - Model başına bütçeler (`model_max_budget`), geçici bütçe artışları ve anahtar yeniden üretimi proxy tarafında yalnızca enterprise sürümündedir; bu yüzden sunulmaz ([Bütçeler](#budgets-what-litellm-can-and-cannot-do) bölümüne bakın). Fallback zincirlerini düzenlemek proxy'de `STORE_MODEL_IN_DB=True` gerektirir; bu yüzden `/litellm fallbacks` salt okunur kalır.
 - Bir **organizasyonun** bütçesi anahtarın kendi yanıtında yoktur ve sanal anahtar onu okuyamayabilir; bu yüzden panel yalnızca organizasyonun adını gösterir, `/litellm org` onu admin anahtarıyla okur. Admin anahtarı yine yalnızca bir yönetici komutu yazdığınızda gönderilir, yenileme zamanlayıcısında asla.
 - Bir takım **üyesinin** toplamı sanal anahtara bildirilmez: `Member` göstergesi yalnızca bu anahtarın harcamasını sayar, bu yüzden düşük okunabilir: kullanıcının takımda birden çok anahtarı varsa proxy, göstergenin söylediğinden daha erken engelleyebilir. Sıfırlanan bir üst sınırda yüksek de okunabilir (sıfırlama üyenin harcamasını sıfırlar, anahtarınkini değil); orada gösterge uyarır, banner ise sessiz kalır.
-- 7 günlük geçmiş, proxy'nin etkinlik satırlarından yalnızca bir sayfayı okur; daha fazlası varsa panel bunun kısmi olduğunu söyler.
+- Kullanım geçmişi, proxy'nin etkinlik satırlarının bir sayfasını okur; daha fazlası olduğunda panel bunun kısmi olduğunu söyler. Günler UTC'dir, proxy'nin saydığı gibi; bugünkü hâlâ sürüyor, bu yüzden karşılaştırmalar onu dışarıda bırakır.
+- **Session** satırı, anahtarın harcamasının bu Claude Code oturumunun ilk okumasından beri ne kadar arttığını sayar. Bu oturumun harcamasını, aynı anahtarı kullanan başka bir oturumunkinden ayıramaz.
 - Bütçe aşımı banner'ı terminal ve masaüstü yüzeylerinde çizilir (Claude Code bandı yalnızca orada sunar); diğerlerinde bunu durum satırı ve panel söyler.
 - Durum satırından önceki `⚠`, her eklenti durum girdisi için Claude Code tarafından çizilir; anahtarın sorunlu olduğu anlamına gelmez (bunu metin söyler).
 - Claude Code'un eklenti API'si erken erişimdedir ve sürümler arasında değişebilir.
