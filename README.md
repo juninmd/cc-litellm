@@ -27,7 +27,7 @@
 
 # cc-litellm
 
-A [Claude Code](https://code.claude.com) plugin for people who reach their models through a **[LiteLLM](https://docs.litellm.ai) proxy**. It shows what the proxy knows about the **virtual key** Claude Code is using (budget, spend, limits, expiry, models, 7-day usage) and, for admins, lets you **create and edit keys, give someone extra budget, block a key and read the router's fallback chains** without leaving the terminal.
+A [Claude Code](https://code.claude.com) plugin for people who reach their models through a **[LiteLLM](https://docs.litellm.ai) proxy**. It shows what the proxy knows about the **virtual key** Claude Code is using (budget, spend, limits, expiry, models, 30 days of usage) and, for admins, lets you **create and edit keys, give someone extra budget, block a key and read the router's fallback chains** without leaving the terminal.
 
 This repository is a plugin marketplace (`cc-litellm`) with one plugin: [`litellm-key`](plugins/litellm-key).
 
@@ -41,7 +41,12 @@ This repository is a plugin marketplace (`cc-litellm`) with one plugin: [`litell
 | --- | --- | --- |
 | 👀 **Watch** | **Status line** under the prompt, always visible | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
 | | **`/litellm` pane** | meters for key, team, user and **team-member** budgets, the user's **role**, limits, expiry, models, 7-day sparkline, **top models** of the week, and a **runway** forecast; refreshes itself |
-| | **Toasts** | at 80% (configurable), 95%, 100%; key about to expire; key blocked or expired. Once per budget window, even across sessions |
+| | **Pane tabs** | **Usage** (spend, requests or tokens per day as bars over 7, 14 or 30 days, a day to pick, how each model moved), **Models** (what each spent, a filter, a sort), **Details** (the key's fields, LiteLLM's version and database, latency) |
+| | **Guidance** | **Allowance** (what to spend a day to last until the reset), **Headroom** (how many more requests the cap holds), **Today** against the usual day, **Session** (what this Claude Code session spent, and at what rate) |
+| | **Toasts** | at 80% (configurable), 95%, 100%; key about to expire; key blocked or expired; today over your **daily alert**. Once per budget window, even across sessions |
+| 📊 **Report** | **`/litellm pace`**, `usage`, `compare`, `day`, `status` | where the budget is heading, the days and models as tables, what changed against the days before, one day by model |
+| | **`/litellm check`** | `OK`, `WARNING`, `CRITICAL` or `UNKNOWN` **and the exit code of a `claude -p` run** (0 to 3), for scripts and monitoring |
+| | **`/litellm json`** / `csv` | everything as JSON, the days as CSV; **`copy`** puts any report on the clipboard, **`share`** hands it to Claude to ask about |
 | | **Over-budget banner** | a red band above the prompt that **stays for as long as a budget is spent up** (key, user, team, window or model) and leaves only when the numbers are normal again |
 | 🛠️ **Manage** *(admin)* | **`/litellm key new`** | create a virtual key; the secret goes to your **clipboard, never the transcript** |
 | | **`/litellm grant`** | extra budget for a key, a user, a team or an organization, with a preview and a confirmation |
@@ -79,6 +84,55 @@ If Claude Code already talks to LiteLLM, **there is nothing to configure**: the 
 <p align="center">
   <img src="docs/evidence/keys.png" alt="/litellm models and /litellm keys output" width="92%">
 </p>
+
+### Look closer: usage, models, details
+
+The pane has four tabs. Overview is the dashboard above; **Usage** draws the last 7, 14 or 30 days as bars, counting spend, requests or tokens, lets you pick a day for its models, and says which model moved against the days before:
+
+```text
+ 1: Overview   2: Usage   3: Models  4: Details
+
+ Spend per day (UTC)                7d   d: 14d  30d  m: chart: spend  v: CSV
+
+ $11.4                                                               ██████
+                                       ▁▁▁▁▁▁    ▇▇▇▇▇▇              ██████
+                                       ██████    ██████              ██████
+                   ▇▇▇▇▇▇              ██████    ██████    ▃▃▃▃▃▃    ██████
+         ▅▅▅▅▅▅    ██████              ██████    ██████    ██████    ██████
+    $0   ██████    ██████              ██████    ██████    ██████    ██████
+           Wed       Thu       Fri       Sat       Sun       Mon       Tue
+         $3.10     $5.40       ·       $7.90     $9.20     $4.40     $11.4
+
+ Spend        $41.37 · $5.91/day
+ Requests     369 · $0.112 each
+ Failed       4 requests (1.1%)
+ Peak day     $11.37 on Tue Oct 6
+ Trend        ▲ 34% vs the 7 days before (full days)
+
+ By model, last 7 days · ▲▼ vs the 7 before ─────────────────────────────────
+ claude-sonnet-4-5  ▄▄▄▄▄▄▄▄▄▄▁▁▁▁▁▁▁▁▁▁  52%  $21.51 ▲ 34% · 189 requests
+ claude-opus-4-1    ▄▄▄▄▄▄▁▁▁▁▁▁▁▁▁▁▁▁▁▁  28%  $11.58 ▲ 34% · 99 requests
+```
+
+**Models** lists what the key may call with what each spent over the range (sort by spend or name, and type in the filter to narrow a long list); **Details** groups what the proxy said of the key, its LiteLLM version and database state, and how long `/key/info` took. The tab, range, sort and chart you pick are kept for next time.
+
+### Ask for a report, or hand it to a script
+
+```text
+/litellm pace
+Budget     $41.37 / $50.00 (83%) · $8.63 left · resets in 9d 3h (30d)
+Runway     out in 1d 6h at $6.75/day · resets in 9d 3h
+Allowance  $0.95/day to last · 86% less than lately
+Headroom   about 76 more requests at $0.112 each
+Today      $11.37 · 102 requests · 2.2× the usual day ($5.21)
+Session    +$0.40 since 03:03 (12m ago)
+```
+
+```bash
+claude -p "/litellm check"; echo $?    # WARNING · 83% of budget … (exit 1)
+claude -p "/litellm json" | jq .budget.percent
+claude -p "/litellm csv 30" > usage.csv
+```
 
 ### Spot trouble early, and name it
 
@@ -154,10 +208,22 @@ Everything above is the real LiteLLM v1.99.1 admin UI reflecting what the plugin
 
 | Command | Does |
 | --- | --- |
-| `/litellm` | Open the pane (and answer with a one-line summary). No screen: print the summary. |
+| `/litellm` | Open the pane, on the tab you left it (and answer with a one-line summary). No screen: print that tab as text. |
+| `/litellm tab <name>` | Open the pane on `overview`, `usage`, `models` or `details` (or 1 to 4). |
 | `/litellm refresh` | Read again now. |
 | `/litellm info` | Print the full summary in the transcript. |
-| `/litellm models` | List the models this key can call, with their price per million tokens and context window. |
+| `/litellm status` | Print the status line as text. |
+| `/litellm pace` | Where the budget is heading, what it can spend a day to last, and the same for the team and the user. |
+| `/litellm usage [7\|14\|30]` | The spend, requests and tokens per day as a table, with the totals and the models. |
+| `/litellm compare [7\|14]` | The last full days against the same number before them, as a whole and model by model. |
+| `/litellm day [when]` | One day by model: `today`, `yesterday`, `2026-10-03`, `10-03` or a weekday (`mon`). |
+| `/litellm models [text]` | List the models this key can call, with their price per million tokens and context window; with a text, only those whose name has it. |
+| `/litellm check [warn%]` | `OK`, `WARNING`, `CRITICAL` or `UNKNOWN`, and the exit code of a `claude -p` run: 0, 1, 2, 3. |
+| `/litellm json` | Everything the plugin knows of the key as JSON (no key, no hash). |
+| `/litellm csv [7\|14\|30]` | The days as CSV. |
+| `/litellm copy [what]` | Put a report on the clipboard: `overview`, `usage`, `models`, `details`, `pace`, `compare`, `csv` or `json`. |
+| `/litellm share [what]` | Hand a report to Claude, out of sight, so the next question can be about it. |
+| `/litellm ping` | Try every endpoint the plugin reads, with its status and time. |
 | `/litellm debug` | Show where the URL and the keys come from (always masked), what was tried, the result. |
 | `/litellm close` | Close the pane. |
 | `/litellm keys [--user ID \| --team ID \| --all]` | List keys. Default: the keys of your own user. 🔐 |
@@ -169,7 +235,9 @@ Everything above is the real LiteLLM v1.99.1 admin UI reflecting what the plugin
 | `/litellm org [id\|alias]` | An organization's budget; no name: the key's own organization, else the list. 🔐 |
 | `/litellm fallbacks [model]` | Router fallback chains, optionally for models matching a name. 🔐 |
 
-🔐 = admin command, see below. In the pane (focus it with a click or `ctrl+x` `tab`): `r` refreshes, `c` copies the summary, `q` closes, arrows scroll; each button names its key (`Refresh (r)`, `Copy (c)`, `Close (q)`). `Esc` also closes it on an empty prompt.
+🔐 = admin command, see below. In the pane (focus it with a click or `ctrl+x` `tab`): `1` to `4` switch tab, `r` refreshes, `c` copies the tab you are on, `q` closes, arrows scroll; each button names its key (`Refresh (r)`, `Copy (c)`, `Close (q)`). On Usage, `d` steps through 7, 14 and 30 days, `m` through spend, requests and tokens, `v` copies the days as CSV; on Models, `s` sorts and `f` goes to the filter. `Esc` also closes the pane on an empty prompt (on Models it only leaves the filter).
+
+A mistyped command gets a guess (`Did you mean "usage"?`). A command that cannot do what it was asked says so in a sentence, and the ones meant for scripts (`check`, `json`, `csv`, `ping`) end with exit code 3 when there is nothing to report.
 
 The pane adapts to the space: beside the conversation (full screen, from 110 columns) each meter takes two lines; above the prompt, from 122 columns, the meters become a table; in narrower terminals it keeps two lines per meter, or turns **compact** if you enable `compact_pane`. Beside the conversation the pane gets titled sections (`BUDGETS`, `KEY`, `LAST 7 DAYS`, `TOP MODELS`) and a letter under each day of the week; `TOP MODELS` ranks the five models that spent most, each with its share of the week as a bar. A long name is cut in the middle, so `claude-sonnet-4-5` and `claude-sonnet-4-6` stay apart. Color is never the only signal: `▲` marks a budget that is close to its cap, `✖` one that is spent up, and a day with no spend is a `·`, never a short bar.
 
@@ -270,9 +338,11 @@ All options are optional (Claude Code says at install that they are "not set"; t
 | `litellm_admin_key` | empty | Admin key for `keys`, `key new/set/reset-spend/block/unblock`, `grant`, `org`, `fallbacks`. 🔒 same storage. Never printed. |
 | `refresh_seconds` | 60 | Read interval (15 to 3600). Also reads after each turn, at most every 20 s. |
 | `warn_percent` | 80 | First budget warning (it also warns at 95% and 100%). |
+| `daily_alert` | 0 (off) | Warn once today's spend on the key reaches this many dollars: a toast once a day, the status line and the pane. With it on, the usage history is read every 3 minutes. |
+| `show_toasts` | yes | The toasts that warn about the budget, the daily alert, an expiring key and a failing proxy. Off keeps the warnings to the status line and the pane. |
 | `show_status_line` | yes | The line under the prompt. |
 | `show_related` | yes | Read `/user/info` and `/team/info`: those budgets can block requests too. |
-| `show_usage` | yes | Read `/user/daily/activity` (a beta LiteLLM endpoint) for the 7-day usage. |
+| `show_usage` | yes | Read `/user/daily/activity` (a beta LiteLLM endpoint): the last 30 days of usage, which the Usage and Models tabs, the reports, the runway and the daily alert draw on. |
 | `compact_pane` | no | Compact pane above the prompt in narrow terminals (74 to 121 columns): one meter per line, facts side by side. |
 
 ## Where the data comes from
@@ -285,7 +355,8 @@ All options are optional (Claude Code says at install that they are "not set"; t
 | `/user/info`, `/team/info` | Budget of the key's user and team, and the team's per-member cap, when capped. Every read. |
 | `/v1/models` | The models actually allowed. Every 10 min. |
 | `/model_group/info` | Price per token and context window of those models (the proxy answers for all of its models; the plugin keeps the allowed ones). Every 10 min. |
-| `/user/daily/activity` | Spend, requests and tokens of the last 7 days, and the spend per model. Every 10 min. |
+| `/user/daily/activity` | Spend, requests, tokens and models of the last 30 days, day by day. Every 10 min (every 3 with a `daily_alert`). |
+| `/health/readiness` | LiteLLM's version and whether its database is connected. Every 10 min; when the proxy will not say, nothing is shown, not even a note. |
 
 **Managing** only happens when you type an admin command: `GET /key/list`, `/key/info`, `/user/info`, `/team/info`, `/v2/team/list`, `/organization/info`, `/organization/list`, `/router/settings`, and `POST /key/generate`, `/key/delete` (rollback only), `/key/block`, `/key/unblock`, `/key/update`, `/key/{hash}/reset_spend`, `/user/update`, `/team/update`, `PATCH /organization/update`.
 
@@ -308,7 +379,7 @@ Each request waits at most 4 s (15 s for admin commands). An optional read that 
 | "does not look like a LiteLLM proxy" | The URL points at something else. Set `litellm_url` to the proxy root. |
 | "key blocked" / "key expired" | Exactly that. Ask an admin, or run `/litellm key unblock` from another session. |
 | "key rejected (401)" | Invalid key. |
-| 7-day history is missing | The key has no `user_id`, or the beta endpoint is absent in your LiteLLM version. |
+| Usage history is missing | The key has no `user_id`, or the beta endpoint is absent in your LiteLLM version. |
 | Admin command says it needs an admin key | Set `litellm_admin_key`. |
 | Admin command waits "until the proxy accepts this session's key" | By design, the admin key is only sent to a proxy that accepted your own key. Fix that key from another session or the LiteLLM UI. |
 
@@ -338,7 +409,7 @@ tsc -p plugins/litellm-key                              # types (.claude-plugin/
 bash dev/check-file-size.sh                             # no source file over 300 lines
 ```
 
-Layout of the plugin: `hooks/register.tsx` is the only file that touches Claude Code's `$`; it builds the injected ports (`hooks/ports.ts`) and wires events, commands, timers and toasts. Everything else is plain functions that take those ports, so it runs under test without booting the engine. `hooks/session.ts` is the reading cycle (config, ticker, queued forced refresh); `hooks/credentials.ts` and `hooks/settings.ts` resolve the key and the options; `hooks/litellm.ts` reads the proxy, `hooks/parsers.ts` and `hooks/json.ts` normalize the answers and `hooks/failures.ts` names what went wrong; `hooks/alerts.ts` decides the toasts. `hooks/commands.ts` is the `/litellm` command table and `hooks/admin*.ts` the admin commands (`admin.ts` the proxy reads, `admin-targets.ts` the key, user and team lookups, `admin-writes.ts` its writes, `admin-plan.ts` the previews and plans, `admin-link.ts` the admin key's link to the proxy, `admin-commands.ts` the flow, `args.ts` the argument parser). `hooks/exceeded.ts` and `hooks/band.tsx` are the over-budget banner; `hooks/summary.ts` builds the text, `hooks/view.tsx` and `hooks/parts.tsx` the pane (gauge, section titles, status chip, meter rows); `hooks/format.ts` has the pure formatters; `types/index.d.ts` is the state contract.
+Layout of the plugin: `hooks/register.tsx` is the only file that touches Claude Code's `$`; it builds the injected ports (`hooks/ports.ts`) and wires events, commands, timers and toasts. Everything else is plain functions that take those ports, so it runs under test without booting the engine. `hooks/session.ts` is the reading cycle (config, ticker, queued forced refresh); `hooks/credentials.ts` and `hooks/settings.ts` resolve the key and the options; `hooks/litellm.ts` reads the proxy, `hooks/parsers.ts` and `hooks/json.ts` normalize the answers and `hooks/failures.ts` names what went wrong; `hooks/alerts.ts` decides the toasts. `hooks/commands.ts` is the `/litellm` command table and `hooks/admin*.ts` the admin commands (`admin.ts` the proxy reads, `admin-targets.ts` the key, user and team lookups, `admin-writes.ts` its writes, `admin-plan.ts` the previews and plans, `admin-link.ts` the admin key's link to the proxy, `admin-commands.ts` the flow, `args.ts` the argument parser). `hooks/exceeded.ts` and `hooks/band.tsx` are the over-budget banner; `hooks/summary.ts` builds the text, `hooks/view.tsx` and `hooks/parts.tsx` the pane (gauge, section titles, status chip, meter rows); `hooks/format.ts` has the pure formatters; `types/index.d.ts` is the state contract. The tabs are `hooks/tab-*.tsx` (`tab-overview.tsx` is the dashboard above all else, `parts-tabs.tsx` their shared parts, `chart.ts` the bars); the reports are `hooks/report-*.ts`, `details.ts` and `probe.ts` (`/litellm ping`), over `history.ts` (the 30 days, totals and comparisons) and `guidance.ts` (allowance, headroom, today and the session). `hooks/commands-reports.ts` and `commands-share.ts` are the commands that print or hand over a report.
 
 ## Known limits
 
@@ -347,7 +418,8 @@ Layout of the plugin: `hooks/register.tsx` is the only file that touches Claude 
 - Per-model budgets (`model_max_budget`), temporary budget increases and key regeneration are enterprise-only on the proxy side, so they are not offered (see [Budgets](#budgets-what-litellm-can-and-cannot-do)). Editing fallback chains needs `STORE_MODEL_IN_DB=True` on the proxy, so `/litellm fallbacks` stays read-only.
 - An **organization's** budget is not in the key's own answer and a virtual key may not read it, so the pane only names the organization; `/litellm org` reads it with an admin key. The admin key is still sent only when you type an admin command, never on the refresh timer.
 - A team **member's** total is not reported to a virtual key: the `Member` meter counts this key's spend only, so it can read low: if the user has several keys in the team, the proxy may block earlier than the meter says. Against a cap that resets it can also read high (a reset zeroes the member's spend, not the key's), so there it warns and the banner stays quiet.
-- The 7-day history reads one page of the proxy's activity rows; when there are more, the pane says it is partial.
+- The usage history reads one page of the proxy's activity rows; when there are more, the pane says it is partial. Days are UTC, as the proxy counts them; today's is still going, so the comparisons leave it out.
+- The **Session** row counts what the key's spend grew by since the first reading of this Claude Code session. It cannot tell this session's spend from another session's on the same key.
 - The over-budget banner is drawn on the terminal and desktop surfaces (Claude Code only offers the band there); on others, the status line and the pane say it.
 - The `⚠` before the status line is drawn by Claude Code for every plugin status entry; it does not mean the key is in trouble (the text does).
 - The plugin API of Claude Code is early-access and may change between versions.
