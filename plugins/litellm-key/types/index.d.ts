@@ -69,6 +69,29 @@ export type UsageDay = {
   spend: number
 }
 
+/** What one model did on one day, or over a stretch of days. */
+export type UsageModel = {
+  model: string
+  spend: number
+  requests: number
+  tokens: number
+}
+
+/** What the key did on one day: a quiet day is all zeros. */
+export type ActivityDay = {
+  /** `YYYY-MM-DD`, in UTC, as the proxy counts days. */
+  date: string
+  spend: number
+  requests: number
+  failed: number
+  tokens: number
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  models: UsageModel[]
+}
+
+/** The last 7 days in totals, and the last 30 day by day (oldest first, today last). */
 export type Usage = {
   days: UsageDay[]
   spend: number
@@ -78,11 +101,21 @@ export type Usage = {
   outputTokens: number
   cacheReadTokens: number
   topModels: { model: string; spend: number }[]
+  history: ActivityDay[]
+}
+
+/** What the proxy says about itself on its health endpoint, in the words it uses. */
+export type ProxyInfo = {
+  version: string | null
+  /** `connected`, or whatever the proxy says when it has no database. */
+  db: string | null
 }
 
 export type Snapshot = {
   fetchedAt: number
   host: string
+  /** The proxy root that answered, without credentials: the page of its admin UI hangs off it. */
+  root: string
   keySource: string
   keyHint: string
   key: KeyInfo
@@ -96,6 +129,10 @@ export type Snapshot = {
   /** Prices of the allowed models, by name; null when the proxy does not say. */
   prices: Record<string, ModelPrice> | null
   usage: Usage | null
+  /** Read now and then, and only when the proxy answers: nothing here is worth a note when it does not. */
+  proxy: ProxyInfo | null
+  /** How long `/key/info` took to answer, when the reading could tell. */
+  latencyMs: number | null
   notes: string[]
 }
 

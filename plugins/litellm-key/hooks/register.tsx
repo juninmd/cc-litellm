@@ -21,14 +21,18 @@ const snapshotState = atom({ plugin: 'litellm-key', key: 'snapshot' } as const, 
 const failureState = atom({ plugin: 'litellm-key', key: 'failure' } as const, null)
 const loadingState = atom({ plugin: 'litellm-key', key: 'isLoading' } as const, false)
 
+/** One request, timed, and given up on after `ms`. */
 const fetchWithin = async ($: EngineInterface, url: string, init: Init, ms: number): Promise<Reply> => {
+  const started = await $.clock.now()
   let timer: { cancel: () => void } | undefined
   const late = new Promise<never>((_, reject) => {
     timer = $.clock.after(ms, () => reject(new Error(`no answer within ${ms / 1000}s`)))
   })
 
   try {
-    return await Promise.race([$.http.fetch(url, init), late])
+    const { status, text } = await Promise.race([$.http.fetch(url, init), late])
+
+    return { status, text, ms: (await $.clock.now()) - started }
   } finally {
     timer?.cancel()
   }

@@ -28,6 +28,61 @@ export const money = (value: number | null | undefined): string => {
   return `${sign}$${group(whole)}.${cents}`
 }
 
+/** A whole count with thousands grouped: 12,345. */
+export const count = (value: number): string => {
+  const rounded = Math.round(value)
+
+  return `${rounded < 0 ? '-' : ''}${group(String(Math.abs(rounded)))}`
+}
+
+/** How many times one amount is another, to a tenth under ten: "0.4×", "4.7×", "12×". */
+export const times = (ratio: number): string => {
+  if (!Number.isFinite(ratio)) {
+    return '—'
+  }
+
+  return `${ratio >= 10 ? Math.round(ratio) : ratio.toFixed(1).replace(/\.0$/, '')}×`
+}
+
+export type Change = { pct: number; direction: 'up' | 'down' | 'flat' }
+
+/** How far `current` moved from `previous`, in whole percent; null when there is nothing to compare with. */
+export const change = (current: number, previous: number): Change | null => {
+  if (!(previous > 0) || !Number.isFinite(current)) {
+    return null
+  }
+  const pct = Math.round(((current - previous) / previous) * 100)
+
+  return { pct: Math.abs(pct), direction: pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat' }
+}
+
+/** A money amount in about six cells, for chart axes and narrow columns: $0, $0.42, $12.3, $412, $1.2k. */
+export const shortMoney = (value: number): string => {
+  if (!Number.isFinite(value)) {
+    return '—'
+  }
+  const sign = value < 0 ? '-' : ''
+  const abs = Math.abs(value)
+
+  if (abs === 0) {
+    return '$0'
+  }
+  if (abs >= 1e6) {
+    return `${sign}$${trim(abs / 1e6)}M`
+  }
+  if (abs >= 1e3) {
+    return `${sign}$${trim(abs / 1e3)}k`
+  }
+  if (abs >= 100) {
+    return `${sign}$${abs.toFixed(0)}`
+  }
+  if (abs >= 10) {
+    return `${sign}$${abs.toFixed(1).replace(/\.0$/, '')}`
+  }
+
+  return abs >= 0.01 ? `${sign}$${abs.toFixed(2)}` : `${sign}<$0.01`
+}
+
 export const compact = (value: number): string => {
   const abs = Math.abs(value)
 
@@ -108,6 +163,9 @@ export const until = (target: number | null, now: number): string | null => {
   return target >= now ? `in ${span(target - now)}` : `${span(now - target)} ago`
 }
 
+/** How long ago, as a status wants it: "just now" under five seconds. */
+export const ago = (at: number, now: number): string => (now - at < 5000 ? 'just now' : `${span(now - at)} ago`)
+
 export const clock = (ms: number): string => {
   const date = new Date(ms)
   const two = (n: number): string => String(n).padStart(2, '0')
@@ -128,18 +186,38 @@ export const maskKey = (key: string): string => {
   return `${trimmed.startsWith('sk-') ? 'sk-' : ''}…${trimmed.slice(-4)}`
 }
 
+// The engine refuses a text child that holds a control character, and a pane it cannot draw is closed.
+const ESCAPE_SEQUENCES = /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b]*(?:\u0007|\u001b\\)?)/g
+const CONTROLS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g
+
+/** The text without its terminal escape sequences and other control characters, which are never drawn. */
+export const clean = (text: string): string => text.replace(ESCAPE_SEQUENCES, '').replace(CONTROLS, '')
+
+/**
+ * The url with any `user:password@` taken out: the root is shown and linked, so it must never carry credentials. The
+ * userinfo runs to the last `@` before the path, as a password may hold one.
+ */
+export const withoutCredentials = (url: string): string => url.replace(/^([a-z][a-z\d+.-]*:\/\/)[^/\s]*@/i, '$1')
+
 export const redact = (text: string, secrets: readonly string[] = []): string => {
-  let clean = text
+  let masked = clean(text)
 
   for (const secret of secrets) {
     if (secret.length >= 6) {
-      clean = clean.split(secret).join(maskKey(secret))
+      masked = masked.split(secret).join(maskKey(secret))
     }
   }
 
-  return clean
-    .replace(/\bsk-[A-Za-z0-9_-]{6,}/g, 'sk-…')
-    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, 'Bearer …')
+  return (
+    masked
+      .replace(/\b([a-z][a-z\d+.-]*:\/\/)[^/\s]*@/gi, '$1')
+      .replace(/\bsk-[A-Za-z0-9_-]{6,}/g, 'sk-…')
+      .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, 'Bearer …')
+      // The sha256 of a key is the name the proxy knows it by, and a 401 says it ("Key Hash (Token) =…"): kept out too,
+      // whole or cut short in the url of a request that an error names.
+      .replace(/\b(api_key=)[^&\s"']+/gi, '$1…')
+      .replace(/\b[0-9a-f]{64}\b/gi, '…')
+  )
 }
 
 export const truncate = (text: string, max: number): string =>

@@ -1,3 +1,5 @@
+import { clean } from './format'
+
 export type Json = Record<string, unknown>
 
 export const isObject = (value: unknown): value is Json =>
@@ -16,11 +18,29 @@ export const num = (value: unknown): number | null => {
   return null
 }
 
-export const str = (value: unknown): string | null =>
-  typeof value === 'string' && value.trim() !== '' ? value : null
+export const str = (value: unknown): string | null => {
+  const text = typeof value === 'string' ? clean(value) : ''
+
+  return text.trim() !== '' ? text : null
+}
 
 export const strings = (value: unknown): string[] =>
-  Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+  Array.isArray(value) ? value.flatMap(item => str(item) ?? []) : []
+
+/** The same data with every text clean, whatever the proxy put in it: the engine refuses to draw a control character. */
+export const scrub = <T>(value: T): T => {
+  if (typeof value === 'string') {
+    return clean(value) as T
+  }
+  if (Array.isArray(value)) {
+    return value.map(scrub) as T
+  }
+  if (isObject(value)) {
+    return Object.fromEntries(Object.entries(value).map(([name, item]) => [clean(name), scrub(item)])) as T
+  }
+
+  return value
+}
 
 export const date = (value: unknown): number | null => {
   if (typeof value === 'number') {
