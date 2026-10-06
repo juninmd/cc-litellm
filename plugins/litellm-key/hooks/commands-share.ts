@@ -1,24 +1,15 @@
 import type { Snapshot, ViewName } from '../types'
 import type { CommandContext, CommandResult } from './command-context'
 import { current } from './command-context'
-import { detailsText } from './details'
 import { clock, plural, truncate } from './format'
 import { COMPARABLE, RANGES } from './history'
-import { modelsReport } from './report-models'
 import { compareReport } from './report-days'
 import { jsonReport } from './report-json'
 import { paceReport } from './report-key'
-import { NO_HISTORY, usageCsv, usageReport } from './report-usage'
+import { NO_HISTORY, usageCsv } from './report-usage'
 import type { Config } from './settings'
-import { summaryText } from './summary'
+import { TAB_WHAT, textOf } from './tab-text'
 import { rangeIn } from './words'
-
-const TAB_WHAT: Record<ViewName, string> = {
-  overview: 'the summary',
-  usage: 'the usage report',
-  models: 'the model list',
-  details: 'the key details',
-}
 
 const REPORTS = 'overview, usage, models, details, pace, compare, csv, json'
 
@@ -27,20 +18,6 @@ const REPORTS = 'overview, usage, models, details, pace, compare, csv, json'
  * nothing but a table of the usage history (with no history there is nothing to copy, not a sentence about it).
  */
 type Named = { build: (snapshot: Snapshot, now: number) => string; what: string; needsUsage: boolean }
-
-/** What a tab says as text: what `/litellm` prints where nothing can draw a pane. */
-export const textOf = (tab: ViewName, range: number, config: Config): ((snapshot: Snapshot, now: number) => string) => {
-  switch (tab) {
-    case 'usage':
-      return snapshot => usageReport(snapshot, range)
-    case 'models':
-      return snapshot => modelsReport(snapshot, range)
-    case 'details':
-      return (snapshot, now) => detailsText(snapshot, now, config.refreshSeconds)
-    default:
-      return (snapshot, now) => summaryText(snapshot, now, config.warnPercent)
-  }
-}
 
 /** `name` as a report (none given: the tab that is showing); null for a name that is no report. */
 const namedReport = (name: string, tab: ViewName, range: number, config: Config): Named | null => {

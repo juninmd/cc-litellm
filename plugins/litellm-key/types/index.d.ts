@@ -182,6 +182,16 @@ declare module 'claude-code' {
       snapshot: Snapshot | null
       failure: Failure | null
       isLoading: boolean
+      /** The tab the pane shows. */
+      view: ViewName
+      /** Days of usage the Usage and Models tabs show: 7, 14 or 30. */
+      range: number
+      sort: SortName
+      metric: MetricName
+      /** What the Models tab narrows its list by. */
+      filter: string
+      /** The day picked under the chart of the Usage tab, as `YYYY-MM-DD`. */
+      day: string | null
     }
   }
 }

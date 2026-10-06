@@ -1,3 +1,4 @@
+import type { ViewName } from '../types'
 import type { AdminCommand } from './admin-commands'
 import { GRANT_HELP, KEY_HELP, runAdmin } from './admin-commands'
 import type { CommandContext, CommandResult } from './command-context'
@@ -17,6 +18,7 @@ import {
 import { copyCommand, shareCommand } from './commands-share'
 import { clock, maskKey, money, redact, truncate } from './format'
 import { oneLine, summaryText } from './summary'
+import { textOf } from './tab-text'
 import { closest, splitWords } from './words'
 
 export type { CommandContext, CommandResult } from './command-context'
@@ -24,7 +26,8 @@ export type { CommandContext, CommandResult } from './command-context'
 const PANE_WAIT_MS = 2_500
 
 const HELP = [
-  '/litellm                  open the live pane',
+  '/litellm                  open the live pane (on the tab you left it)',
+  '/litellm tab <name>       open the pane on overview, usage, models or details',
   '/litellm refresh          read the key again now',
   '/litellm info             print the full summary here',
   '/litellm status           print the status line as text',
@@ -53,7 +56,13 @@ const HELP = [
 ].join('\n')
 
 // What a typo of a subcommand is held against: the names, not their aliases.
+const VIEWS: readonly ViewName[] = ['overview', 'usage', 'models', 'details']
+
+const viewNamed = (word: string): ViewName | null =>
+  VIEWS.find((view, at) => view === word.toLowerCase() || String(at + 1) === word) ?? null
+
 const NAMES = [
+  'tab',
   'refresh',
   'info',
   'status',
@@ -81,10 +90,12 @@ const NAMES = [
 const debugText = async (ctx: CommandContext): Promise<string> => {
   const surfaces = await ctx.surfaces()
   const { config, diagnostics, pinnedRoot, latest } = ctx.session.state
+  const view = await ctx.view()
   const { snapshot, failure } = latest
   const lines = [
     `Refresh every ${config.refreshSeconds}s · status line ${config.isStatusShown ? 'on' : 'off'} · related ${config.isRelatedShown ? 'on' : 'off'} · usage ${config.isUsageShown ? 'on' : 'off'} · compact pane ${config.isCompact ? 'on' : 'off'}`,
     `Alerts   toasts ${config.isToastShown ? 'on' : 'off'} · warn at ${config.warnPercent}% · daily alert ${config.dailyAlert > 0 ? money(config.dailyAlert) : 'off'}`,
+    `Pane     ${view.tab} tab · ${view.range} days`,
     diagnostics
       ? `Proxy    ${diagnostics.host} (tries ${diagnostics.roots.join(', ')}${pinnedRoot ? `; using ${pinnedRoot}` : ''})`
       : 'Proxy    not resolved',
@@ -105,6 +116,24 @@ const debugText = async (ctx: CommandContext): Promise<string> => {
   return lines.join('\n')
 }
 
+/** Opens the pane, on `tab` when one is given, and answers with what to print: a line, or the tab as text if nothing draws. */
+const showPane = async (ctx: CommandContext, tab: ViewName | null): Promise<string> => {
+  const reading = ctx.ensureFresh()
+
+  if ((await ctx.surfaces()).length === 0) {
+    await reading
+    const view = await ctx.view()
+
+    return report(ctx, textOf(tab ?? view.tab, view.range, ctx.session.state.config))
+  }
+  const opened = await ctx.openPane(tab)
+
+  await Promise.race([reading, ctx.sleep(PANE_WAIT_MS)])
+  const line = await report(ctx, (snapshot, now) => oneLine(snapshot, now))
+
+  return opened.isPlaced ? line : `${line}\nThe pane could not be shown (${opened.reason}). Use /litellm info instead.`
+}
+
 /** Runs `/litellm <args>` and answers with the text to print. */
 export const runCommand = async (ctx: CommandContext, args: string): Promise<CommandResult> => {
   const { config } = ctx.session.state
@@ -114,23 +143,19 @@ export const runCommand = async (ctx: CommandContext, args: string): Promise<Com
     switch (word.toLowerCase()) {
       case '':
       case 'pane':
-      case 'open': {
-        const reading = ctx.ensureFresh()
-
-        if ((await ctx.surfaces()).length === 0) {
-          await reading
-
-          return { text: await report(ctx, (snapshot, now) => summaryText(snapshot, now, config.warnPercent)) }
-        }
-        const opened = await ctx.openPane()
-
-        await Promise.race([reading, ctx.sleep(PANE_WAIT_MS)])
-        const line = await report(ctx, (snapshot, now) => oneLine(snapshot, now))
+      case 'open':
+        return { text: await showPane(ctx, null) }
+      case 'tab':
+      case 'view': {
+        const named = rest[0] ?? ''
+        const tab = viewNamed(named)
+        const guess = tab === null ? closest(named, VIEWS) : null
 
         return {
-          text: opened.isPlaced
-            ? line
-            : `${line}\nThe pane could not be shown (${opened.reason}). Use /litellm info instead.`,
+          text:
+            tab === null
+              ? `Unknown tab "${truncate(named, 30)}".${guess === null ? '' : ` Did you mean "${guess}"?`} The tabs are ${VIEWS.join(', ')}.`
+              : await showPane(ctx, tab),
         }
       }
       case 'close':

@@ -55,7 +55,7 @@ export const allowanceText = (room: Allowance, perDayNow: number | null = null):
   }
   const cut = Math.min(99, Math.max(1, Math.round((1 - room.perDay / perDayNow) * 100)))
 
-  return { text: `${base} · ${cut}% less than lately`, tone: 'warn' }
+  return { text: `${per(room.perDay)} to last · ${cut}% less than lately`, tone: 'warn' }
 }
 
 /** The key's allowance, set against the pace of the last days when the key is on course to run out before its reset. */
@@ -83,7 +83,7 @@ export const headroomText = (snapshot: Snapshot): string | null => {
   }
   const left = Math.floor(((budget.limit - budget.spend) * usage.requests) / usage.spend)
 
-  return `about ${count(left)} more requests at ${eachText(usage.spend, usage.requests)} each (7-day average)`
+  return `about ${count(left)} more requests at ${eachText(usage.spend, usage.requests)} each`
 }
 
 /** The day still going: the last of the history, when it is the day `now` falls on (UTC, as the proxy counts). */

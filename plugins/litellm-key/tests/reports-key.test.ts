@@ -24,7 +24,7 @@ describe('paceReport', () => {
     expect(lines[1]).toBe('Budget     $12.50 / $50.00 (25%) · $37.50 left · resets in 6d 12h (30d)')
     expect(lines[2]).toBe('Runway     lasts until the reset at $2.18/day')
     expect(lines[3]).toBe('Allowance  $5.77/day to last until the reset')
-    expect(lines[4]).toBe('Headroom   about 396 more requests at $0.095 each (7-day average)')
+    expect(lines[4]).toBe('Headroom   about 396 more requests at $0.095 each')
     expect(lines[5]).toBe('Today      $8.70 · 90 requests · 4.7× the usual day ($1.83)')
   })
 
@@ -32,7 +32,7 @@ describe('paceReport', () => {
     const text = paceReport(await snapshotOf(withKey({ spend: 42 })), NOW)
 
     expect(text).toMatch(/\nRunway {5}out in 3d 1\dh at \$2\.18\/day · resets in 6d 12h\n/)
-    expect(text).toContain('\nAllowance  $1.23/day to last until the reset · 44% less than lately\n')
+    expect(text).toContain('\nAllowance  $1.23/day to last · 44% less than lately\n')
   })
 
   test('does the same for the team and the user, each under its name', async () => {

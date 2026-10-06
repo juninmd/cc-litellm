@@ -1,36 +1,33 @@
-import type { RenderElement, UiPressArgument } from 'claude-code'
+import type { RenderElement } from 'claude-code'
 
-import type { Failure, Snapshot } from '../types'
+import type { Snapshot, ViewName } from '../types'
 import { clock } from './format'
-import type { Placement } from './layout'
-import { buttonsWidth, footerPlan, geometryOf, isCompactAt, modelPlan } from './layout'
+import { buttonsWidth, footerPlan, isCompactAt } from './layout'
+import type { DashboardProps } from './pane-props'
 import type { Ui } from './parts'
-import { MeterRow, ModelRow, Pill, SectionTitle, tint } from './parts'
-import type { Row, Tone } from './summary'
-import { facts, identity, modelShares, usageParts } from './facts'
-import { meters } from './summary'
+import { Pill } from './parts'
+import { layoutOf } from './parts-tabs'
+import type { Tone } from './summary'
+import { identity } from './facts'
+import { detailsTab } from './tab-details'
+import { modelsTab } from './tab-models'
+import { overviewBody } from './tab-overview'
+import { TAB_WHAT, textOf } from './tab-text'
+import { usageTab } from './tab-usage'
 
+export type { DashboardProps } from './pane-props'
 export type { Ui } from './parts'
 export type { Placement } from './layout'
+export { packFacts } from './tab-overview'
 
-export type DashboardProps = {
-  snapshot: Snapshot | null
-  failure: Failure | null
-  isLoading: boolean
-  now: number
-  columns: number
-  placement: Placement
-  /** The person asked for the compact layout (the `compact_pane` option); off, the pane keeps the stacked one. */
-  isCompact: boolean
-  warnPercent: number
-  refreshSeconds: number
-  onRefresh: () => void
-  onCopy: (press: UiPressArgument) => void
-  onClose: () => void
-}
-
-const FACT_GAP = 3
 const LABEL = { refresh: 'Refresh (r)', copy: 'Copy (c)', close: 'Close (q)' }
+
+const TABS: readonly { name: ViewName; label: string; hotkey: string }[] = [
+  { name: 'overview', label: 'Overview', hotkey: '1' },
+  { name: 'usage', label: 'Usage', hotkey: '2' },
+  { name: 'models', label: 'Models', hotkey: '3' },
+  { name: 'details', label: 'Details', hotkey: '4' },
+]
 
 const SETUP = [
   'Set these under "env" in ~/.claude/settings.json:',
@@ -38,31 +35,26 @@ const SETUP = [
   '  ANTHROPIC_AUTH_TOKEN  <your virtual key>',
 ]
 
-const sizeOf = (row: Row): number => row.label.length + 1 + row.text.length
-
-/** Packs the facts into lines no wider than `width`, in order, FACT_GAP apart. */
-export const packFacts = (rows: readonly Row[], width: number): Row[][] => {
-  const lines: Row[][] = []
-  let line: Row[] = []
-  let used = 0
-
-  for (const row of rows) {
-    const size = sizeOf(row)
-
-    if (line.length > 0 && used + FACT_GAP + size > width) {
-      lines.push(line)
-      line = []
-      used = 0
-    }
-    used += (line.length === 0 ? 0 : FACT_GAP) + size
-    line.push(row)
-  }
-  if (line.length > 0) {
-    lines.push(line)
-  }
-
-  return lines
-}
+/** The tabs: the one showing is a mark, the others are plain buttons, which draw their own hotkey ("2: Usage"). */
+const tabBar = ({ Box, Text, Button }: Ui, props: DashboardProps): RenderElement => (
+  <Box columnGap={2} flexWrap="wrap">
+    {TABS.map(tab =>
+      tab.name === props.tab ? (
+        <Text inverse bold>{` ${tab.hotkey}: ${tab.label} `}</Text>
+      ) : (
+        <Button
+          key={`tab-${tab.name}`}
+          label={tab.label}
+          hotkey={tab.hotkey}
+          plain
+          onPress={() => {
+            props.onTab(tab.name)
+          }}
+        />
+      ),
+    )}
+  </Box>
+)
 
 export const dashboard = (ui: Ui, props: DashboardProps): RenderElement => {
   const { Box, Text, Button } = ui
@@ -76,7 +68,17 @@ export const dashboard = (ui: Ui, props: DashboardProps): RenderElement => {
   const buttons = (
     <Box gap={1} flexWrap="wrap">
       <Button key="refresh" label={LABEL.refresh} hotkey="r" variant="primary" onPress={props.onRefresh} />
-      {snapshot && <Button key="copy" label={LABEL.copy} hotkey="c" onPress={props.onCopy} />}
+      {snapshot && (
+        <Button
+          key="copy"
+          label={LABEL.copy}
+          hotkey="c"
+          onPress={press => {
+            // The text is made when the button is pressed, not each time the pane is drawn.
+            props.onCopy(textOf(props.tab, props.range, props)(snapshot, now), TAB_WHAT[props.tab], press)
+          }}
+        />
+      )}
       <Button key="close" label={LABEL.close} hotkey="q" role="dismiss" onPress={props.onClose} />
     </Box>
   )
@@ -104,23 +106,17 @@ export const dashboard = (ui: Ui, props: DashboardProps): RenderElement => {
     )
   }
   const { key } = snapshot
-  const list = meters(snapshot, now, props.warnPercent)
-  const everyRow = facts(snapshot, now).filter(row => row.label !== 'Status')
-  const usage = compact ? null : usageParts(snapshot)
-  const shares = hasSections ? modelShares(snapshot) : []
-  const rows = everyRow.filter(row => row.label !== 'Top models' && (compact || row.label !== 'Last 7 days'))
-  const { variant, labelWidth, barWidth } = geometryOf({
-    columns: props.columns,
-    placement: props.placement,
-    isCompact: props.isCompact,
-    longest: Math.max(...list.map(item => item.label.length)),
-    longestFact: Math.max(...everyRow.map(row => row.label.length)),
-  })
   const statusTone: Tone = key.status === 'active' ? 'ok' : 'error'
   const state = Pill(ui, `${key.status === 'active' ? '●' : '✗'} ${key.status}`, statusTone)
-  const modelLayout = { labelWidth, ...modelPlan(props.columns, { variant, labelWidth, barWidth }) }
-  const meterRows = list.map(meter => MeterRow(ui, meter, { variant, labelWidth, barWidth, columns: props.columns }))
-  const title = (text: string) => hasSections && SectionTitle(ui, text, props.columns)
+  const layout = layoutOf(props)
+  const body =
+    props.tab === 'usage'
+      ? usageTab(ui, props, snapshot, layout)
+      : props.tab === 'models'
+        ? modelsTab(ui, props, snapshot, layout)
+        : props.tab === 'details'
+          ? detailsTab(ui, props, snapshot, layout)
+          : overviewBody(ui, props, snapshot, { compact, hasSections, gap })
   const updated = (isShort: boolean): string =>
     `Updated ${clock(snapshot.fetchedAt)}${isShort ? '' : ` · every ${props.refreshSeconds}s`}${isLoading ? ' · refreshing…' : ''}`
   const plan = footerPlan(props.columns, buttonsWidth(labels), updated(false), updated(true))
@@ -156,57 +152,10 @@ export const dashboard = (ui: Ui, props: DashboardProps): RenderElement => {
           </Text>
         </Box>
       )}
-      {title('BUDGETS')}
-      <Box flexDirection="column" marginTop={hasSections ? 0 : gap}>
-        {meterRows}
+      {tabBar(ui, props)}
+      <Box flexDirection="column" marginTop={gap}>
+        {body}
       </Box>
-      {compact ? (
-        rows.length > 0 && (
-          <Box flexDirection="column" marginTop={1}>
-            {packFacts(rows, props.columns).map(line => (
-              <Box gap={FACT_GAP}>
-                {line.map(row => (
-                  <Box gap={1}>
-                    <Text bold>{row.label}</Text>
-                    <Text {...tint(row.tone)}>{row.text}</Text>
-                  </Box>
-                ))}
-              </Box>
-            ))}
-          </Box>
-        )
-      ) : (
-        <Box flexDirection="column" marginTop={hasSections ? 0 : 1}>
-          {rows.length > 0 && title('KEY')}
-          {rows.map(row => (
-            <Box paddingLeft={2}>
-              <Box width={labelWidth + 1} flexShrink={0}>
-                <Text bold>{row.label}</Text>
-              </Box>
-              <Box flexGrow={1} flexShrink={1}>
-                <Text {...tint(row.tone)}>{row.text}</Text>
-              </Box>
-            </Box>
-          ))}
-          {usage && title('LAST 7 DAYS')}
-          {usage && (
-            <Box paddingLeft={2} flexDirection="column">
-              <Box gap={2}>
-                {!hasSections && (
-                  <Box width={labelWidth + 1} flexShrink={0}>
-                    <Text bold>Last 7 days</Text>
-                  </Box>
-                )}
-                <Text bold>{usage.spark}</Text>
-                <Text>{usage.rest}</Text>
-              </Box>
-              {hasSections && <Text>{usage.days}</Text>}
-            </Box>
-          )}
-          {shares.length > 0 && title('TOP MODELS')}
-          {shares.map(item => ModelRow(ui, item, modelLayout))}
-        </Box>
-      )}
       {snapshot.notes.map(note => (
         <Text>· {note}</Text>
       ))}

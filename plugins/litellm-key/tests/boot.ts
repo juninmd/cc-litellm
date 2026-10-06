@@ -23,6 +23,10 @@ export const boot = (on: On, setup: Setup = {}) => {
     statuses: [] as (string | undefined)[],
     toasts: [] as string[],
     opens: [] as string[],
+    /** What each `ui.open` said about Esc: whether it closes the pane. */
+    escapes: [] as boolean[],
+    /** What the store holds, kept in the open so a test can see what was written. */
+    stored: {} as Record<string, unknown>,
     closes: [] as string[],
     copies: [] as string[],
     commands: [] as string[],
@@ -30,7 +34,19 @@ export const boot = (on: On, setup: Setup = {}) => {
   const net = router(setup.routes ?? standardRoutes())
   const clock = mock.clock(on, { now: NOW })
 
-  mock.store(on, setup.store)
+  Object.assign(log.stored, setup.store)
+  on('store.get', (_$, e) => ({ value: log.stored[e.key] }))
+  on('store.set', (_$, e) => {
+    log.stored[e.key] = e.value
+
+    return { value: undefined }
+  })
+  on('store.delete', (_$, e) => {
+    delete log.stored[e.key]
+
+    return { value: undefined }
+  })
+  on('store.keys', () => ({ value: Object.keys(log.stored) }))
   mock.env(on, setup.env ?? { ANTHROPIC_BASE_URL: BASE, ANTHROPIC_AUTH_TOKEN: KEY })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('turn.complete', (_$, e) => ({ text: e.answer }))
@@ -61,6 +77,7 @@ export const boot = (on: On, setup: Setup = {}) => {
   })
   on('ui.open', (_$, e) => {
     log.opens.push(e.id)
+    log.escapes.push(e.closeOnEscape === true)
 
     return { value: setup.open ? { isPlaced: setup.open.isPlaced, reason: setup.open.reason ?? '' } : { isPlaced: true } }
   })
@@ -69,6 +86,7 @@ export const boot = (on: On, setup: Setup = {}) => {
 
     return { value: undefined }
   })
+  on('ui.focus', () => ({}))
   on('ui.copy', (_$, e) => {
     if (setup.copyThrows) {
       throw new Error('clipboard unavailable')

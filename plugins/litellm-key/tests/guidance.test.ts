@@ -66,7 +66,7 @@ describe('allowance', () => {
 
   test('says how much less than the recent pace it is when the pace will not last, and warns', () => {
     expect(allowanceText({ perDay: 1, ms: 3 * DAY }, 4)).toEqual({
-      text: '$1.00/day to last until the reset · 75% less than lately',
+      text: '$1.00/day to last · 75% less than lately',
       tone: 'warn',
     })
     expect(allowanceText({ perDay: 1, ms: 3 * DAY }, 1).tone).toBe('ok')
@@ -79,7 +79,7 @@ describe('allowance', () => {
   test('for the key sets itself against the pace only when the key runs out before its reset', async () => {
     expect(allowanceRow(await spending(12.5), NOW)).toEqual({ text: '$5.77/day to last until the reset', tone: 'ok' })
     expect(allowanceRow(await spending(45), NOW)).toEqual({
-      text: '$0.77/day to last until the reset · 65% less than lately',
+      text: '$0.77/day to last · 65% less than lately',
       tone: 'warn',
     })
     expect(allowanceRow(await spending(50), NOW)).toBeNull()
@@ -89,7 +89,7 @@ describe('allowance', () => {
 
 describe('headroom', () => {
   test('is how many more requests the cap holds at what a request cost in the last week', async () => {
-    expect(headroomText(await spending(12.5))).toBe('about 396 more requests at $0.095 each (7-day average)')
+    expect(headroomText(await spending(12.5))).toBe('about 396 more requests at $0.095 each')
   })
 
   test('says nothing without a cap, without room, without enough requests, spend or the key hash', async () => {
@@ -204,7 +204,7 @@ describe('the facts of a key', () => {
     const base = { ...(await spending(12.5)), session: { since: NOW - 2 * HOUR, spend: 1.5, last: 14 } }
 
     expect(row(base, 'Allowance')).toEqual({ label: 'Allowance', text: '$5.77/day to last until the reset', tone: 'ok' })
-    expect(row(base, 'Headroom')?.text).toBe('about 396 more requests at $0.095 each (7-day average)')
+    expect(row(base, 'Headroom')?.text).toBe('about 396 more requests at $0.095 each')
     expect(row(base, 'Today')?.tone).toBe('warn')
     expect(row(base, 'Session')?.text).toContain('+$1.50')
   })

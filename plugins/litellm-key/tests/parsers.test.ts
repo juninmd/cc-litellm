@@ -10,6 +10,10 @@ describe('date', () => {
     expect(date('2026-10-10 00:00:00')).toBe(Date.parse('2026-10-10T00:00:00Z'))
     expect(date('2026-10-10T00:00:00+02:00')).toBe(Date.parse('2026-10-09T22:00:00Z'))
     expect(date('nope')).toBeNull()
+    // past the reach of a Date a time is no time: it would make `toISOString` throw
+    expect(date(8.64e15)).toBe(8.64e15)
+    expect(date(8.64e15 + 1)).toBeNull()
+    expect(date(-1e16)).toBeNull()
     expect(date(null)).toBeNull()
   })
 })

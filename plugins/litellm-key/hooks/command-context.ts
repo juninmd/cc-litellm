@@ -14,7 +14,8 @@ export type CommandContext = {
   ensureFresh: () => Promise<void>
   refresh: () => Promise<void>
   reload: () => void
-  openPane: () => Promise<{ isPlaced: boolean; reason?: string }>
+  /** Opens the pane, on `tab` when one is given and on the one it was left on otherwise. */
+  openPane: (tab: ViewName | null) => Promise<{ isPlaced: boolean; reason?: string }>
   closePane: () => Promise<void>
   sleep: (ms: number) => Promise<void>
   /** The tab the pane shows and the range of its usage: what `copy` and `share` mean by "this". */

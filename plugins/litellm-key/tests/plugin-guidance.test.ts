@@ -197,7 +197,7 @@ describe('the pane', () => {
       const ui = await mount($, surface)
 
       expect(await ui.find({ type: 'Text', text: /\$5\.77\/day to last until the reset/ })).toBeDefined()
-      expect(await ui.find({ type: 'Text', text: /about 396 more requests at \$0\.095 each/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /about 396 more requests at \$0\.095 each$/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /\$8\.70 · 90 requests · 4\.7× the usual day \(\$1\.83\)/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /nothing spent since \d\d:\d\d/ })).toBeDefined()
       await ui.unmount()

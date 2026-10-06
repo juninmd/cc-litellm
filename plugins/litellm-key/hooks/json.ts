@@ -42,9 +42,12 @@ export const scrub = <T>(value: T): T => {
   return value
 }
 
+// The farthest a Date can reach either way: past it `toISOString` throws, so such a date is no date at all.
+const MAX_DATE_MS = 8.64e15
+
 export const date = (value: unknown): number | null => {
   if (typeof value === 'number') {
-    return Number.isFinite(value) ? value : null
+    return Number.isFinite(value) && Math.abs(value) <= MAX_DATE_MS ? value : null
   }
   if (typeof value !== 'string' || value.trim() === '') {
     return null
