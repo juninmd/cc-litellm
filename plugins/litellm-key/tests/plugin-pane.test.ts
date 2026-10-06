@@ -4,6 +4,8 @@ import { boot, run, start, urls } from './boot'
 import { BASE, KEY, keyBody, reply, standardRoutes } from './support'
 
 const SURFACES = ['terminal', 'desktop', 'vscode', 'mobile'] as const
+// Refresh, Copy and Close, and the three tabs that are not the one showing
+const ACTIONS_AND_TABS = 6
 // the filled part of a bar (whole cells and one partial eighth) and its track
 const FILLED = /^[█▏▎▍▌▋▊▉]+$/
 const TRACK = /^░+$/
@@ -37,7 +39,7 @@ describe('the pane', () => {
       // the percentage sits beside the bar once, not again in the amounts
       expect(await ui.find({ type: 'Text', text: /\(25%\)/ })).toBeUndefined()
       expect(await ui.find({ type: 'Text', text: /Updated/ })).toBeDefined()
-      expect(await ui.findAll({ type: 'Button' })).toHaveLength(3)
+      expect(await ui.findAll({ type: 'Button' })).toHaveLength(ACTIONS_AND_TABS)
       await ui.unmount()
     }
   })
@@ -95,7 +97,7 @@ describe('the pane', () => {
 
       expect(await ui.find({ type: 'Text', text: FILLED })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /\$12\.50 \/ \$50\.00 · \$37\.50 left · resets in 6d 12h \(30d\)/ })).toBeDefined()
-      expect(await ui.findAll({ type: 'Button' })).toHaveLength(3)
+      expect(await ui.findAll({ type: 'Button' })).toHaveLength(ACTIONS_AND_TABS)
       await ui.unmount()
     }
   })
@@ -125,7 +127,7 @@ describe('the pane', () => {
 
       expect(await ui.find({ type: 'Text', text: /\$12\.50 \/ \$50\.00 · \$37\.50 left · resets in 6d 12h \(30d\)/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /via ANTHROPIC_AUTH_TOKEN/ })).toBeDefined()
-      expect(await ui.findAll({ type: 'Button' })).toHaveLength(3)
+      expect(await ui.findAll({ type: 'Button' })).toHaveLength(ACTIONS_AND_TABS)
       await ui.unmount()
     }
   })
@@ -150,7 +152,7 @@ describe('the pane', () => {
       expect(await ui.find({ type: 'Text', text: /via ANTHROPIC_AUTH_TOKEN/ })).toBeUndefined()
       expect(await ui.find({ type: 'Text', text: /60 rpm · 100k tpm · 5 parallel/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /Updated/ })).toBeDefined()
-      expect(await ui.findAll({ type: 'Button' })).toHaveLength(3)
+      expect(await ui.findAll({ type: 'Button' })).toHaveLength(ACTIONS_AND_TABS)
       await ui.unmount()
     }
   })

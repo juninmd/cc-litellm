@@ -26,5 +26,9 @@ export const shortDate = (date: string): string => {
   return `${MONTHS[when.getUTCMonth()] ?? ''} ${when.getUTCDate()}`
 }
 
-/** The `YYYY-MM-DD` day (UTC) a timestamp falls on. */
-export const isoDay = (ms: number): string => new Date(ms).toISOString().slice(0, 10)
+/** The `YYYY-MM-DD` day (UTC) a timestamp falls on; empty for one no calendar has. */
+export const isoDay = (ms: number): string => {
+  const at = new Date(ms)
+
+  return Number.isNaN(at.getTime()) ? '' : at.toISOString().slice(0, 10)
+}

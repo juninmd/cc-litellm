@@ -5,7 +5,10 @@ import type { Variant } from './layout'
 import { MARK_WIDTH, readingWidth } from './layout'
 import type { Meter, Tone } from './summary'
 
-export type Ui = Pick<Elements['terminal'], 'Box' | 'Text' | 'Button'>
+export type Ui = Pick<Elements['terminal'], 'Box' | 'Text' | 'Button' | 'Link'> & {
+  /** Every surface's table has one, but only some draw it (see `hasField`). */
+  Input?: Elements['terminal']['Input']
+}
 
 type Tint = { color?: string; dimColor?: boolean }
 

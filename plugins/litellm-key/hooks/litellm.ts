@@ -1,20 +1,18 @@
-import type { Failure, Snapshot } from '../types'
-import { HISTORY_DAYS } from './activity'
+import type { Failure, ProxyInfo, Snapshot } from '../types'
+import { hasMoreRows, historyDays, parseUsage, usageQuery } from './activity'
 import type { Credentials } from './credentials'
 import { hostOf } from './credentials'
 import { classify, describeError, failure, looksLikeLiteLLM } from './failures'
-import { maskKey, utcDay, withoutCredentials } from './format'
+import { maskKey, redact, truncate, withoutCredentials } from './format'
 import type { Json } from './json'
 import { isObject, parse, scrub } from './json'
 import {
-  hasMoreRows,
   parseHealth,
   parseKey,
   parseMember,
   parseModelPrices,
   parseModels,
   parseTeam,
-  parseUsage,
   parseUser,
   parseUserRole,
 } from './parsers'
@@ -39,6 +37,13 @@ export type FetchRequest = {
 }
 
 const PARTIAL_USAGE = 'usage history is partial: the proxy has more rows than one page holds'
+
+/** What the proxy says of itself is its own words: the key is never in them, and they stay short. */
+const unkeyed = (info: ProxyInfo | null, key: string): ProxyInfo | null =>
+  info && {
+    version: info.version === null ? null : truncate(redact(info.version, [key]), 40),
+    db: info.db === null ? null : truncate(redact(info.db, [key]), 40),
+  }
 
 export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => {
   const { credentials, http, now, pinnedRoot } = request
@@ -135,17 +140,7 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
       return undefined
     }
   }
-  const days = Array.from({ length: HISTORY_DAYS }, (_, at) => utcDay(now, HISTORY_DAYS - 1 - at))
-  const [first = '', last = ''] = [days[0], days[days.length - 1]]
-  const usageQuery = [
-    `start_date=${first}`,
-    `end_date=${last}`,
-    `user_id=${encodeURIComponent(keyInfo.userId ?? '')}`,
-    keyInfo.keyHash ? `api_key=${keyInfo.keyHash}` : '',
-    'page_size=1000',
-  ]
-    .filter(Boolean)
-    .join('&')
+  const days = historyDays(now)
   const { previous, refreshSlow, wantRelated } = request
   const wantUsage = request.wantUsage && keyInfo.userId !== null
   const [userBody, teamBody, models, usage, priceBody, proxy] = await Promise.all([
@@ -162,7 +157,7 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
       ? Promise.resolve(null)
       : refreshSlow
         ? attempt('usage history', async () => {
-            const body = await get(`/user/daily/activity?${usageQuery}`)
+            const body = await get(`/user/daily/activity?${usageQuery(keyInfo, days)}`)
 
             if (hasMoreRows(body)) {
               notes.push(PARTIAL_USAGE)
@@ -172,7 +167,7 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
           })
         : Promise.resolve(previous?.usage ?? null),
     refreshSlow ? attempt('model prices', () => get('/model_group/info', true)) : Promise.resolve(null),
-    refreshSlow ? quiet(async () => parseHealth(await get('/health/readiness'))) : Promise.resolve(previous?.proxy ?? null),
+    refreshSlow ? quiet(async () => unkeyed(parseHealth(await get('/health/readiness')), key)) : Promise.resolve(previous?.proxy ?? null),
   ])
 
   // the fast ticks reuse the last usage, partial or not, so they keep saying so
@@ -208,6 +203,7 @@ export const fetchSnapshot = async (request: FetchRequest): Promise<Fetched> => 
       usage: kept(usage, previous?.usage),
       proxy: kept(proxy, previous?.proxy),
       latencyMs: ms,
+      session: null,
       notes,
     }),
   }

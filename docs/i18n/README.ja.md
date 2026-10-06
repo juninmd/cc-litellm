@@ -29,7 +29,7 @@
 
 # cc-litellm
 
-**[LiteLLM](https://docs.litellm.ai) プロキシ**経由でモデルを利用している人向けの [Claude Code](https://code.claude.com) プラグインです。Claude Code が使っている**仮想キー**についてプロキシが把握している情報(予算、使用額、制限、有効期限、利用可能なモデル、直近 7 日間の使用状況)を表示します。管理者は、ターミナルを離れることなく、**キーの作成と編集、追加予算の付与、キーのブロック、ルーターのフォールバックチェーンの確認**も行えます。
+**[LiteLLM](https://docs.litellm.ai) プロキシ**経由でモデルを利用している人向けの [Claude Code](https://code.claude.com) プラグインです。Claude Code が使っている**仮想キー**についてプロキシが把握している情報(予算、使用額、制限、有効期限、利用可能なモデル、直近 30 日間の使用状況)を表示します。管理者は、ターミナルを離れることなく、**キーの作成と編集、追加予算の付与、キーのブロック、ルーターのフォールバックチェーンの確認**も行えます。
 
 このリポジトリはプラグインマーケットプレイス(`cc-litellm`)で、プラグインは 1 つだけ含まれています: [`litellm-key`](../../plugins/litellm-key)。
 
@@ -43,8 +43,13 @@
 | --- | --- | --- |
 | 👀 **監視** | **ステータスライン**: プロンプトの下に常時表示 | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
 | | **`/litellm` ペイン** | キー、チーム、ユーザー、**チームメンバー**の予算メーター、ユーザーの**ロール**、制限、有効期限、モデル、7 日間のスパークライン、週の**上位モデル**、**Runway** の予測。自動で更新 |
-| | **トースト** | 予算が 80%(変更可)、95%、100% に達したとき、キーの期限切れが近いとき、キーがブロックまたは期限切れになったとき。予算ウィンドウごとに 1 回のみで、セッションをまたいでも重複しない |
+| | **ペインのタブ** | **Usage**(使用額・リクエスト数・トークン数を日ごとの棒グラフで、7・14・30 日、選べる 1 日、各モデルの動き)、**Models**(それぞれの使用額、フィルター、並べ替え)、**Details**(キーの各項目、LiteLLM のバージョンとデータベース、レイテンシ) |
+| | **ガイダンス** | **Allowance**(リセットまで持たせるための 1 日あたりの使用額)、**Headroom**(上限にあと何リクエスト入るか)、**Today**(普段の 1 日との比較)、**Session**(この Claude Code セッションの使用額とそのペース) |
+| | **トースト** | 予算が 80%(変更可)、95%、100% に達したとき、キーの期限切れが近いとき、キーがブロックまたは期限切れになったとき、今日の使用額が**日次アラート**を超えたとき。予算ウィンドウごとに 1 回のみで、セッションをまたいでも重複しない |
 | | **予算超過バナー** | プロンプトの上に出る赤い帯。予算(キー、ユーザー、チーム、ウィンドウ、モデル)を使い切っている間は**表示され続け**、数値が正常に戻ったときだけ消える |
+| 📊 **レポート** | **`/litellm pace`**、`usage`、`compare`、`day`、`status` | 予算の行き先、日別とモデル別の表、前の日々と比べて何が変わったか、モデル別の 1 日 |
+| | **`/litellm check`** | `OK`、`WARNING`、`CRITICAL`、`UNKNOWN` **と `claude -p` 実行の終了コード**(0〜3)。スクリプトや監視向け |
+| | **`/litellm json`** / `csv` | すべてを JSON で、日別を CSV で。**`copy`** はレポートをクリップボードへ、**`share`** は Claude に渡して質問できるようにする |
 | 🛠️ **管理** *(管理者)* | **`/litellm key new`** | 仮想キーを作成。シークレットは**クリップボードに入り、トランスクリプトには残らない** |
 | | **`/litellm grant`** | キー、ユーザー、チーム、組織への追加予算。プレビューと確認つき |
 | | **`/litellm key set`** / `reset-spend` | キーのモデル、制限、有効期限、エイリアスを変更。使用額カウンターを 0 に戻す |
@@ -83,6 +88,55 @@ Claude Code がすでに LiteLLM と通信している場合、**設定は不要
 <p align="center">
   <img src="../evidence/keys.png" alt="/litellm models と /litellm keys の出力" width="92%">
 </p>
+
+### 詳しく見る: 使用状況、モデル、詳細
+
+ペインにはタブが 4 つあります。Overview は上のダッシュボードです。**Usage** は直近 7・14・30 日を棒グラフで描き、使用額・リクエスト数・トークン数のいずれかを数え、1 日を選ぶとそのモデルを見られ、前の日々と比べてどのモデルが動いたかを示します:
+
+```text
+ 1: Overview   2: Usage   3: Models  4: Details
+
+ Spend per day (UTC)                7d   d: 14d  30d  m: chart: spend  v: CSV
+
+ $11.4                                                               ██████
+                                       ▁▁▁▁▁▁    ▇▇▇▇▇▇              ██████
+                                       ██████    ██████              ██████
+                   ▇▇▇▇▇▇              ██████    ██████    ▃▃▃▃▃▃    ██████
+         ▅▅▅▅▅▅    ██████              ██████    ██████    ██████    ██████
+    $0   ██████    ██████              ██████    ██████    ██████    ██████
+           Wed       Thu       Fri       Sat       Sun       Mon       Tue
+         $3.10     $5.40       ·       $7.90     $9.20     $4.40     $11.4
+
+ Spend        $41.37 · $5.91/day
+ Requests     369 · $0.112 each
+ Failed       4 requests (1.1%)
+ Peak day     $11.37 on Tue Oct 6
+ Trend        ▲ 34% vs the 7 days before (full days)
+
+ By model, last 7 days · ▲▼ vs the 7 before ─────────────────────────────────
+ claude-sonnet-4-5  ▄▄▄▄▄▄▄▄▄▄▁▁▁▁▁▁▁▁▁▁  52%  $21.51 ▲ 34% · 189 requests
+ claude-opus-4-1    ▄▄▄▄▄▄▁▁▁▁▁▁▁▁▁▁▁▁▁▁  28%  $11.58 ▲ 34% · 99 requests
+```
+
+**Models** は、キーが呼び出せるモデルを、その期間に各モデルが使った額とともに一覧にします(使用額または名前で並べ替え、長い一覧はフィルターに入力して絞り込めます)。**Details** は、プロキシがキーについて返した内容、LiteLLM のバージョンとデータベースの状態、`/key/info` にかかった時間をまとめます。選んだ期間・並べ替え・グラフは次回のために記憶され、`/litellm` は最後に開いていたタブでペインを開きます。
+
+### レポートを頼む、またはスクリプトに渡す
+
+```text
+/litellm pace
+Budget     $41.37 / $50.00 (83%) · $8.63 left · resets in 9d 3h (30d)
+Runway     out in 1d 6h at $6.75/day · resets in 9d 3h
+Allowance  $0.95/day to last · 86% less than lately
+Headroom   about 76 more requests at $0.112 each
+Today      $11.37 · 102 requests · 2.2× the usual day ($5.21)
+Session    +$0.40 since 03:03 (12m ago)
+```
+
+```bash
+claude -p "/litellm check"; echo $?    # WARNING · 83% of budget … (exit 1)
+claude -p "/litellm json" | jq .budget.percent
+claude -p "/litellm csv 30" > usage.csv
+```
 
 ### 問題を早期に見つけ、名前を付けて示す
 
@@ -158,10 +212,22 @@ Claude Code がすでに LiteLLM と通信している場合、**設定は不要
 
 | コマンド | 動作 |
 | --- | --- |
-| `/litellm` | ペインを開く(1 行のサマリーも返す)。画面がない場合はサマリーを出力する。 |
+| `/litellm` | 最後に開いていたタブでペインを開く(1 行のサマリーも返す)。画面がない場合はそのタブをテキストで出力する。 |
+| `/litellm tab <name>` | ペインを `overview`、`usage`、`models`、`details` のタブで開く(または 1〜4)。 |
 | `/litellm refresh` | 今すぐ再読み込みする。 |
 | `/litellm info` | サマリー全文をトランスクリプトに出力する。 |
-| `/litellm models` | このキーが呼び出せるモデルを、100 万トークンあたりの価格とコンテキストウィンドウとともに一覧表示する。 |
+| `/litellm status` | ステータスラインをテキストで出力する。 |
+| `/litellm pace` | 予算の行き先、持たせるために 1 日に使える額、チームとユーザーについても同様。 |
+| `/litellm usage [7\|14\|30]` | 日ごとの使用額、リクエスト数、トークン数を表で、合計とモデルとともに出力する。 |
+| `/litellm compare [7\|14]` | 直近の丸 1 日ずつの期間を、その前の同じ日数と、全体およびモデルごとに比較する。 |
+| `/litellm day [when]` | モデル別の 1 日分: `today`、`yesterday`、`2026-10-03`、`10-03`、または曜日(`mon`)。 |
+| `/litellm models [text]` | このキーが呼び出せるモデルを、100 万トークンあたりの価格とコンテキストウィンドウとともに一覧表示する。テキストを渡すと、名前にそれを含むものだけを表示する。 |
+| `/litellm check [warn%]` | `OK`、`WARNING`、`CRITICAL`、`UNKNOWN` のいずれかと、`claude -p` 実行の終了コード(0、1、2、3)。上限を超えた予算、またはプロキシがブロック・期限切れ・拒否と返したキーは `CRITICAL`。応答しないプロキシは `UNKNOWN`。 |
+| `/litellm json` | プラグインがキーについて把握しているすべてを JSON で出力する(キーもハッシュも含まない)。 |
+| `/litellm csv [7\|14\|30]` | 日別データを CSV で出力する。 |
+| `/litellm copy [what]` | レポートをクリップボードに置く: `overview`、`usage`、`models`、`details`、`pace`、`compare`、`csv`、`json`。 |
+| `/litellm share [what]` | 画面には出さずにレポートを Claude に渡し、次の質問をそのレポートについてできるようにする。 |
+| `/litellm ping` | プラグインが読み込む各エンドポイントを試し、ステータスと所要時間を表示する。 |
 | `/litellm debug` | URL とキーの取得元(常にマスク)、試行した内容、結果を表示する。 |
 | `/litellm close` | ペインを閉じる。 |
 | `/litellm keys [--user ID \| --team ID \| --all]` | キーを一覧表示する。既定は自分のユーザーのキー。🔐 |
@@ -173,7 +239,9 @@ Claude Code がすでに LiteLLM と通信している場合、**設定は不要
 | `/litellm org [id\|alias]` | 組織の予算。名前を省略した場合は、キー自身の組織、なければ一覧。🔐 |
 | `/litellm fallbacks [model]` | ルーターのフォールバックチェーン。名前に一致するモデルに絞ることもできる。🔐 |
 
-🔐 = 管理者コマンド(下記を参照)。ペイン内の操作(クリック、または `ctrl+x` `tab` でフォーカス): `r` で更新、`c` でサマリーをコピー、`q` で閉じる、矢印キーでスクロール。各ボタンには対応するキーが併記されます(`Refresh (r)`、`Copy (c)`、`Close (q)`)。空のプロンプトでは `Esc` でも閉じられます。
+🔐 = 管理者コマンド(下記を参照)。ペイン内の操作(クリック、または `ctrl+x` `tab` でフォーカス): `1`〜`4` でタブを切り替え、`r` で更新、`c` で表示中のタブをコピー、`q` で閉じる、矢印キーでスクロール。各ボタンには対応するキーが併記されます(`Refresh (r)`、`Copy (c)`、`Close (q)`)。Usage では `d` で 7・14・30 日を順に切り替え、`m` で使用額・リクエスト数・トークン数を切り替え、`v` で日別データを CSV としてコピー。Models では `s` で並べ替え、`f` でフィルターへ移動。空のプロンプトでは `Esc` でもペインを閉じられます(Models ではフィルターから抜けるだけです)。
+
+コマンドを打ち間違えると候補が表示されます(`Did you mean "usage"?`)。求められたことができないコマンドは、その旨を 1 文で伝えます。スクリプト向けのコマンド(`check`、`json`、`csv`、`ping`)は、報告する内容がないとき終了コード 3 で終わります。
 
 ペインは利用できる幅に合わせて表示を変えます。会話の横に表示する場合(全画面、110 桁以上)は、各メーターが 2 行になります。プロンプトの上に表示する場合は、122 桁以上でメーターが表になります。それより狭いターミナルでは、メーターは 1 つあたり 2 行のままですが、`compact_pane` を有効にすると**コンパクト**表示になります。会話の横に表示する場合、ペインにはタイトル付きのセクション(`BUDGETS`、`KEY`、`LAST 7 DAYS`、`TOP MODELS`)が付き、各曜日の下に 1 文字が表示されます。`TOP MODELS` では、使用額の多い上位 5 モデルを、週の使用額に占める割合のバーとともに並べます。長い名前は中央で切り詰められるため、`claude-sonnet-4-5` と `claude-sonnet-4-6` は区別できます。色だけが唯一の手がかりになることはありません。`▲` は上限に近い予算、`✖` は使い切った予算を示し、使用額がない日は短いバーではなく `·` で表します。
 
@@ -278,9 +346,11 @@ URL がパススルーのルート(`/anthropic`、`/bedrock`、`/v1` など)で�
 | `litellm_admin_key` | 空 | `keys`、`key new/set/reset-spend/block/unblock`、`grant`、`org`、`fallbacks` 用の管理者キー。🔒 保存先は同じ。表示されない。 |
 | `refresh_seconds` | 60 | 読み取り間隔(15〜3600)。各ターンの後にも、最短 20 秒の間隔で読み取る。 |
 | `warn_percent` | 80 | 最初の予算警告(95% と 100% でも警告する)。 |
+| `daily_alert` | 0(無効) | その日のキーの使用額がこのドル額に達したら警告する。トーストは 1 日 1 回、ステータスラインとペインにも表示。有効にすると、使用履歴を 3 分ごとに読み込む。 |
+| `show_toasts` | `yes` | 予算、日次アラート、期限が近いキー、応答しないプロキシを知らせるトースト。オフにすると、警告はステータスラインとペインだけに表示される。 |
 | `show_status_line` | `yes` | プロンプトの下の行。 |
 | `show_related` | `yes` | `/user/info` と `/team/info` を読む。それらの予算でもリクエストがブロックされうるため。 |
-| `show_usage` | `yes` | 7 日間の使用状況のために `/user/daily/activity`(LiteLLM のベータ版エンドポイント)を読む。 |
+| `show_usage` | `yes` | `/user/daily/activity`(LiteLLM のベータ版エンドポイント)を読み、直近 30 日間の使用状況を取得する。Usage タブと Models タブ、レポート、runway、日次アラートがこれを土台にしている。 |
 | `compact_pane` | `no` | 狭いターミナル(74〜121 桁)で、プロンプト上のペインをコンパクトにする。1 行に 1 メーター、情報は横並び。 |
 
 ## データの取得元
@@ -293,7 +363,10 @@ URL がパススルーのルート(`/anthropic`、`/bedrock`、`/v1` など)で�
 | `/user/info`、`/team/info` | キーのユーザーとチームの予算、およびチームのメンバー別の上限(上限がある場合)。読み取りのたびに取得。 |
 | `/v1/models` | 実際に許可されているモデル。10 分ごと。 |
 | `/model_group/info` | それらのモデルのトークンあたりの価格とコンテキストウィンドウ(プロキシは全モデル分を返し、プラグインは許可されたものだけを残す)。10 分ごと。 |
-| `/user/daily/activity` | 直近 7 日間の使用額、リクエスト数、トークン数、およびモデル別の使用額。10 分ごと。 |
+| `/user/daily/activity` | 直近 30 日間の使用額、リクエスト数、トークン数、モデルを日ごとに。10 分ごと。 |
+| `/health/readiness` | LiteLLM のバージョンと、データベースが接続されているかどうか。10 分ごと。プロキシが返さない場合は何も表示されず、メモも出ない。 |
+
+「10 分ごと」と記した読み取りは、`daily_alert` を設定している間は 3 分ごとに行われます。監視しているのは今日の使用額だからです。
 
 **管理**は、管理者コマンドを入力したときにだけ行われます: `GET /key/list`、`/key/info`、`/user/info`、`/team/info`、`/v2/team/list`、`/organization/info`、`/organization/list`、`/router/settings`、および `POST /key/generate`、`/key/delete`(ロールバック時のみ)、`/key/block`、`/key/unblock`、`/key/update`、`/key/{hash}/reset_spend`、`/user/update`、`/team/update`、`PATCH /organization/update`。
 
@@ -316,7 +389,7 @@ URL がパススルーのルート(`/anthropic`、`/bedrock`、`/v1` など)で�
 | "does not look like a LiteLLM proxy" | URL が別のものを指している。`litellm_url` にプロキシのルートを設定する。 |
 | "key blocked" / "key expired" | 文字どおりの意味。管理者に依頼するか、別のセッションから `/litellm key unblock` を実行する。 |
 | "key rejected (401)" | キーが無効。 |
-| 7 日間の履歴が表示されない | キーに `user_id` がないか、お使いの LiteLLM のバージョンにベータ版エンドポイントがない。 |
+| 使用履歴が表示されない | キーに `user_id` がないか、お使いの LiteLLM のバージョンにベータ版エンドポイントがない。 |
 | 管理者コマンドが管理者キーを要求する | `litellm_admin_key` を設定する。 |
 | 管理者コマンドが "until the proxy accepts this session's key" で待機する | 仕様です。管理者キーは、自分のキーを受け入れたプロキシにしか送信されません。別のセッションまたは LiteLLM UI で、そのキーを修復してください。 |
 
@@ -346,7 +419,7 @@ tsc -p plugins/litellm-key                              # types (.claude-plugin/
 bash dev/check-file-size.sh                             # no source file over 300 lines
 ```
 
-プラグインの構成: `hooks/register.tsx` は Claude Code の `$` に触れる唯一のファイルで、注入されるポート(`hooks/ports.ts`)を組み立て、イベント、コマンド、タイマー、トーストを結び付けます。それ以外はすべてそのポートを受け取る単純な関数なので、エンジンを起動せずにテストで実行できます。`hooks/session.ts` は読み取りサイクル(設定、ティッカー、キューに積まれた強制更新)です。`hooks/credentials.ts` と `hooks/settings.ts` はキーとオプションを解決します。`hooks/litellm.ts` はプロキシを読み取り、`hooks/parsers.ts` と `hooks/json.ts` は応答を正規化し、`hooks/failures.ts` は何がうまくいかなかったかを名前で示します。`hooks/alerts.ts` はトーストを出すかどうかを決めます。`hooks/commands.ts` は `/litellm` のコマンドテーブルで、`hooks/admin*.ts` は管理者コマンドです(`admin.ts` がプロキシの読み取り、`admin-targets.ts` がキー、ユーザー、チームの検索、`admin-writes.ts` が書き込み、`admin-plan.ts` がプレビューとプラン、`admin-link.ts` が管理者キーとプロキシの紐付け、`admin-commands.ts` が処理フロー、`args.ts` が引数パーサー)。`hooks/exceeded.ts` と `hooks/band.tsx` は予算超過バナーです。`hooks/summary.ts` はテキストを、`hooks/view.tsx` と `hooks/parts.tsx` はペイン(ゲージ、セクションタイトル、ステータスチップ、メーター行)を組み立てます。`hooks/format.ts` は純粋なフォーマッタ群で、`types/index.d.ts` は状態のコントラクトです。
+プラグインの構成: `hooks/register.tsx` は Claude Code の `$` に触れる唯一のファイルで、注入されるポート(`hooks/ports.ts`)を組み立て、イベント、コマンド、タイマー、トーストを結び付けます。それ以外はすべてそのポートを受け取る単純な関数なので、エンジンを起動せずにテストで実行できます。`hooks/session.ts` は読み取りサイクル(設定、ティッカー、キューに積まれた強制更新)です。`hooks/credentials.ts` と `hooks/settings.ts` はキーとオプションを解決します。`hooks/litellm.ts` はプロキシを読み取り、`hooks/parsers.ts` と `hooks/json.ts` は応答を正規化し、`hooks/failures.ts` は何がうまくいかなかったかを名前で示します。`hooks/alerts.ts` はトーストを出すかどうかを決めます。`hooks/commands.ts` は `/litellm` のコマンドテーブルで、`hooks/admin*.ts` は管理者コマンドです(`admin.ts` がプロキシの読み取り、`admin-targets.ts` がキー、ユーザー、チームの検索、`admin-writes.ts` が書き込み、`admin-plan.ts` がプレビューとプラン、`admin-link.ts` が管理者キーとプロキシの紐付け、`admin-commands.ts` が処理フロー、`args.ts` が引数パーサー)。`hooks/exceeded.ts` と `hooks/band.tsx` は予算超過バナーです。`hooks/summary.ts` はテキストを、`hooks/view.tsx` と `hooks/parts.tsx` はペイン(ゲージ、セクションタイトル、ステータスチップ、メーター行)を組み立てます。`hooks/format.ts` は純粋なフォーマッタ群で、`types/index.d.ts` は状態のコントラクトです。タブは `hooks/tab-*.tsx`(`tab-overview.tsx` はタブ導入前のペインのダッシュボード、`parts-tabs.tsx` は共通部品、`chart.ts` は棒グラフ)、レポートは `hooks/report-*.ts`、`details.ts`、`probe.ts`(`/litellm ping`)で、その下に `history.ts`(30 日分、合計と比較)と `guidance.ts`(allowance、headroom、today、セッション)があります。`hooks/commands-reports.ts` と `commands-share.ts` が、レポートを出力または引き渡すコマンドです。
 
 ## 既知の制限
 
@@ -355,7 +428,8 @@ bash dev/check-file-size.sh                             # no source file over 30
 - モデル別の予算(`model_max_budget`)、一時的な予算の増額、キーの再生成は、プロキシ側ではエンタープライズ限定のため提供していません([予算](#budgets-what-litellm-can-and-cannot-do)を参照)。フォールバックチェーンの編集にはプロキシ側で `STORE_MODEL_IN_DB=True` が必要なため、`/litellm fallbacks` は読み取り専用のままです。
 - **組織**の予算はキー自身の応答に含まれず、仮想キーでは読み取れない場合があるため、ペインには組織名が表示されるだけです。`/litellm org` は管理者キーで読み取ります。管理者キーは、これまでどおり管理者コマンドを入力したときにだけ送信され、更新タイマーでは送信されません。
 - チーム**メンバー**の合計額は仮想キーには報告されません。`Member` メーターはこのキーの使用額だけを数えるため、実際より低く表示されることがあります。ユーザーがチーム内に複数のキーを持つ場合、メーターが示すより早くプロキシがブロックすることがあります。リセットされる上限に対しては高く表示されることもあります(リセットでゼロになるのはメンバーの支出であって、キーの支出ではありません)。そのため、その場合は警告を出し、バナーは表示されません。
-- 7 日間の履歴はプロキシのアクティビティ行を 1 ページ分だけ読み取ります。それより多い場合、ペインは一部のみであることを表示します。
+- 使用履歴は、プロキシのアクティビティ行を 1 ページ分だけ読み込みます。それ以上ある場合、ペインは一部のみだと表示します。日付はプロキシの数え方どおり UTC です。今日はまだ進行中なので、比較からは除外されます。
+- **Session** 行は、この Claude Code セッションの最初の読み取りからキーの使用額がどれだけ増えたかを数えます。同じキーを使う別のセッションの使用額と、このセッションの使用額を区別することはできません。
 - 予算超過バナーが描画されるのは、ターミナルとデスクトップのサーフェスです(Claude Code がバンドを提供するのはそこだけ)。それ以外では、ステータスラインとペインで知らせます。
 - ステータスラインの前の `⚠` は、プラグインのステータス項目すべてに対して Claude Code が描画するもので、キーに問題があることを意味しません(それを示すのはテキストです)。
 - Claude Code のプラグイン API はアーリーアクセスであり、バージョン間で変更される可能性があります。

@@ -140,6 +140,9 @@ describe('how the pane looks', () => {
     const buttons = await ui.findAll({ type: 'Button' })
 
     expect(buttons.map(button => [button.props.label, button.props.hotkey])).toEqual([
+      ['Usage', '2'],
+      ['Models', '3'],
+      ['Details', '4'],
       ['Refresh (r)', 'r'],
       ['Copy (c)', 'c'],
       ['Close (q)', 'q'],

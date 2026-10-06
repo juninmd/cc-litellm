@@ -1,4 +1,5 @@
 const BLOCKS = '▁▂▃▄▅▆▇█'
+const RISERS = ' ▁▂▃▄▅▆▇█'
 const EIGHTHS = ' ▏▎▍▌▋▊▉█'
 const DAY_MS = 86_400_000
 
@@ -126,6 +127,29 @@ export const rule = (fraction: number, width: number): { full: string; track: st
 }
 
 /** One block per value, scaled to the biggest; a day with nothing is a dot, so "none" never looks like "a little". */
+/**
+ * Vertical bars, one per value, scaled to the biggest, as `height` rows of text from the top down. Each bar is
+ * `barWidth` cells wide with `gap` blank cells between them. Any value above zero shows at least one eighth of a row.
+ */
+export const columnChart = (values: readonly number[], height: number, barWidth: number, gap = 1): string[] => {
+  const most = Math.max(0, ...values)
+  const rows: string[] = []
+
+  for (let row = height - 1; row >= 0; row -= 1) {
+    rows.push(
+      values
+        .map(value => {
+          const eighths = !(value > 0) || most <= 0 ? 0 : Math.max(1, Math.round((value / most) * height * 8))
+
+          return RISERS.charAt(Math.min(8, Math.max(0, eighths - row * 8))).repeat(barWidth)
+        })
+        .join(' '.repeat(gap)),
+    )
+  }
+
+  return rows
+}
+
 export const sparkline = (values: readonly number[]): string => {
   const max = Math.max(0, ...values)
 

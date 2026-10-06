@@ -1,5 +1,5 @@
-import type { ActivityDay, Usage } from '../types'
-import { clean } from './format'
+import type { ActivityDay, KeyInfo, Usage } from '../types'
+import { clean, utcDay } from './format'
 import { isObject, num } from './json'
 
 // The pane lists this many models of the week; past that the long tail is noise.
@@ -8,6 +8,31 @@ const TOP_MODELS = 5
 export const WEEK = 7
 /** How many days of history the proxy is asked for. */
 export const HISTORY_DAYS = 30
+
+/** The days the history covers, up to the one `now` falls on (UTC, as the proxy counts), the oldest first. */
+export const historyDays = (now: number): string[] =>
+  Array.from({ length: HISTORY_DAYS }, (_, at) => utcDay(now, HISTORY_DAYS - 1 - at))
+
+/** What to ask /user/daily/activity: the days, this key's user and, when it is known, this key alone by its hash. */
+export const usageQuery = (key: Pick<KeyInfo, 'userId' | 'keyHash'>, days: readonly string[]): string =>
+  [
+    `start_date=${days[0] ?? ''}`,
+    `end_date=${days[days.length - 1] ?? ''}`,
+    `user_id=${encodeURIComponent(key.userId ?? '')}`,
+    key.keyHash ? `api_key=${key.keyHash}` : '',
+    'page_size=1000',
+  ]
+    .filter(Boolean)
+    .join('&')
+
+// No day of a key spends or counts past this: a figure beyond it is noise, and sums of such would reach Infinity.
+const MOST = 1e15
+
+const amount = (value: unknown): number => {
+  const found = num(value) ?? 0
+
+  return Math.abs(found) <= MOST ? found : 0
+}
 
 const quiet = (date: string): ActivityDay => ({
   date,
@@ -42,30 +67,30 @@ export const parseUsage = (body: unknown, days: readonly string[]): Usage | null
       continue
     }
     const metrics = isObject(result.metrics) ? result.metrics : {}
-    const spend = num(metrics.spend) ?? 0
+    const spend = amount(metrics.spend)
 
     day.spend += spend
-    day.requests += num(metrics.api_requests) ?? 0
-    day.failed += num(metrics.failed_requests) ?? 0
-    day.tokens += num(metrics.total_tokens) ?? 0
-    day.inputTokens += num(metrics.prompt_tokens) ?? 0
-    day.outputTokens += num(metrics.completion_tokens) ?? 0
-    day.cacheReadTokens += num(metrics.cache_read_input_tokens) ?? 0
+    day.requests += amount(metrics.api_requests)
+    day.failed += amount(metrics.failed_requests)
+    day.tokens += amount(metrics.total_tokens)
+    day.inputTokens += amount(metrics.prompt_tokens)
+    day.outputTokens += amount(metrics.completion_tokens)
+    day.cacheReadTokens += amount(metrics.cache_read_input_tokens)
     if (week.has(date)) {
       total.spend += spend
-      total.requests += num(metrics.api_requests) ?? 0
-      total.tokens += num(metrics.total_tokens) ?? 0
-      total.input += num(metrics.prompt_tokens) ?? 0
-      total.output += num(metrics.completion_tokens) ?? 0
-      total.cacheRead += num(metrics.cache_read_input_tokens) ?? 0
+      total.requests += amount(metrics.api_requests)
+      total.tokens += amount(metrics.total_tokens)
+      total.input += amount(metrics.prompt_tokens)
+      total.output += amount(metrics.completion_tokens)
+      total.cacheRead += amount(metrics.cache_read_input_tokens)
     }
     const models = isObject(result.breakdown) && isObject(result.breakdown.models) ? result.breakdown.models : {}
 
     for (const [name, entry] of Object.entries(models)) {
       const model = clean(name)
       const own = isObject(entry) && isObject(entry.metrics) ? entry.metrics : {}
-      const modelSpend = num(own.spend) ?? 0
-      const requests = num(own.api_requests) ?? 0
+      const modelSpend = amount(own.spend)
+      const requests = amount(own.api_requests)
 
       if (week.has(date)) {
         perModel.set(model, (perModel.get(model) ?? 0) + modelSpend)
@@ -78,9 +103,9 @@ export const parseUsage = (body: unknown, days: readonly string[]): Usage | null
       if (held) {
         held.spend += modelSpend
         held.requests += requests
-        held.tokens += num(own.total_tokens) ?? 0
+        held.tokens += amount(own.total_tokens)
       } else {
-        day.models.push({ model, spend: modelSpend, requests, tokens: num(own.total_tokens) ?? 0 })
+        day.models.push({ model, spend: modelSpend, requests, tokens: amount(own.total_tokens) })
       }
     }
   }

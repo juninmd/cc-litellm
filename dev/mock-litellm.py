@@ -9,7 +9,9 @@ Try the plugin without a real proxy:
 
 Scenarios: healthy, warning (default), over, expiring, blocked, nocap. Flags change one
 thing on top of a scenario: --spend, --max-budget, --expires-hours, --blocked, --delay
-(seconds before /key/info answers) and --fail-after (answer 502 after that many reads).
+(seconds before /key/info answers), --fail-after (answer 502 after that many reads),
+--today (what today has spent, to try the daily alert), --no-usage (no usage history, as
+on a proxy without the beta endpoint) and --no-health (no /health/readiness).
 
 The answers are shaped like the real ones (litellm/proxy/management_endpoints). Any other
 key gets the same 401 body LiteLLM sends. Nothing is stored and nothing leaves localhost.
@@ -118,18 +120,27 @@ def models():
     return {"object": "list", "data": [{"id": name, "object": "model", "owned_by": "openai"} for name in names]}
 
 
-def daily_activity():
+# What the key spent each day, oldest first: 23 earlier days (a steady wobble, a quiet day now and then), then a week.
+EARLIER = [0.0 if at % 6 == 5 else round(1.5 + ((at * 37) % 17) / 3, 2) for at in range(23)]
+WEEK = [3.1, 5.4, 0.0, 7.9, 9.2, 4.4, 11.37]
+SHARES = {"claude-sonnet-4-5": 0.52, "claude-opus-4-1": 0.28, "claude-haiku-4-5": 0.14, "gpt-5": 0.06}
+
+
+def daily_activity(config):
     today = datetime.now(timezone.utc).date()
+    spends = EARLIER + WEEK[:-1] + [config["today"] if config.get("today") is not None else WEEK[-1]]
     results = []
-    for back, spend in zip(range(6, -1, -1), [3.1, 5.4, 0.0, 7.9, 9.2, 4.4, 11.37]):
+    for back, spend in zip(range(len(spends) - 1, -1, -1), spends):
         if spend == 0:
             continue
+        requests = int(spend * 9)
         results.append(
             {
                 "date": (today - timedelta(days=back)).isoformat(),
                 "metrics": {
                     "spend": spend,
-                    "api_requests": int(spend * 9),
+                    "api_requests": requests,
+                    "failed_requests": 2 if spend > 9 else 0,
                     "total_tokens": int(spend * 210000),
                     "prompt_tokens": int(spend * 170000),
                     "completion_tokens": int(spend * 40000),
@@ -137,10 +148,14 @@ def daily_activity():
                 },
                 "breakdown": {
                     "models": {
-                        "claude-sonnet-4-5": {"metrics": {"spend": spend * 0.52}},
-                        "claude-opus-4-1": {"metrics": {"spend": spend * 0.28}},
-                        "claude-haiku-4-5": {"metrics": {"spend": spend * 0.14}},
-                        "gpt-5": {"metrics": {"spend": spend * 0.06}},
+                        name: {
+                            "metrics": {
+                                "spend": spend * share,
+                                "api_requests": int(requests * share),
+                                "total_tokens": int(spend * 210000 * share),
+                            }
+                        }
+                        for name, share in SHARES.items()
                     }
                 },
             }
@@ -148,7 +163,11 @@ def daily_activity():
     return {"results": results, "metadata": {"total_spend": sum(r["metrics"]["spend"] for r in results)}}
 
 
-def handler(config, delay, fail_after):
+def health():
+    return {"status": "healthy", "db": "connected", "cache": None, "litellm_version": "1.77.0", "success_callbacks": []}
+
+
+def handler(config, delay, fail_after, off=()):
     reads = {"key": 0}
 
     class Handler(BaseHTTPRequestHandler):
@@ -191,8 +210,11 @@ def handler(config, delay, fail_after):
                 "/team/info": lambda: team_info(config),
                 "/v1/models": models,
                 "/model_group/info": model_groups,
-                "/user/daily/activity": daily_activity,
+                "/user/daily/activity": lambda: daily_activity(config),
+                "/health/readiness": health,
             }
+            if path in off or path not in routes:
+                return self.reply(404, {"detail": "Not Found"})
             if path in routes:
                 return self.reply(200, routes[path]())
             return self.reply(404, {"detail": "Not Found"})
@@ -214,6 +236,9 @@ if __name__ == "__main__":
     parser.add_argument("--blocked", action="store_true")
     parser.add_argument("--delay", type=float, default=0.0)
     parser.add_argument("--fail-after", type=int)
+    parser.add_argument("--today", type=float, help="what today has spent in the usage history")
+    parser.add_argument("--no-usage", action="store_true", help="answer 404 to /user/daily/activity")
+    parser.add_argument("--no-health", action="store_true", help="answer 404 to /health/readiness")
     args = parser.parse_args()
 
     config = {"max_budget": 50.0, "expires_hours": 960.0, "blocked": False, **SCENARIOS[args.scenario]}
@@ -225,5 +250,7 @@ if __name__ == "__main__":
         config["expires_hours"] = args.expires_hours
     if args.blocked:
         config["blocked"] = True
+    config["today"] = args.today
+    off = tuple(path for flag, path in ((args.no_usage, "/user/daily/activity"), (args.no_health, "/health/readiness")) if flag)
     print(f"mock LiteLLM ({args.scenario}) on http://127.0.0.1:{args.port}  key: {KEY}", flush=True)
-    ThreadingHTTPServer(("127.0.0.1", args.port), handler(config, args.delay, args.fail_after)).serve_forever()
+    ThreadingHTTPServer(("127.0.0.1", args.port), handler(config, args.delay, args.fail_after, off)).serve_forever()

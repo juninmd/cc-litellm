@@ -29,7 +29,7 @@
 
 # cc-litellm
 
-Un plugin de [Claude Code](https://code.claude.com) para quienes acceden a sus modelos a través de un **proxy [LiteLLM](https://docs.litellm.ai)**. Muestra lo que el proxy sabe de la **clave virtual** que usa Claude Code (presupuesto, gasto, límites, vencimiento, modelos, uso de los últimos 7 días) y, para administradores, permite **crear y editar claves, dar presupuesto extra a alguien, bloquear una clave y leer las cadenas de fallback del router** sin salir de la terminal.
+Un plugin de [Claude Code](https://code.claude.com) para quienes acceden a sus modelos a través de un **proxy [LiteLLM](https://docs.litellm.ai)**. Muestra lo que el proxy sabe de la **clave virtual** que usa Claude Code (presupuesto, gasto, límites, vencimiento, modelos, uso de los últimos 30 días) y, para administradores, permite **crear y editar claves, dar presupuesto extra a alguien, bloquear una clave y leer las cadenas de fallback del router** sin salir de la terminal.
 
 Este repositorio es un marketplace de plugins (`cc-litellm`) con un único plugin: [`litellm-key`](../../plugins/litellm-key).
 
@@ -43,8 +43,13 @@ Este repositorio es un marketplace de plugins (`cc-litellm`) con un único plugi
 | --- | --- | --- |
 | 👀 **Supervisar** | **Línea de estado** bajo el prompt, siempre visible | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
 | | **Panel `/litellm`** | medidores de los presupuestos de la clave, el equipo, el usuario y el **miembro del equipo**, el **rol** del usuario, límites, vencimiento, modelos, sparkline de 7 días, los **modelos con más gasto** de la semana y un pronóstico de **runway**; se actualiza solo |
-| | **Notificaciones (toasts)** | al 80% (configurable), 95% y 100%; clave a punto de vencer; clave bloqueada o vencida. Una vez por ventana de presupuesto, incluso entre sesiones |
+| | **Pestañas del panel** | **Usage** (gasto, solicitudes o tokens por día en barras, a 7, 14 o 30 días, un día para elegir, cómo se movió cada modelo), **Models** (lo que gastó cada uno, un filtro, un orden), **Details** (los campos de la clave, la versión y la base de datos de LiteLLM, la latencia) |
+| | **Orientación** | **Allowance** (cuánto gastar por día para durar hasta el reinicio), **Headroom** (cuántas solicitudes más caben en el tope), **Today** frente al día habitual, **Session** (lo que gastó esta sesión de Claude Code, y a qué ritmo) |
+| | **Notificaciones (toasts)** | al 80% (configurable), 95% y 100%; clave a punto de vencer; clave bloqueada o vencida; el gasto de hoy por encima de tu **alerta diaria**. Una vez por ventana de presupuesto, incluso entre sesiones |
 | | **Banner de presupuesto excedido** | una banda roja sobre el prompt que **permanece mientras algún presupuesto esté agotado** (clave, usuario, equipo, ventana o modelo) y desaparece solo cuando las cifras vuelven a la normalidad |
+| 📊 **Informar** | **`/litellm pace`**, `usage`, `compare`, `day`, `status` | hacia dónde va el presupuesto, los días y los modelos en tablas, qué cambió frente a los días anteriores, un día por modelo |
+| | **`/litellm check`** | `OK`, `WARNING`, `CRITICAL` o `UNKNOWN` **y el código de salida de una ejecución `claude -p`** (0 a 3), para scripts y monitoreo |
+| | **`/litellm json`** / `csv` | todo en JSON, los días en CSV; **`copy`** pone cualquier informe en el portapapeles, **`share`** se lo entrega a Claude para preguntarle sobre él |
 | 🛠️ **Gestionar** *(admin)* | **`/litellm key new`** | crea una clave virtual; el secreto va a tu **portapapeles, nunca a la transcripción** |
 | | **`/litellm grant`** | presupuesto extra para una clave, un usuario, un equipo o una organización, con vista previa y confirmación |
 | | **`/litellm key set`** / `reset-spend` | cambia los modelos, límites, vencimiento o alias de una clave; pone a cero su contador de gasto |
@@ -83,6 +88,55 @@ Si Claude Code ya se comunica con LiteLLM, **no hay nada que configurar**: el pl
 <p align="center">
   <img src="../evidence/keys.png" alt="Salida de /litellm models y /litellm keys" width="92%">
 </p>
+
+### Mira de cerca: uso, modelos, detalles
+
+El panel tiene cuatro pestañas. Overview es el panel de arriba; **Usage** dibuja los últimos 7, 14 o 30 días en barras, contando gasto, solicitudes o tokens, te deja elegir un día para ver sus modelos y dice qué modelo se movió frente a los días anteriores:
+
+```text
+ 1: Overview   2: Usage   3: Models  4: Details
+
+ Spend per day (UTC)                7d   d: 14d  30d  m: chart: spend  v: CSV
+
+ $11.4                                                               ██████
+                                       ▁▁▁▁▁▁    ▇▇▇▇▇▇              ██████
+                                       ██████    ██████              ██████
+                   ▇▇▇▇▇▇              ██████    ██████    ▃▃▃▃▃▃    ██████
+         ▅▅▅▅▅▅    ██████              ██████    ██████    ██████    ██████
+    $0   ██████    ██████              ██████    ██████    ██████    ██████
+           Wed       Thu       Fri       Sat       Sun       Mon       Tue
+         $3.10     $5.40       ·       $7.90     $9.20     $4.40     $11.4
+
+ Spend        $41.37 · $5.91/day
+ Requests     369 · $0.112 each
+ Failed       4 requests (1.1%)
+ Peak day     $11.37 on Tue Oct 6
+ Trend        ▲ 34% vs the 7 days before (full days)
+
+ By model, last 7 days · ▲▼ vs the 7 before ─────────────────────────────────
+ claude-sonnet-4-5  ▄▄▄▄▄▄▄▄▄▄▁▁▁▁▁▁▁▁▁▁  52%  $21.51 ▲ 34% · 189 requests
+ claude-opus-4-1    ▄▄▄▄▄▄▁▁▁▁▁▁▁▁▁▁▁▁▁▁  28%  $11.58 ▲ 34% · 99 requests
+```
+
+**Models** lista lo que la clave puede invocar con lo que gastó cada modelo en el período (ordena por gasto o por nombre, y escribe en el filtro para acotar una lista larga); **Details** agrupa lo que el proxy dijo de la clave, la versión y el estado de la base de datos de LiteLLM, y cuánto tardó `/key/info`. El período, el orden y el gráfico que eliges se guardan para la próxima vez, y `/litellm` abre el panel en la pestaña en que lo dejaste.
+
+### Pide un informe, o entrégaselo a un script
+
+```text
+/litellm pace
+Budget     $41.37 / $50.00 (83%) · $8.63 left · resets in 9d 3h (30d)
+Runway     out in 1d 6h at $6.75/day · resets in 9d 3h
+Allowance  $0.95/day to last · 86% less than lately
+Headroom   about 76 more requests at $0.112 each
+Today      $11.37 · 102 requests · 2.2× the usual day ($5.21)
+Session    +$0.40 since 03:03 (12m ago)
+```
+
+```bash
+claude -p "/litellm check"; echo $?    # WARNING · 83% of budget … (exit 1)
+claude -p "/litellm json" | jq .budget.percent
+claude -p "/litellm csv 30" > usage.csv
+```
 
 ### Detecta los problemas a tiempo y llámalos por su nombre
 
@@ -158,10 +212,22 @@ Todo lo anterior es la interfaz de administración real de LiteLLM v1.99.1 refle
 
 | Comando | Qué hace |
 | --- | --- |
-| `/litellm` | Abre el panel (y responde con un resumen de una línea). Sin pantalla: imprime el resumen. |
+| `/litellm` | Abre el panel, en la pestaña en que lo dejaste (y responde con un resumen de una línea). Sin pantalla: imprime esa pestaña como texto. |
+| `/litellm tab <name>` | Abre el panel en `overview`, `usage`, `models` o `details` (o 1 a 4). |
 | `/litellm refresh` | Vuelve a leer ahora. |
 | `/litellm info` | Imprime el resumen completo en la transcripción. |
-| `/litellm models` | Lista los modelos que esta clave puede invocar, con su precio por millón de tokens y su ventana de contexto. |
+| `/litellm status` | Imprime la línea de estado como texto. |
+| `/litellm pace` | Hacia dónde va el presupuesto, cuánto puede gastar por día para durar, y lo mismo para el equipo y el usuario. |
+| `/litellm usage [7\|14\|30]` | El gasto, las solicitudes y los tokens por día en una tabla, con los totales y los modelos. |
+| `/litellm compare [7\|14]` | Los últimos días completos frente al mismo número de días anteriores, en conjunto y modelo por modelo. |
+| `/litellm day [when]` | Un día por modelo: `today`, `yesterday`, `2026-10-03`, `10-03` o un día de la semana (`mon`). |
+| `/litellm models [text]` | Lista los modelos que esta clave puede invocar, con su precio por millón de tokens y su ventana de contexto; con un texto, solo los que lo tienen en el nombre. |
+| `/litellm check [warn%]` | `OK`, `WARNING`, `CRITICAL` o `UNKNOWN`, y el código de salida de una ejecución `claude -p`: 0, 1, 2, 3. Un presupuesto por encima de su tope, o una clave que el proxy dice que está bloqueada, vencida o rechazada, es `CRITICAL`; un proxy que no responde es `UNKNOWN`. |
+| `/litellm json` | Todo lo que el plugin sabe de la clave en JSON (sin la clave, sin el hash). |
+| `/litellm csv [7\|14\|30]` | Los días en CSV. |
+| `/litellm copy [what]` | Pone un informe en el portapapeles: `overview`, `usage`, `models`, `details`, `pace`, `compare`, `csv` o `json`. |
+| `/litellm share [what]` | Entrega un informe a Claude, fuera de la vista, para que la siguiente pregunta sea sobre él. |
+| `/litellm ping` | Prueba cada endpoint que lee el plugin, con su estado y su tiempo. |
 | `/litellm debug` | Muestra de dónde salen la URL y las claves (siempre enmascaradas), qué se intentó y el resultado. |
 | `/litellm close` | Cierra el panel. |
 | `/litellm keys [--user ID \| --team ID \| --all]` | Lista claves. Por defecto: las claves de tu propio usuario. 🔐 |
@@ -173,7 +239,9 @@ Todo lo anterior es la interfaz de administración real de LiteLLM v1.99.1 refle
 | `/litellm org [id\|alias]` | El presupuesto de una organización; sin nombre: la organización de la propia clave y, si no, la lista. 🔐 |
 | `/litellm fallbacks [model]` | Cadenas de fallback del router, opcionalmente solo para los modelos que coincidan con un nombre. 🔐 |
 
-🔐 = comando de administración, ver más abajo. En el panel (dale el foco con un clic o con `ctrl+x` `tab`): `r` actualiza, `c` copia el resumen, `q` cierra y las flechas desplazan; cada botón indica su tecla (`Refresh (r)`, `Copy (c)`, `Close (q)`). `Esc` también lo cierra cuando el prompt está vacío.
+🔐 = comando de administración, ver más abajo. En el panel (dale el foco con un clic o con `ctrl+x` `tab`): `1` a `4` cambian de pestaña, `r` actualiza, `c` copia la pestaña en que estás, `q` cierra y las flechas desplazan; cada botón indica su tecla (`Refresh (r)`, `Copy (c)`, `Close (q)`). En Usage, `d` recorre 7, 14 y 30 días, `m` gasto, solicitudes y tokens, `v` copia los días en CSV; en Models, `s` ordena y `f` va al filtro. `Esc` también cierra el panel cuando el prompt está vacío (en Models solo sale del filtro).
+
+Un comando mal escrito recibe una sugerencia (`Did you mean "usage"?`). Un comando que no puede hacer lo que se le pidió lo dice en una frase, y los pensados para scripts (`check`, `json`, `csv`, `ping`) terminan con el código de salida 3 cuando no hay nada que informar.
 
 El panel se adapta al espacio: junto a la conversación (pantalla completa, desde 110 columnas) cada medidor ocupa dos líneas; sobre el prompt, desde 122 columnas, los medidores pasan a ser una tabla; en terminales más estrechas mantiene dos líneas por medidor o se vuelve **compacto** si activas `compact_pane`. Junto a la conversación, el panel muestra secciones con título (`BUDGETS`, `KEY`, `LAST 7 DAYS`, `TOP MODELS`) y una letra bajo cada día de la semana; `TOP MODELS` ordena los cinco modelos que más gastaron, cada uno con su parte de la semana como una barra. Un nombre largo se corta por el medio, para que `claude-sonnet-4-5` y `claude-sonnet-4-6` sigan distinguiéndose. El color nunca es la única señal: `▲` marca un presupuesto cercano a su tope, `✖` uno que ya está agotado, y un día sin gasto es un `·`, nunca una barra corta.
 
@@ -278,9 +346,11 @@ Todas las opciones son opcionales (Claude Code avisa al instalar que están "not
 | `litellm_admin_key` | vacío | Clave de administración para `keys`, `key new/set/reset-spend/block/unblock`, `grant`, `org`, `fallbacks`. 🔒 mismo almacenamiento. Nunca se imprime. |
 | `refresh_seconds` | 60 | Intervalo de lectura (de 15 a 3600). También lee después de cada turno, como máximo cada 20 s. |
 | `warn_percent` | 80 | Primera advertencia de presupuesto (también avisa al 95% y al 100%). |
+| `daily_alert` | 0 (desactivada) | Avisa cuando el gasto de hoy de la clave llega a esa cantidad de dólares: un toast por día, la línea de estado y el panel. Con ella activa, el historial de uso se lee cada 3 minutos. |
+| `show_toasts` | sí | Los toasts que avisan del presupuesto, de la alerta diaria, de una clave que va a vencer y de un proxy que falla. Desactivados, los avisos quedan en la línea de estado y en el panel. |
 | `show_status_line` | sí | La línea bajo el prompt. |
 | `show_related` | sí | Lee `/user/info` y `/team/info`: esos presupuestos también pueden bloquear solicitudes. |
-| `show_usage` | sí | Lee `/user/daily/activity` (un endpoint beta de LiteLLM) para el uso de los últimos 7 días. |
+| `show_usage` | sí | Lee `/user/daily/activity` (un endpoint beta de LiteLLM): los últimos 30 días de uso, en los que se apoyan las pestañas Usage y Models, los informes, el runway y la alerta diaria. |
 | `compact_pane` | no | Panel compacto sobre el prompt en terminales estrechas (de 74 a 121 columnas): un medidor por línea, datos lado a lado. |
 
 ## De dónde salen los datos
@@ -293,7 +363,10 @@ Todas las opciones son opcionales (Claude Code avisa al instalar que están "not
 | `/user/info`, `/team/info` | Presupuesto del usuario y del equipo de la clave, y el tope por miembro del equipo, cuando tienen tope. En cada lectura. |
 | `/v1/models` | Los modelos realmente permitidos. Cada 10 min. |
 | `/model_group/info` | Precio por token y ventana de contexto de esos modelos (el proxy responde por todos sus modelos; el plugin se queda con los permitidos). Cada 10 min. |
-| `/user/daily/activity` | Gasto, solicitudes y tokens de los últimos 7 días, y el gasto por modelo. Cada 10 min. |
+| `/user/daily/activity` | Gasto, solicitudes, tokens y modelos de los últimos 30 días, día por día. Cada 10 min. |
+| `/health/readiness` | La versión de LiteLLM y si su base de datos está conectada. Cada 10 min; cuando el proxy no lo dice, no se muestra nada, ni siquiera una nota. |
+
+Las lecturas marcadas como cada 10 min ocurren cada 3 minutos mientras haya un `daily_alert`: el gasto de hoy es lo que vigila.
 
 **Gestionar** solo ocurre cuando escribes un comando de administración: `GET /key/list`, `/key/info`, `/user/info`, `/team/info`, `/v2/team/list`, `/organization/info`, `/organization/list`, `/router/settings`, y `POST /key/generate`, `/key/delete` (solo para rollback), `/key/block`, `/key/unblock`, `/key/update`, `/key/{hash}/reset_spend`, `/user/update`, `/team/update`, `PATCH /organization/update`.
 
@@ -316,7 +389,7 @@ Cada solicitud espera como máximo 4 s (15 s en los comandos de administración)
 | "does not look like a LiteLLM proxy" | La URL apunta a otra cosa. Define `litellm_url` con la raíz del proxy. |
 | "key blocked" / "key expired" | Exactamente eso. Pide ayuda a un administrador o ejecuta `/litellm key unblock` desde otra sesión. |
 | "key rejected (401)" | Clave no válida. |
-| Falta el historial de 7 días | La clave no tiene `user_id`, o el endpoint beta no existe en tu versión de LiteLLM. |
+| Falta el historial de uso | La clave no tiene `user_id`, o el endpoint beta no existe en tu versión de LiteLLM. |
 | Un comando de administración dice que necesita una clave de administración | Define `litellm_admin_key`. |
 | Un comando de administración espera "until the proxy accepts this session's key" | Por diseño, la clave de administración solo se envía a un proxy que aceptó tu propia clave. Corrige esa clave desde otra sesión o desde la UI de LiteLLM. |
 
@@ -346,7 +419,7 @@ tsc -p plugins/litellm-key                              # types (.claude-plugin/
 bash dev/check-file-size.sh                             # no source file over 300 lines
 ```
 
-Estructura del plugin: `hooks/register.tsx` es el único archivo que toca el `$` de Claude Code; construye los puertos inyectados (`hooks/ports.ts`) y conecta eventos, comandos, temporizadores y toasts. Todo lo demás son funciones simples que reciben esos puertos, así que se ejecutan en los tests sin arrancar el motor. `hooks/session.ts` es el ciclo de lectura (configuración, ticker, actualización forzada en cola); `hooks/credentials.ts` y `hooks/settings.ts` resuelven la clave y las opciones; `hooks/litellm.ts` lee el proxy, `hooks/parsers.ts` y `hooks/json.ts` normalizan las respuestas y `hooks/failures.ts` nombra lo que salió mal; `hooks/alerts.ts` decide los toasts. `hooks/commands.ts` es la tabla de comandos de `/litellm` y `hooks/admin*.ts` los comandos de administración (`admin.ts` las lecturas del proxy, `admin-targets.ts` las búsquedas de clave, usuario y equipo, `admin-writes.ts` sus escrituras, `admin-plan.ts` las vistas previas y los planes, `admin-link.ts` el vínculo de la clave de admin con el proxy, `admin-commands.ts` el flujo, `args.ts` el parser de argumentos). `hooks/exceeded.ts` y `hooks/band.tsx` son el banner de presupuesto excedido; `hooks/summary.ts` construye el texto, `hooks/view.tsx` y `hooks/parts.tsx` el panel (indicador, títulos de sección, chip de estado, filas de medidor); `hooks/format.ts` contiene los formateadores puros; `types/index.d.ts` es el contrato del estado.
+Estructura del plugin: `hooks/register.tsx` es el único archivo que toca el `$` de Claude Code; construye los puertos inyectados (`hooks/ports.ts`) y conecta eventos, comandos, temporizadores y toasts. Todo lo demás son funciones simples que reciben esos puertos, así que se ejecutan en los tests sin arrancar el motor. `hooks/session.ts` es el ciclo de lectura (configuración, ticker, actualización forzada en cola); `hooks/credentials.ts` y `hooks/settings.ts` resuelven la clave y las opciones; `hooks/litellm.ts` lee el proxy, `hooks/parsers.ts` y `hooks/json.ts` normalizan las respuestas y `hooks/failures.ts` nombra lo que salió mal; `hooks/alerts.ts` decide los toasts. `hooks/commands.ts` es la tabla de comandos de `/litellm` y `hooks/admin*.ts` los comandos de administración (`admin.ts` las lecturas del proxy, `admin-targets.ts` las búsquedas de clave, usuario y equipo, `admin-writes.ts` sus escrituras, `admin-plan.ts` las vistas previas y los planes, `admin-link.ts` el vínculo de la clave de admin con el proxy, `admin-commands.ts` el flujo, `args.ts` el parser de argumentos). `hooks/exceeded.ts` y `hooks/band.tsx` son el banner de presupuesto excedido; `hooks/summary.ts` construye el texto, `hooks/view.tsx` y `hooks/parts.tsx` el panel (indicador, títulos de sección, chip de estado, filas de medidor); `hooks/format.ts` contiene los formateadores puros; `types/index.d.ts` es el contrato del estado. Las pestañas son `hooks/tab-*.tsx` (`tab-overview.tsx` es el panel que había antes de las pestañas, `parts-tabs.tsx` las partes que comparten, `chart.ts` las barras); los informes son `hooks/report-*.ts`, `details.ts` y `probe.ts` (`/litellm ping`), sobre `history.ts` (los 30 días, totales y comparaciones) y `guidance.ts` (allowance, headroom, today y la sesión). `hooks/commands-reports.ts` y `commands-share.ts` son los comandos que imprimen o entregan un informe.
 
 ## Límites conocidos
 
@@ -355,7 +428,8 @@ Estructura del plugin: `hooks/register.tsx` es el único archivo que toca el `$`
 - Los presupuestos por modelo (`model_max_budget`), los aumentos temporales de presupuesto y la regeneración de claves son exclusivos de la edición enterprise en el lado del proxy, por lo que no se ofrecen (ver [Presupuestos](#budgets-what-litellm-can-and-cannot-do)). Editar las cadenas de fallback requiere `STORE_MODEL_IN_DB=True` en el proxy, así que `/litellm fallbacks` sigue siendo de solo lectura.
 - El presupuesto de una **organización** no viene en la respuesta de la propia clave y una clave virtual puede no poder leerlo, así que el panel solo nombra la organización; `/litellm org` lo lee con una clave de administración. La clave de administración se sigue enviando solo cuando escribes un comando de administración, nunca con el temporizador de actualización.
 - El total de un **miembro** del equipo no se informa a una clave virtual: el medidor `Member` cuenta solo el gasto de esta clave, así que puede marcar de menos: si el usuario tiene varias claves en el equipo, el proxy puede bloquear antes de lo que indica el medidor. Frente a un tope que se reinicia también puede marcar de más (un reinicio pone a cero el gasto del miembro, no el de la clave), así que ahí avisa y el banner se mantiene en silencio.
-- El historial de 7 días lee una página de las filas de actividad del proxy; cuando hay más, el panel indica que es parcial.
+- El historial de uso lee una página de las filas de actividad del proxy; cuando hay más, el panel indica que es parcial. Los días son UTC, como los cuenta el proxy; el de hoy sigue en curso, así que las comparaciones lo dejan fuera.
+- La fila **Session** cuenta cuánto creció el gasto de la clave desde la primera lectura de esta sesión de Claude Code. No distingue el gasto de esta sesión del de otra sesión con la misma clave.
 - El banner de presupuesto excedido se dibuja en las superficies de terminal y de escritorio (Claude Code solo ofrece la banda ahí); en las demás, lo indican la línea de estado y el panel.
 - El `⚠` que precede a la línea de estado lo dibuja Claude Code en cada entrada de estado de un plugin; no significa que la clave tenga problemas (eso lo dice el texto).
 - La API de plugins de Claude Code es de acceso anticipado y puede cambiar entre versiones.

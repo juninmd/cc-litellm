@@ -1,10 +1,11 @@
 import type { Timer } from 'claude-code'
 
-import type { Failure, Snapshot } from '../types'
+import type { Failure, SessionSpend, Snapshot } from '../types'
 import { alertsOf } from './alerts'
 import type { Credentials } from './credentials'
 import { resolveCredentials } from './credentials'
 import { maskKey, redact, truncate } from './format'
+import { advanceSession, beginSession } from './guidance'
 import { fetchSnapshot } from './litellm'
 import type { Diagnostics, Mode, Ports } from './ports'
 import type { Config } from './settings'
@@ -15,6 +16,8 @@ const MIN_TICK_GAP_MS = 10_000
 const MIN_TURN_GAP_MS = 20_000
 const FRESH_MS = 15_000
 const SLOW_MS = 10 * 60_000
+// With a daily alert set, today's spend is what the person watches, and it comes with the slow reading.
+const WATCHED_SLOW_MS = 3 * 60_000
 const REMEMBERED = 60
 const TRANSIENT = ['network', 'http', 'rate-limit']
 
@@ -26,6 +29,8 @@ export type State = {
   pinnedRoot: string | null
   pinnedKeyHint: string | null
   diagnostics: Diagnostics | null
+  /** What the session has spent, and for which key: another key starts again from nothing. */
+  tracked: { id: string; session: SessionSpend } | null
 }
 
 /** The reading cycle: one read at a time, a forced read never lost behind a running one. */
@@ -37,6 +42,7 @@ export const createSession = () => {
     pinnedRoot: null,
     pinnedKeyHint: null,
     diagnostics: null,
+    tracked: null,
   }
   let inFlight: Promise<void> | undefined
   let queued: Promise<void> | undefined
@@ -50,10 +56,23 @@ export const createSession = () => {
     credentials.roots.includes(state.pinnedRoot) &&
     state.pinnedKeyHint === maskKey(credentials.key)
 
-  const notify = async (ports: Ports, snapshot: Snapshot, now: number): Promise<void> => {
-    const alerts = alertsOf(snapshot, now, state.config.warnPercent)
+  /** Counts what a fresh reading adds to the spend since the first one. */
+  const track = (snapshot: Snapshot): Snapshot => {
+    const id = `${snapshot.host}|${snapshot.keyHint}`
+    const { spend } = snapshot.key.budget
+    const { tracked } = state
+    const session = tracked?.id === id ? advanceSession(tracked.session, spend) : beginSession(snapshot.fetchedAt, spend)
 
-    if (alerts.length === 0) {
+    state.tracked = { id, session }
+
+    return { ...snapshot, session }
+  }
+
+  const notify = async (ports: Ports, snapshot: Snapshot, now: number): Promise<void> => {
+    const alerts = alertsOf(snapshot, now, state.config.warnPercent, state.config.dailyAlert)
+
+    // Off keeps the warnings to the status line and the pane; what was never told is told when the toasts come back.
+    if (alerts.length === 0 || !state.config.isToastShown) {
       return
     }
     const stored = await ports.remembered()
@@ -69,18 +88,21 @@ export const createSession = () => {
   }
 
   const settle = async (ports: Ports, snapshot: Snapshot | null, failure: Failure | null, now: number): Promise<void> => {
-    const shown = failure === null || TRANSIENT.includes(failure.kind) ? snapshot : null
+    const kept = failure === null || TRANSIENT.includes(failure.kind) ? snapshot : null
+    const shown = failure === null && kept ? track(kept) : kept
 
     state.latest = { snapshot: shown, failure }
     await ports.publish(shown, failure)
-    ports.status(state.config.isStatusShown ? statusText(shown, failure, now) : undefined)
+    ports.status(state.config.isStatusShown ? statusText(shown, failure, now, state.config.dailyAlert) : undefined)
 
     if (failure === null && shown) {
       await notify(ports, shown, now)
       toasted = null
     } else if (failure && !TRANSIENT.includes(failure.kind) && toasted !== failure.kind) {
       toasted = failure.kind
-      ports.toast(failure.kind === 'not-configured' ? 'Not configured. Run /litellm for setup help.' : truncate(failure.message, 90))
+      if (state.config.isToastShown) {
+        ports.toast(failure.kind === 'not-configured' ? 'Not configured. Run /litellm for setup help.' : truncate(failure.message, 90))
+      }
     }
   }
 
@@ -112,7 +134,8 @@ export const createSession = () => {
       const held = state.latest.snapshot
       const previous =
         held && held.host === credentials.host && held.keyHint === maskKey(credentials.key) ? held : null
-      const isSlow = mode === 'force' || previous === null || now - lastSlowAt >= SLOW_MS
+      const isSlow =
+        mode === 'force' || previous === null || now - lastSlowAt >= (state.config.dailyAlert > 0 ? WATCHED_SLOW_MS : SLOW_MS)
 
       secret = credentials.key
       state.diagnostics = {

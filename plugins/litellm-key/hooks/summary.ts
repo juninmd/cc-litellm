@@ -2,6 +2,7 @@ import type { Budget, Failure, Snapshot } from '../types'
 import { isSpentUp } from './exceeded'
 import { facts, identity, SOON_MS } from './facts'
 import { clock, gauge, money, percent, truncateMiddle, until, usedShare } from './format'
+import { dailyOver } from './guidance'
 import { runwayAlert } from './runway'
 
 export type Tone = 'ok' | 'warn' | 'error'
@@ -171,7 +172,12 @@ const shortFailure = (failure: Failure): string => {
   }
 }
 
-export const statusText = (snapshot: Snapshot | null, failure: Failure | null, now: number): string | undefined => {
+export const statusText = (
+  snapshot: Snapshot | null,
+  failure: Failure | null,
+  now: number,
+  dailyAlert = 0,
+): string | undefined => {
   if (failure?.kind === 'not-configured') {
     return undefined
   }
@@ -196,6 +202,11 @@ export const statusText = (snapshot: Snapshot | null, failure: Failure | null, n
       isSpentUp(key.budget.spend, key.budget.limit) ? 'over budget' : resetText(key.budget, now),
       runwayAlert(snapshot, now),
     )
+  }
+  const daily = dailyOver(snapshot, now, dailyAlert)
+
+  if (daily !== null) {
+    parts.push(`today ${money(daily)} (alert ${money(dailyAlert)})`)
   }
   if (expiresSoon && key.expiresAt !== null) {
     parts.push(`expires ${until(key.expiresAt, now)}`)

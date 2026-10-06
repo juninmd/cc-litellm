@@ -29,7 +29,7 @@
 
 # cc-litellm
 
-这是一个 [Claude Code](https://code.claude.com) 插件，面向通过 **[LiteLLM](https://docs.litellm.ai) 代理** 访问模型的用户。它会显示代理所掌握的、Claude Code 当前所用**虚拟密钥**的信息（预算、花费、限额、有效期、可用模型、近 7 天用量）；对管理员而言，还能在不离开终端的情况下 **创建和编辑密钥、为他人追加预算、禁用密钥，并查看路由器的回退链**。
+这是一个 [Claude Code](https://code.claude.com) 插件，面向通过 **[LiteLLM](https://docs.litellm.ai) 代理** 访问模型的用户。它会显示代理所掌握的、Claude Code 当前所用**虚拟密钥**的信息（预算、花费、限额、有效期、可用模型、近 30 天用量）；对管理员而言，还能在不离开终端的情况下 **创建和编辑密钥、为他人追加预算、禁用密钥，并查看路由器的回退链**。
 
 本仓库是一个插件市场（`cc-litellm`），目前只有一个插件：[`litellm-key`](../../plugins/litellm-key)。
 
@@ -43,8 +43,13 @@
 | --- | --- | --- |
 | 👀 **监控** | **状态栏**，位于输入框下方，始终可见 | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
 | | **`/litellm` 面板** | 密钥、团队、用户和**团队成员**预算的用量条，用户**角色**、限额、有效期、可用模型、7 天迷你趋势图、本周的**模型排行**以及 **Runway** 预测；自动刷新 |
-| | **Toast 提示** | 预算用到 80%（可配置）、95%、100% 时；密钥即将过期；密钥被禁用或已过期。每个预算周期只提醒一次，跨会话同样如此 |
+| | **面板标签页** | **Usage**（花费、请求数或 token 数按天画成柱状图，可看 7、14 或 30 天，可选一天，看每个模型的变化）、**Models**（各模型的花费、筛选、排序）、**Details**（密钥的各个字段、LiteLLM 的版本与数据库、延迟） |
+| | **指引** | **Allowance**（为撑到重置，每天可以花多少）、**Headroom**（额度上限还能容纳多少次请求）、**Today**（与平常一天相比）、**Session**（本次 Claude Code 会话花了多少，速度如何） |
+| | **Toast 提示** | 预算用到 80%（可配置）、95%、100% 时；密钥即将过期；密钥被禁用或已过期；今天的花费超过你设置的**每日提醒**。每个预算周期只提醒一次，跨会话同样如此 |
 | | **超预算横幅** | 输入框上方的红色横条，**只要有预算被用尽就会一直显示**（密钥、用户、团队、预算窗口或模型），数值恢复正常后才消失 |
+| 📊 **报告** | **`/litellm pace`**、`usage`、`compare`、`day`、`status` | 预算的走向，按天和按模型的表格，与之前几天相比有什么变化，按模型看某一天 |
+| | **`/litellm check`** | `OK`、`WARNING`、`CRITICAL` 或 `UNKNOWN` **以及 `claude -p` 运行的退出码**（0 到 3），供脚本和监控使用 |
+| | **`/litellm json`** / `csv` | 全部内容导出为 JSON，按天数据导出为 CSV；**`copy`** 把任意报告放进剪贴板，**`share`** 把报告交给 Claude，方便你接着提问 |
 | 🛠️ **管理** *(管理员)* | **`/litellm key new`** | 创建虚拟密钥；密钥明文会写入**剪贴板，绝不进入对话记录** |
 | | **`/litellm grant`** | 为密钥、用户、团队或组织追加预算，附带预览与确认 |
 | | **`/litellm key set`** / `reset-spend` | 修改密钥的可用模型、限额、有效期或别名；把它的花费计数器清零 |
@@ -82,6 +87,55 @@
 <p align="center">
   <img src="../evidence/keys.png" alt="/litellm models 与 /litellm keys 的输出" width="92%">
 </p>
+
+### 看得更仔细：用量、模型、详情
+
+面板有四个标签页。Overview 是上面的仪表盘；**Usage** 把最近 7、14 或 30 天画成柱状图，可统计花费、请求数或 token 数，让你选一天查看它的模型，并指出哪个模型相比之前几天有变化：
+
+```text
+ 1: Overview   2: Usage   3: Models  4: Details
+
+ Spend per day (UTC)                7d   d: 14d  30d  m: chart: spend  v: CSV
+
+ $11.4                                                               ██████
+                                       ▁▁▁▁▁▁    ▇▇▇▇▇▇              ██████
+                                       ██████    ██████              ██████
+                   ▇▇▇▇▇▇              ██████    ██████    ▃▃▃▃▃▃    ██████
+         ▅▅▅▅▅▅    ██████              ██████    ██████    ██████    ██████
+    $0   ██████    ██████              ██████    ██████    ██████    ██████
+           Wed       Thu       Fri       Sat       Sun       Mon       Tue
+         $3.10     $5.40       ·       $7.90     $9.20     $4.40     $11.4
+
+ Spend        $41.37 · $5.91/day
+ Requests     369 · $0.112 each
+ Failed       4 requests (1.1%)
+ Peak day     $11.37 on Tue Oct 6
+ Trend        ▲ 34% vs the 7 days before (full days)
+
+ By model, last 7 days · ▲▼ vs the 7 before ─────────────────────────────────
+ claude-sonnet-4-5  ▄▄▄▄▄▄▄▄▄▄▁▁▁▁▁▁▁▁▁▁  52%  $21.51 ▲ 34% · 189 requests
+ claude-opus-4-1    ▄▄▄▄▄▄▁▁▁▁▁▁▁▁▁▁▁▁▁▁  28%  $11.58 ▲ 34% · 99 requests
+```
+
+**Models** 列出该密钥可以调用的模型，以及每个模型在所选时间段内的花费（可按花费或名称排序，在筛选框中输入内容可缩小长列表）；**Details** 汇总代理对该密钥的说明、LiteLLM 的版本和数据库状态，以及 `/key/info` 耗时多久。你选的时间段、排序和图表会记住，留到下次使用，`/litellm` 会在你上次离开的标签页打开面板。
+
+### 索取报告，或把它交给脚本
+
+```text
+/litellm pace
+Budget     $41.37 / $50.00 (83%) · $8.63 left · resets in 9d 3h (30d)
+Runway     out in 1d 6h at $6.75/day · resets in 9d 3h
+Allowance  $0.95/day to last · 86% less than lately
+Headroom   about 76 more requests at $0.112 each
+Today      $11.37 · 102 requests · 2.2× the usual day ($5.21)
+Session    +$0.40 since 03:03 (12m ago)
+```
+
+```bash
+claude -p "/litellm check"; echo $?    # WARNING · 83% of budget … (exit 1)
+claude -p "/litellm json" | jq .budget.percent
+claude -p "/litellm csv 30" > usage.csv
+```
 
 ### 及早发现问题，并说清是什么问题
 
@@ -157,10 +211,22 @@
 
 | 命令 | 作用 |
 | --- | --- |
-| `/litellm` | 打开面板（并以一行摘要作答）。无界面环境下：直接打印摘要。 |
+| `/litellm` | 在你上次离开的标签页打开面板（并以一行摘要作答）。无界面环境下：把该标签页以文本打印出来。 |
+| `/litellm tab <name>` | 在 `overview`、`usage`、`models` 或 `details` 标签页打开面板（或用 1 到 4）。 |
 | `/litellm refresh` | 立即重新读取。 |
 | `/litellm info` | 在对话记录中打印完整摘要。 |
-| `/litellm models` | 列出该密钥可调用的模型，并附上每百万 token 的价格和上下文窗口。 |
+| `/litellm status` | 以文本打印状态栏。 |
+| `/litellm pace` | 预算的走向，为撑到重置每天最多能花多少，团队和用户同样如此。 |
+| `/litellm usage [7\|14\|30]` | 按天列出花费、请求数和 token 数的表格，附合计和各模型。 |
+| `/litellm compare [7\|14]` | 最近的完整天数与其之前相同天数的对比，先看整体，再逐个模型看。 |
+| `/litellm day [when]` | 按模型看某一天：`today`、`yesterday`、`2026-10-03`、`10-03` 或星期几（`mon`）。 |
+| `/litellm models [text]` | 列出该密钥可调用的模型，并附上每百万 token 的价格和上下文窗口；带上一段文字时，只列出名称中包含它的模型。 |
+| `/litellm check [warn%]` | `OK`、`WARNING`、`CRITICAL` 或 `UNKNOWN`，以及 `claude -p` 运行的退出码：0、1、2、3。预算超过上限，或代理报告密钥已被禁用、已过期或被拒绝，为 `CRITICAL`；代理没有响应，为 `UNKNOWN`。 |
+| `/litellm json` | 以 JSON 输出插件所知的关于该密钥的全部信息（不含密钥，不含哈希）。 |
+| `/litellm csv [7\|14\|30]` | 把按天数据输出为 CSV。 |
+| `/litellm copy [what]` | 把报告放进剪贴板：`overview`、`usage`、`models`、`details`、`pace`、`compare`、`csv` 或 `json`。 |
+| `/litellm share [what]` | 把报告交给 Claude，不显示在界面上，这样你的下一个问题就可以直接针对它。 |
+| `/litellm ping` | 逐个试探插件读取的端点，并给出各自的状态和耗时。 |
 | `/litellm debug` | 显示 URL 和密钥的来源（始终做掩码处理）、尝试过什么、结果如何。 |
 | `/litellm close` | 关闭面板。 |
 | `/litellm keys [--user ID \| --team ID \| --all]` | 列出密钥。默认：你自己所属用户的密钥。🔐 |
@@ -172,7 +238,9 @@
 | `/litellm org [id\|alias]` | 组织的预算；不带名称时，显示该密钥自己所属的组织，否则显示列表。🔐 |
 | `/litellm fallbacks [model]` | 路由器的回退链，可只看名称匹配的模型。🔐 |
 
-🔐 = 管理员命令，见下文。在面板中（点击面板，或按 `ctrl+x` `tab` 获得焦点）：`r` 刷新，`c` 复制摘要，`q` 关闭，方向键滚动；每个按钮都标明了对应的按键（`Refresh (r)`、`Copy (c)`、`Close (q)`）。输入框为空时，`Esc` 同样可以关闭面板。
+🔐 = 管理员命令，见下文。在面板中（点击面板，或按 `ctrl+x` `tab` 获得焦点）：`1` 到 `4` 切换标签页，`r` 刷新，`c` 复制当前所在的标签页，`q` 关闭，方向键滚动；每个按钮都标明了对应的按键（`Refresh (r)`、`Copy (c)`、`Close (q)`）。在 Usage 中，`d` 依次切换 7、14 和 30 天，`m` 依次切换花费、请求数和 token 数，`v` 把按天数据复制为 CSV；在 Models 中，`s` 排序，`f` 跳到筛选框。输入框为空时，`Esc` 同样可以关闭面板（在 Models 中它只是退出筛选框）。
+
+命令敲错时会得到一个建议（`Did you mean "usage"?`）。无法完成所要求操作的命令会用一句话说明，而面向脚本的命令（`check`、`json`、`csv`、`ping`）在没有内容可报告时，会以退出码 3 结束。
 
 面板会随可用空间自适应：位于对话旁边时（全屏，宽度 110 列起），每个用量条占两行；位于输入框上方时，从 122 列起，用量条会变成一张表；在更窄的终端里，每个用量条仍占两行，如果启用了 `compact_pane`，则切换为**紧凑**布局。位于对话旁边时，面板会显示带标题的分区（`BUDGETS`、`KEY`、`LAST 7 DAYS`、`TOP MODELS`），并在一周每一天的下方标出一个字母；`TOP MODELS` 按花费从高到低列出前五个模型，并用一根条显示各自占本周花费的比例。过长的名称会从中间截断，因此 `claude-sonnet-4-5` 和 `claude-sonnet-4-6` 仍能区分开。颜色从来不是唯一的信号：`▲` 表示接近上限的预算，`✖` 表示已用尽的预算，没有花费的一天显示为 `·`，而不是一根很短的条。
 
@@ -275,9 +343,11 @@
 | `litellm_admin_key` | 空 | 供 `keys`、`key new/set/reset-spend/block/unblock`、`grant`、`org`、`fallbacks` 使用的管理员密钥。🔒 存储方式相同。绝不打印。 |
 | `refresh_seconds` | 60 | 读取间隔（15 到 3600）。每轮对话结束后也会读取，最多每 20 秒一次。 |
 | `warn_percent` | 80 | 首次预算预警（用到 95% 和 100% 时也会预警）。 |
+| `daily_alert` | 0（关闭） | 当密钥今天的花费达到这个美元数时发出提醒：每天一条 toast，同时显示在状态栏和面板中。开启后，用量历史每 3 分钟读取一次。 |
+| `show_toasts` | `yes` | 就预算、每日提醒、即将过期的密钥和出故障的代理发出提醒的 toast。关闭后，提醒只保留在状态栏和面板中。 |
 | `show_status_line` | `yes` | 输入框下方的那一行状态栏。 |
 | `show_related` | `yes` | 读取 `/user/info` 和 `/team/info`：这些预算同样可能拦截请求。 |
-| `show_usage` | `yes` | 读取 `/user/daily/activity`（LiteLLM 的一个 beta 端点）以获得 7 天用量。 |
+| `show_usage` | `yes` | 读取 `/user/daily/activity`（LiteLLM 的一个 beta 端点），获得最近 30 天的用量，Usage 和 Models 标签页、各类报告、runway 以及每日提醒都以它为依据。 |
 | `compact_pane` | `no` | 在窄终端（74 到 121 列）中使用输入框上方的紧凑面板：每行一个用量条，各项信息并排显示。 |
 
 ## 数据来源
@@ -290,7 +360,10 @@
 | `/user/info`、`/team/info` | 密钥所属用户和团队的预算，以及团队的单成员上限（设有上限时）。每次读取都会请求。 |
 | `/v1/models` | 实际允许使用的模型。每 10 分钟一次。 |
 | `/model_group/info` | 这些模型每个 token 的价格和上下文窗口（代理会返回它所有模型的数据，插件只保留被允许的那些）。每 10 分钟一次。 |
-| `/user/daily/activity` | 最近 7 天的花费、请求数和 token 数，以及按模型划分的花费。每 10 分钟一次。 |
+| `/user/daily/activity` | 最近 30 天的花费、请求数、token 数和模型，逐天列出。每 10 分钟一次。 |
+| `/health/readiness` | LiteLLM 的版本，以及它的数据库是否已连接。每 10 分钟一次；代理不说时，什么都不显示，连一条提示也没有。 |
+
+标注“每 10 分钟一次”的读取，在设置了 `daily_alert` 期间改为每 3 分钟一次：它盯的正是今天的花费。
 
 **管理**只会在你输入管理员命令时发生：`GET /key/list`、`/key/info`、`/user/info`、`/team/info`、`/v2/team/list`、`/organization/info`、`/organization/list`、`/router/settings`，以及 `POST /key/generate`、`/key/delete`（仅用于回滚）、`/key/block`、`/key/unblock`、`/key/update`、`/key/{hash}/reset_spend`、`/user/update`、`/team/update`、`PATCH /organization/update`。
 
@@ -313,7 +386,7 @@
 | "does not look like a LiteLLM proxy" | URL 指向了别的服务。请把 `litellm_url` 设为代理根路径。 |
 | "key blocked" / "key expired" | 就是字面意思。请联系管理员，或在另一个会话里运行 `/litellm key unblock`。 |
 | "key rejected (401)" | 密钥无效。 |
-| 缺少 7 天历史 | 该密钥没有 `user_id`，或者你的 LiteLLM 版本没有这个 beta 端点。 |
+| 缺少用量历史 | 该密钥没有 `user_id`，或者你的 LiteLLM 版本没有这个 beta 端点。 |
 | 管理员命令提示需要管理员密钥 | 请设置 `litellm_admin_key`。 |
 | 管理员命令一直等待，提示 "until the proxy accepts this session's key" | 按设计如此：管理员密钥只会发送给已接受你自身密钥的代理。请在另一个会话或 LiteLLM UI 中修复那个密钥。 |
 
@@ -343,7 +416,7 @@ tsc -p plugins/litellm-key                              # types (.claude-plugin/
 bash dev/check-file-size.sh                             # no source file over 300 lines
 ```
 
-插件的结构：`hooks/register.tsx` 是唯一接触 Claude Code 的 `$` 的文件；它构建注入的端口（`hooks/ports.ts`），并把事件、命令、定时器和 toast 接起来。其余全是接收这些端口的普通函数，因此无需启动引擎即可在测试中运行。`hooks/session.ts` 是读取周期（配置、ticker、排队中的强制刷新）；`hooks/credentials.ts` 和 `hooks/settings.ts` 负责解析密钥和选项；`hooks/litellm.ts` 负责读取代理，`hooks/parsers.ts` 和 `hooks/json.ts` 负责规范化响应，`hooks/failures.ts` 负责说明出了什么问题；`hooks/alerts.ts` 决定何时弹出 toast。`hooks/commands.ts` 是 `/litellm` 的命令表，`hooks/admin*.ts` 是管理员命令（`admin.ts` 负责对代理的读取，`admin-targets.ts` 负责对密钥、用户和团队的查找，`admin-writes.ts` 负责写入，`admin-plan.ts` 负责预览和方案，`admin-link.ts` 负责管理员密钥与代理的关联，`admin-commands.ts` 是整体流程，`args.ts` 是参数解析器）；`hooks/exceeded.ts` 和 `hooks/band.tsx` 构成超预算横幅；`hooks/summary.ts` 构建文本，`hooks/view.tsx` 和 `hooks/parts.tsx` 构建面板（仪表、分区标题、状态标签、用量条行）；`hooks/format.ts` 放纯格式化函数；`types/index.d.ts` 是状态契约。
+插件的结构：`hooks/register.tsx` 是唯一接触 Claude Code 的 `$` 的文件；它构建注入的端口（`hooks/ports.ts`），并把事件、命令、定时器和 toast 接起来。其余全是接收这些端口的普通函数，因此无需启动引擎即可在测试中运行。`hooks/session.ts` 是读取周期（配置、ticker、排队中的强制刷新）；`hooks/credentials.ts` 和 `hooks/settings.ts` 负责解析密钥和选项；`hooks/litellm.ts` 负责读取代理，`hooks/parsers.ts` 和 `hooks/json.ts` 负责规范化响应，`hooks/failures.ts` 负责说明出了什么问题；`hooks/alerts.ts` 决定何时弹出 toast。`hooks/commands.ts` 是 `/litellm` 的命令表，`hooks/admin*.ts` 是管理员命令（`admin.ts` 负责对代理的读取，`admin-targets.ts` 负责对密钥、用户和团队的查找，`admin-writes.ts` 负责写入，`admin-plan.ts` 负责预览和方案，`admin-link.ts` 负责管理员密钥与代理的关联，`admin-commands.ts` 是整体流程，`args.ts` 是参数解析器）；`hooks/exceeded.ts` 和 `hooks/band.tsx` 构成超预算横幅；`hooks/summary.ts` 构建文本，`hooks/view.tsx` 和 `hooks/parts.tsx` 构建面板（仪表、分区标题、状态标签、用量条行）；`hooks/format.ts` 放纯格式化函数；`types/index.d.ts` 是状态契约。标签页是 `hooks/tab-*.tsx`（`tab-overview.tsx` 是面板在有标签页之前的仪表盘，`parts-tabs.tsx` 是它们共用的部件，`chart.ts` 是柱状图）；报告是 `hooks/report-*.ts`、`details.ts` 和 `probe.ts`（`/litellm ping`），建立在 `history.ts`（30 天、合计与对比）和 `guidance.ts`（allowance、headroom、today 和会话）之上。`hooks/commands-reports.ts` 和 `commands-share.ts` 是打印或交付报告的命令。
 
 ## 已知限制
 
@@ -352,7 +425,8 @@ bash dev/check-file-size.sh                             # no source file over 30
 - 按模型预算（`model_max_budget`）、临时预算上调和密钥重新生成在代理端都是企业版专属功能，因此不提供（见[预算](#budgets-what-litellm-can-and-cannot-do)）。在代理端编辑回退链需要 `STORE_MODEL_IN_DB=True`，因此 `/litellm fallbacks` 保持只读。
 - **组织**的预算不在密钥自身的响应里，虚拟密钥也可能无权读取它，所以面板只显示组织的名称；`/litellm org` 用管理员密钥读取。管理员密钥仍然只在你输入管理员命令时才会发送，绝不会随刷新定时器发送。
 - 团队**成员**的总额不会报告给虚拟密钥：`Member` 用量条只统计这个密钥的花费，所以读数可能偏低：如果该用户在团队里有多个密钥，代理可能比用量条显示的更早拦截请求。对于会重置的上限，读数也可能偏高（重置会清零成员的花费，而不是密钥的花费），因此这种情况下只发出警告，横幅保持静默。
-- 7 天历史只读取代理活动记录的一页；记录更多时，面板会提示这是部分数据。
+- 用量历史只读取代理活动记录的一页；记录更多时，面板会提示内容不完整。日期按 UTC 计，与代理的算法一致；今天还没有结束，所以对比时会把它排除在外。
+- **Session** 行统计的是，自本次 Claude Code 会话第一次读取以来，该密钥的花费增加了多少。它无法把本次会话的花费与使用同一密钥的另一个会话的花费区分开。
 - 超预算横幅绘制在终端和桌面端界面上（Claude Code 只在这两处提供该横条）；在其他界面上，由状态栏和面板来提示。
 - 状态栏前面的 `⚠` 是 Claude Code 为每个插件状态项统一绘制的；它并不表示密钥出了问题（要看后面的文字）。
 - Claude Code 的插件 API 处于早期访问阶段，不同版本之间可能会变化。

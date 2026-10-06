@@ -111,6 +111,15 @@ export type ProxyInfo = {
   db: string | null
 }
 
+/** What this Claude Code session has spent: the readings' growth, counted here and never read from the proxy. */
+export type SessionSpend = {
+  /** When the first reading of this session was made. */
+  since: number
+  spend: number
+  /** The highest spend the readings showed since a reset, to tell what a new reading adds. */
+  last: number
+}
+
 export type Snapshot = {
   fetchedAt: number
   host: string
@@ -133,6 +142,7 @@ export type Snapshot = {
   proxy: ProxyInfo | null
   /** How long `/key/info` took to answer, when the reading could tell. */
   latencyMs: number | null
+  session: SessionSpend | null
   notes: string[]
 }
 
@@ -157,12 +167,31 @@ export type Failure = {
   at: number
 }
 
+/** The tabs of the pane. */
+export type ViewName = 'overview' | 'usage' | 'models' | 'details'
+
+/** What the usage chart counts per day. */
+export type MetricName = 'spend' | 'requests' | 'tokens'
+
+/** How the model list is ordered. */
+export type SortName = 'spend' | 'name'
+
 declare module 'claude-code' {
   interface PluginState {
     'litellm-key': {
       snapshot: Snapshot | null
       failure: Failure | null
       isLoading: boolean
+      /** The tab the pane shows. */
+      view: ViewName
+      /** Days of usage the Usage and Models tabs show: 7, 14 or 30. */
+      range: number
+      sort: SortName
+      metric: MetricName
+      /** What the Models tab narrows its list by. */
+      filter: string
+      /** The day picked under the chart of the Usage tab, as `YYYY-MM-DD`. */
+      day: string | null
     }
   }
 }
