@@ -41,7 +41,7 @@ This repository is a plugin marketplace (`cc-litellm`) with one plugin: [`litell
 | --- | --- | --- |
 | 👀 **Watch** | **Status line** under the prompt, always visible | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
 | | **`/litellm` pane** | meters for key, team, user and **team-member** budgets, the user's **role**, limits, expiry, models, 7-day sparkline, **top models** of the week, and a **runway** forecast; refreshes itself |
-| | **Pane tabs** | **Usage** (spend, requests or tokens per day as bars over 7, 14 or 30 days, a day to pick, how each model moved), **Models** (what each spent, a filter, a sort), **Details** (the key's fields, LiteLLM's version and database, latency) |
+| | **Pane tabs** | **Usage** (spend, requests or tokens per day as bars over 7, 14 or 30 days, a day to pick, how each model moved), **Models** (what each spent, a filter, a sort), **Details** (the key's fields, LiteLLM's version and database, latency), **Ping** (press `p`: every endpoint timed, latency average, best, worst and a sparkline of the last pings) |
 | | **Guidance** | **Allowance** (what to spend a day to last until the reset), **Headroom** (how many more requests the cap holds), **Today** against the usual day, **Session** (what this Claude Code session spent, and at what rate) |
 | | **Toasts** | at 80% (configurable), 95%, 100%; key about to expire; key blocked or expired; today over your **daily alert**. Once per budget window, even across sessions |
 | | **Over-budget banner** | a red band above the prompt that **stays for as long as a budget is spent up** (key, user, team, window or model) and leaves only when the numbers are normal again |
@@ -87,7 +87,7 @@ If Claude Code already talks to LiteLLM, **there is nothing to configure**: the 
 
 ### Look closer: usage, models, details
 
-The pane has four tabs. Overview is the dashboard above; **Usage** draws the last 7, 14 or 30 days as bars, counting spend, requests or tokens, lets you pick a day for its models, and says which model moved against the days before:
+The pane has four tabs (plus **Ping**, and **Admin** for a proxy admin: see below). Overview is the dashboard above; **Usage** draws the last 7, 14 or 30 days as bars, counting spend, requests or tokens, lets you pick a day for its models, and says which model moved against the days before:
 
 ```text
  1: Overview   2: Usage   3: Models  4: Details
@@ -251,6 +251,20 @@ The pane adapts to the space: beside the conversation (full screen, from 110 col
 
 <p align="center">
   <img src="docs/evidence/help.png" alt="/litellm help" width="92%">
+</p>
+
+### Ping and Admin tabs
+
+**Ping** (`5`) times every endpoint the plugin reads and shows the latency to `/key/info` with its average, best, worst and a sparkline; `p` asks again, and `/litellm tab ping` opens it already measured.
+
+<p align="center">
+  <img src="docs/evidence/ping.png" alt="The Ping tab" width="92%">
+</p>
+
+**Admin** (`6`) appears when the key is a proxy admin (`user_role: proxy_admin`) or `litellm_admin_key` is set. It lists the keys that spent most, the teams, and what each model spent across the whole proxy, and every row has buttons: **Block**/**Unblock** a key and **+$10** for a key or a team. A press goes through the same preview and native confirmation as `/litellm key block` and `/litellm grant`, then the lists are read again.
+
+<p align="center">
+  <img src="docs/evidence/admin-tab.png" alt="The Admin tab" width="92%">
 </p>
 
 ## Admin commands

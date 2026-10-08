@@ -4,6 +4,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { ViewName } from '../types'
 
 import { adminLink } from './admin-link'
+import { adminBusy, stepAdmin } from './admin-pane'
 import { overBudgetBand } from './band'
 import type { CommandContext } from './commands'
 import { runCommand } from './commands'
@@ -12,7 +13,8 @@ import { clean } from './format'
 import type { Reply } from './litellm'
 import type { Init, Ports } from './ports'
 import { parsePrefs } from './prefs'
-import { ping } from './probe'
+import { pinged, pinging } from './ping-state'
+import { ping, pingRound } from './probe'
 import type { Session } from './session'
 import { createSession } from './session'
 import { configOf } from './settings'
@@ -30,6 +32,8 @@ const sortState = atom({ plugin: 'litellm-key', key: 'sort' } as const, 'spend')
 const metricState = atom({ plugin: 'litellm-key', key: 'metric' } as const, 'spend')
 const filterState = atom({ plugin: 'litellm-key', key: 'filter' } as const, '')
 const dayState = atom({ plugin: 'litellm-key', key: 'day' } as const, null)
+const pingState = atom({ plugin: 'litellm-key', key: 'ping' } as const, null)
+const adminState = atom({ plugin: 'litellm-key', key: 'admin' } as const, null)
 
 /**
  * Esc closes the pane at an empty prompt, as the person's close does, and so it would when pressed to leave the filter
@@ -40,23 +44,16 @@ const paneArgs = (tab: ViewName) =>
 
 /** What the person chose is kept for next time; a store that fails only loses that. */
 const savePrefs = async ($: EngineInterface): Promise<void> => {
-  await $.store
-    .set('prefs', { range: await read($, rangeState), sort: await read($, sortState), metric: await read($, metricState) })
-    .catch(() => undefined)
+  const prefs = { range: await read($, rangeState), sort: await read($, sortState), metric: await read($, metricState) }
+
+  await $.store.set('prefs', prefs).catch(() => undefined)
 }
 
 const loadPrefs = async ($: EngineInterface): Promise<void> => {
   const { range, sort, metric } = parsePrefs(await $.store.get('prefs').catch(() => undefined))
-
-  if (range !== undefined) {
-    await update($, rangeState, () => range)
-  }
-  if (sort !== undefined) {
-    await update($, sortState, () => sort)
-  }
-  if (metric !== undefined) {
-    await update($, metricState, () => metric)
-  }
+  if (range !== undefined) await update($, rangeState, () => range)
+  if (sort !== undefined) await update($, sortState, () => sort)
+  if (metric !== undefined) await update($, metricState, () => metric)
 }
 
 /** One request, timed, and given up on after `ms`. */
@@ -96,20 +93,52 @@ const portsOf = ($: EngineInterface): Ports => ({
     await update($, snapshotState, () => snapshot)
     await update($, failureState, () => failure)
   },
-  status: text => {
-    $.ui.status(text)
-  },
-  toast: message => {
-    $.ui.toast(message, { timeoutMs: 8000 })
-  },
+  status: text => $.ui.status(text),
+  toast: message => $.ui.toast(message, { timeoutMs: 8000 }),
   remembered: () => $.store.get('notified'),
-  remember: async ids => {
-    await $.store.set('notified', ids)
-  },
+  remember: async ids => void (await $.store.set('notified', ids)),
 })
+
+/** Runs one round for the Ping tab and keeps its time beside the rounds before; one at a time. */
+const runPingTab = async ($: EngineInterface, session: Session): Promise<void> => {
+  const before = await read($, pingState)
+
+  if (!before?.isRunning) {
+    await update($, pingState, () => pinging(before))
+    const round = await pingRound(session, portsOf($)).catch(() => null)
+
+    await update($, pingState, () => pinged(before, round))
+  }
+}
+
+/** Reads the Admin lists, after an action when there is one; the action asks its own confirmation first. */
+const runAdminTab = async ($: EngineInterface, session: Session, action?: Parameters<typeof stepAdmin>[2]): Promise<void> => {
+  const before = await read($, adminState)
+
+  if (!before?.isLoading) {
+    await update($, adminState, () => adminBusy(before))
+    const { state, isChanged } = await stepAdmin(() => adminOf($, session), before, action)
+
+    await update($, adminState, () => state)
+    if (isChanged) void session.load(portsOf($), 'force')
+  }
+}
+
+/** The tabs that read something measure by themselves the first time they open. */
+const startTab = async ($: EngineInterface, session: Session, tab: ViewName): Promise<void> => {
+  if (tab === 'ping' && (await read($, pingState)) === null) void runPingTab($, session)
+  if (tab === 'admin' && (await read($, adminState)) === null) void runAdminTab($, session)
+}
 
 /** What the pane was last told about Esc: whether it closes the pane (it does, except on the tab with the field). */
 type PaneMode = { escapes: boolean }
+
+const adminOf = ($: EngineInterface, session: Session) =>
+  adminLink(session, portsOf($), {
+    surfaces: () => $.session.surfaces(),
+    ask: (question, options) => $.ui.ask(question, options),
+    copy: async value => (await $.ui.copy({ text: value })).isCopied,
+  })
 
 const contextOf = ($: EngineInterface, session: Session, pane: PaneMode): CommandContext => {
   const ports = portsOf($)
@@ -129,6 +158,7 @@ const contextOf = ($: EngineInterface, session: Session, pane: PaneMode): Comman
       const shown = tab ?? (await read($, viewState))
 
       pane.escapes = shown !== 'models'
+      await startTab($, session, shown)
 
       return $.ui.open(paneArgs(shown))
     },
@@ -145,12 +175,7 @@ const contextOf = ($: EngineInterface, session: Session, pane: PaneMode): Comman
       }
     },
     ping: () => ping(session, ports),
-    admin: () =>
-      adminLink(session, ports, {
-        surfaces: () => $.session.surfaces(),
-        ask: (question, options) => $.ui.ask(question, options),
-        copy: async value => (await $.ui.copy({ text: value })).isCopied,
-      }),
+    admin: () => adminOf($, session),
   }
 }
 
@@ -208,6 +233,8 @@ export const register: Register = (on, options) => {
     const metric = await read($, metricState)
     const filter = await read($, filterState)
     const day = await read($, dayState)
+    const ping = await read($, pingState)
+    const admin = await read($, adminState)
     const now = await $.clock.now()
     const { config } = state
 
@@ -229,24 +256,24 @@ export const register: Register = (on, options) => {
       metric,
       filter,
       day,
-      onRefresh: () => {
-        session.reload(portsOf($), 'force')
-      },
-      onClose: () => {
-        void $.ui.close({ id: PANE })
-      },
+      ping,
+      admin,
+      isAdmin: snapshot?.userRole?.startsWith('proxy_admin') === true || config.adminKey !== null,
+      onAdminLoad: () => void runAdminTab($, session),
+      onAdminDo: (command, input) => void runAdminTab($, session, { command, input }),
+      onPing: () => void runPingTab($, session),
+      onRefresh: () => void session.reload(portsOf($), 'force'),
+      onClose: () => void $.ui.close({ id: PANE }),
       onCopy: (text, what, press) => {
-        $.ui
-          .copy({ text, surface: press.surface })
-          .then(result => {
-            $.ui.toast(result.isCopied ? `Copied ${what}` : `Could not copy ${what} (${result.reason})`, { timeoutMs: 2500 })
-          })
-          .catch(() => undefined)
+        const toast = (message: string) => $.ui.toast(message, { timeoutMs: 2500 })
+
+        $.ui.copy({ text, surface: press.surface }).then(result => toast(result.isCopied ? `Copied ${what}` : `Could not copy ${what} (${result.reason})`)).catch(() => undefined)
       },
       onTab: next => {
         void update($, viewState, () => next)
           .then(() => read($, viewState))
           .then(shown => {
+            void startTab($, session, shown)
             // Open again to change what Esc does, when the tab that is really showing (two presses can land before a
             // redraw) is not the kind the pane was told about: the one tab that has a field keeps Esc to itself.
             if ((shown !== 'models') !== pane.escapes) {
@@ -259,25 +286,13 @@ export const register: Register = (on, options) => {
           })
           .catch(() => undefined)
       },
-      onRange: next => {
-        void update($, rangeState, () => next).then(() => savePrefs($))
-      },
-      onSort: next => {
-        void update($, sortState, () => next).then(() => savePrefs($))
-      },
-      onMetric: next => {
-        void update($, metricState, () => next).then(() => savePrefs($))
-      },
-      onFilter: text => {
-        // Typed or pasted, it goes into a field the engine refuses to draw if it holds a control character.
-        void update($, filterState, () => clean(text))
-      },
-      onDay: date => {
-        void update($, dayState, () => date)
-      },
-      onFocusFilter: () => {
-        $.ui.focus({ requestId: PANE, key: 'filter' }).catch(() => undefined)
-      },
+      onRange: next => void update($, rangeState, () => next).then(() => savePrefs($)),
+      onSort: next => void update($, sortState, () => next).then(() => savePrefs($)),
+      onMetric: next => void update($, metricState, () => next).then(() => savePrefs($)),
+      // Typed or pasted, it goes into a field the engine refuses to draw if it holds a control character.
+      onFilter: text => void update($, filterState, () => clean(text)),
+      onDay: date => void update($, dayState, () => date),
+      onFocusFilter: () => void $.ui.focus({ requestId: PANE, key: 'filter' }).catch(() => undefined),
     })
   })
 }

@@ -128,15 +128,18 @@ export const pingReport = (host: string, root: string, probes: readonly Probe[])
   ].join('\n')
 }
 
-/** `/litellm ping`: every endpoint the plugin reads, asked once, with its status and its time. */
-export const ping = async (session: Session, ports: Ports): Promise<{ text: string; exitCode?: number }> => {
+/** What one round of probes found, or why it could not run. */
+export type Round = { host: string; root: string; probes: Probe[]; at: number } | { failure: string }
+
+/** One round of probes against the proxy the key points to: what `/litellm ping` prints and the Ping tab draws. */
+export const pingRound = async (session: Session, ports: Ports): Promise<Round> => {
   // A reading first, to know the user and the team to ask about; if it fails, the rest is asked all the same.
   await session.ensureFresh(ports)
   const now = await ports.now()
   const resolved = resolveCredentials(await sourcesOf(session.state.config, ports), now)
 
   if (!resolved.ok) {
-    return { text: failureText(resolved.failure), exitCode: 3 }
+    return { failure: failureText(resolved.failure) }
   }
   const { credentials } = resolved
   const { pinnedRoot, latest } = session.state
@@ -148,7 +151,19 @@ export const ping = async (session: Session, ports: Ports): Promise<{ text: stri
     snapshot: latest.snapshot,
     now,
   })
-  const text = pingReport(credentials.host, withoutCredentials(root), probes)
+
+  return { host: credentials.host, root: withoutCredentials(root), probes, at: now }
+}
+
+/** `/litellm ping`: every endpoint the plugin reads, asked once, with its status and its time. */
+export const ping = async (session: Session, ports: Ports): Promise<{ text: string; exitCode?: number }> => {
+  const round = await pingRound(session, ports)
+
+  if ('failure' in round) {
+    return { text: round.failure, exitCode: 3 }
+  }
+  const { probes } = round
+  const text = pingReport(round.host, round.root, probes)
 
   // The key info is what the plugin cannot do without; the rest is optional, and does not fail a script.
   return probes[0]?.ok === false ? { text, exitCode: 3 } : { text }

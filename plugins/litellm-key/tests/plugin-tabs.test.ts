@@ -29,6 +29,23 @@ describe('tabs', () => {
     expect(await ui.find({ type: 'Text', text: / 1: Overview / })).toBeDefined()
   })
 
+  test('the Ping tab measures by itself the first time, and again on its button', async ($, on) => {
+    const { clock, net } = boot(on)
+
+    await start($, clock)
+    const ui = await mount($, 'terminal')
+
+    await ui.press({ key: 'tab-ping' })
+    await clock.advance(50)
+    expect(await ui.find({ type: 'Text', text: / 5: Ping / })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /\/v1\/models/ })).toBeDefined()
+    const before = net.calls.length
+
+    await ui.press({ key: 'ping' })
+    await clock.advance(50)
+    expect(net.calls.length).toBeGreaterThan(before)
+  })
+
   test('give every tab its hotkey, which the button draws itself', async ($, on) => {
     const { clock } = boot(on)
 
@@ -37,8 +54,8 @@ describe('tabs', () => {
     const buttons = await ui.findAll({ type: 'Button' })
     const hotkeys = Object.fromEntries(buttons.map(button => [button.key, button.props.hotkey]))
 
-    expect(hotkeys).toMatchObject({ 'tab-usage': '2', 'tab-models': '3', 'tab-details': '4', refresh: 'r', copy: 'c', close: 'q' })
-    expect(buttons.filter(button => button.key?.startsWith('tab-')).map(button => button.props.label)).toEqual(['Usage', 'Models', 'Details'])
+    expect(hotkeys).toMatchObject({ 'tab-usage': '2', 'tab-models': '3', 'tab-details': '4', 'tab-ping': '5', refresh: 'r', copy: 'c', close: 'q' })
+    expect(buttons.filter(button => button.key?.startsWith('tab-')).map(button => button.props.label)).toEqual(['Usage', 'Models', 'Details', 'Ping'])
   })
 
   test('keep the one that was open when the pane is drawn again, on any surface', async ($, on) => {
@@ -138,7 +155,7 @@ describe('tabs', () => {
 
     expect(await keysOf(ui)).toContain('copy')
     await ui.press({ key: 'tab-usage' })
-    expect(await keysOf(ui)).toEqual(['tab-overview', 'tab-models', 'tab-details', 'refresh', 'close'])
+    expect(await keysOf(ui)).toEqual(['tab-overview', 'tab-models', 'tab-details', 'tab-ping', 'refresh', 'close'])
     await ui.press({ key: 'tab-models' })
     expect(await keysOf(ui)).toContain('copy')
   })
@@ -217,8 +234,8 @@ describe('/litellm tab', () => {
 
     await start($, clock)
 
-    expect((await run($, 'tab nope')).text).toBe('Unknown tab "nope". The tabs are overview, usage, models, details.')
-    expect((await run($, 'tab usgae')).text).toBe('Unknown tab "usgae". Did you mean "usage"? The tabs are overview, usage, models, details.')
+    expect((await run($, 'tab nope')).text).toBe('Unknown tab "nope". The tabs are overview, usage, models, details, ping, admin.')
+    expect((await run($, 'tab usgae')).text).toBe('Unknown tab "usgae". Did you mean "usage"? The tabs are overview, usage, models, details, ping, admin.')
     expect((await run($, 'tab')).text).toContain('The tabs are')
     expect(log.opens).toEqual([])
   })

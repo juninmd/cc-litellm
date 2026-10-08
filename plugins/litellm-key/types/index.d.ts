@@ -168,7 +168,40 @@ export type Failure = {
 }
 
 /** The tabs of the pane. */
-export type ViewName = 'overview' | 'usage' | 'models' | 'details'
+export type ViewName = 'overview' | 'usage' | 'models' | 'details' | 'ping' | 'admin'
+
+/** What the Admin tab reads from the proxy with an admin key: the biggest spenders and what is spent where. */
+export type AdminView = {
+  at: number
+  keys: { alias: string | null; hash: string; spend: number; limit: number | null; isBlocked: boolean; userId: string | null; teamId: string | null }[]
+  keyTotal: number
+  teams: { id: string; alias: string | null; spend: number; limit: number | null }[]
+  models: { model: string; spend: number }[]
+  modelCount: number | null
+  /** What could not be read (an optional endpoint missing in this LiteLLM version). */
+  notes: string[]
+}
+
+export type AdminState = {
+  view: AdminView | null
+  isLoading: boolean
+  failure: string | null
+  /** What the last action said, first line. */
+  message: string | null
+}
+
+/** What the Ping tab shows: the last round of probes, the times of the rounds before it, and whether one is running. */
+export type PingState = {
+  host: string
+  root: string
+  at: number
+  probes: { path: string; status: number | null; ms: number | null; ok: boolean; detail: string }[]
+  /** The time of `/key/info` in each of the last rounds, oldest first. */
+  history: number[]
+  /** Why the last round could not run at all (no credentials), or null. */
+  failure: string | null
+  isRunning: boolean
+}
 
 /** What the usage chart counts per day. */
 export type MetricName = 'spend' | 'requests' | 'tokens'
@@ -192,6 +225,8 @@ declare module 'claude-code' {
       filter: string
       /** The day picked under the chart of the Usage tab, as `YYYY-MM-DD`. */
       day: string | null
+      ping: PingState | null
+      admin: AdminState | null
     }
   }
 }
