@@ -53,6 +53,15 @@ describe('the Admin tab acts', () => {
     expect(state.view?.teams[0]?.limit).toBe(110)
   })
 
+  test('a cancelled dialog says so, not the first line of the preview', async () => {
+    const fake = fakeProxy()
+    const deps = { ...depsOf(fake), ask: async () => 'Cancel' }
+    const { state, isChanged } = await stepAdmin(async () => ({ deps }), null, { command: 'key', input: `block ${hashOf(2)}` })
+
+    expect(isChanged).toBe(false)
+    expect(state.message).toBe('Cancelled: nothing changed.')
+  })
+
   test('says why when there is no admin link, and keeps what it had', async () => {
     const { state } = await stepAdmin(async () => ({ text: 'The proxy has not answered yet.' }), null)
 

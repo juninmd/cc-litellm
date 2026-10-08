@@ -24,7 +24,9 @@ export const stepAdmin = async (link: AdminLink, before: AdminState | null, acti
       return { state: { view: had, isLoading: false, failure: ready.text, message: null }, isChanged: false }
     }
     const outcome = action ? await runAdmin(ready.deps, action.command, action.input) : null
-    const message = outcome === null ? null : truncate(outcome.text.split('\n')[0] ?? '', 120)
+    const lines = outcome?.text.split('\n') ?? []
+    // A change says what it did first; a stop (cancelled, dry run, an error) says why on its last line, after the preview.
+    const message = outcome === null ? null : truncate((outcome.isChanged ? lines[0] : lines[lines.length - 1]) ?? '', 120)
     const view = await readAdminView(ready.deps.admin, ready.deps.now)
 
     return {
