@@ -142,6 +142,9 @@ const contextOf = ($: EngineInterface, session: Session, pane: PaneMode): Comman
       const shown = tab ?? (await read($, viewState))
 
       pane.escapes = shown !== 'models'
+      if (shown === 'ping' && (await read($, pingState)) === null) {
+        void runPingTab($, session)
+      }
 
       return $.ui.open(paneArgs(shown))
     },
@@ -263,9 +266,7 @@ export const register: Register = (on, options) => {
         void update($, viewState, () => next)
           .then(() => read($, viewState))
           .then(shown => {
-            if (shown === 'ping') {
-              void read($, pingState).then(last => (last === null ? runPingTab($, session) : undefined)) // measures by itself, once
-            }
+            if (shown === 'ping') void read($, pingState).then(last => (last === null ? runPingTab($, session) : undefined))
             // Open again to change what Esc does, when the tab that is really showing (two presses can land before a
             // redraw) is not the kind the pane was told about: the one tab that has a field keeps Esc to itself.
             if ((shown !== 'models') !== pane.escapes) {
