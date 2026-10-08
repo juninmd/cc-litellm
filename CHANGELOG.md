@@ -2,6 +2,13 @@
 
 <!-- Written by release-please from Conventional Commits (see RELEASING.md). Edit the release PR, not this file. -->
 
+## [0.7.0](https://github.com/juninmd/cc-litellm/compare/litellm-key--v0.6.0...litellm-key--v0.7.0) (2026-10-08)
+
+
+### Added
+
+* **litellm-key:** Ping and Admin tabs in the pane ([#14](https://github.com/juninmd/cc-litellm/issues/14)) ([9cc6c8e](https://github.com/juninmd/cc-litellm/commit/9cc6c8e0efed149599167b47b3ab7cf4f260a2bf))
+
 ## [0.6.0](https://github.com/juninmd/cc-litellm/compare/litellm-key--v0.5.0...litellm-key--v0.6.0) (2026-10-06)
 
 
