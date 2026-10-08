@@ -1,6 +1,7 @@
 import type { UiPressArgument } from 'claude-code'
 
-import type { Failure, MetricName, PingState, Snapshot, SortName, ViewName } from '../types'
+import type { AdminCommand } from './admin-commands'
+import type { AdminState, Failure, MetricName, PingState, Snapshot, SortName, ViewName } from '../types'
 import type { Placement } from './layout'
 
 export type DashboardProps = {
@@ -29,6 +30,13 @@ export type DashboardProps = {
   day: string | null
   /** The last round of the Ping tab, null before the first. */
   ping: PingState | null
+  /** The signed-in key manages the proxy: the Admin tab is there for it alone. */
+  isAdmin: boolean
+  admin: AdminState | null
+  /** Reads the Admin lists again. */
+  onAdminLoad: () => void
+  /** Runs a key, grant command: the same preview and confirmation as the slash command, then reads the lists again. */
+  onAdminDo: (command: AdminCommand, input: string) => void
   onRefresh: () => void
   /** Asks every endpoint once and times each. */
   onPing: () => void

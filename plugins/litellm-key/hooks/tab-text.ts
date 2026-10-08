@@ -1,12 +1,13 @@
-import type { PingState, Snapshot, ViewName } from '../types'
+import type { AdminState, PingState, Snapshot, ViewName } from '../types'
 import { detailsText } from './details'
 import { modelsReport } from './report-models'
 import { usageReport } from './report-usage'
 import { summaryText } from './summary'
+import { adminText } from './tab-admin'
 import { pingText } from './tab-ping'
 
 /** What a tab needs to say itself as text. */
-export type TextOptions = { warnPercent: number; refreshSeconds: number; ping?: PingState | null }
+export type TextOptions = { warnPercent: number; refreshSeconds: number; ping?: PingState | null; admin?: AdminState | null }
 
 /** What a tab says as text: what `/litellm` prints where nothing can draw a pane, and what Copy puts on the clipboard. */
 export const textOf = (tab: ViewName, range: number, options: TextOptions): ((snapshot: Snapshot, now: number) => string) => {
@@ -19,6 +20,8 @@ export const textOf = (tab: ViewName, range: number, options: TextOptions): ((sn
       return (snapshot, now) => detailsText(snapshot, now, options.refreshSeconds)
     case 'ping':
       return () => pingText(options.ping ?? null)
+    case 'admin':
+      return () => adminText(options.admin?.view ?? null)
     default:
       return (snapshot, now) => summaryText(snapshot, now, options.warnPercent)
   }
@@ -31,4 +34,5 @@ export const TAB_WHAT: Record<ViewName, string> = {
   models: 'the model list',
   details: 'the key details',
   ping: 'the ping report',
+  admin: 'the admin report',
 }

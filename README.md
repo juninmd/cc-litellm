@@ -87,7 +87,7 @@ If Claude Code already talks to LiteLLM, **there is nothing to configure**: the 
 
 ### Look closer: usage, models, details
 
-The pane has four tabs. Overview is the dashboard above; **Usage** draws the last 7, 14 or 30 days as bars, counting spend, requests or tokens, lets you pick a day for its models, and says which model moved against the days before:
+The pane has four tabs (plus **Ping**, and **Admin** for a proxy admin: see below). Overview is the dashboard above; **Usage** draws the last 7, 14 or 30 days as bars, counting spend, requests or tokens, lets you pick a day for its models, and says which model moved against the days before:
 
 ```text
  1: Overview   2: Usage   3: Models  4: Details
@@ -251,6 +251,20 @@ The pane adapts to the space: beside the conversation (full screen, from 110 col
 
 <p align="center">
   <img src="docs/evidence/help.png" alt="/litellm help" width="92%">
+</p>
+
+### Ping and Admin tabs
+
+**Ping** (`5`) times every endpoint the plugin reads and shows the latency to `/key/info` with its average, best, worst and a sparkline; `p` asks again, and `/litellm tab ping` opens it already measured.
+
+<p align="center">
+  <img src="docs/evidence/ping.png" alt="The Ping tab" width="92%">
+</p>
+
+**Admin** (`6`) appears when the key is a proxy admin (`user_role: proxy_admin`) or `litellm_admin_key` is set. It lists the keys that spent most, the teams, and what each model spent across the whole proxy, and every row has buttons: **Block**/**Unblock** a key and **+$10** for a key or a team. A press goes through the same preview and native confirmation as `/litellm key block` and `/litellm grant`, then the lists are read again.
+
+<p align="center">
+  <img src="docs/evidence/admin-tab.png" alt="The Admin tab" width="92%">
 </p>
 
 ## Admin commands

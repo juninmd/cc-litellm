@@ -135,6 +135,15 @@ export const fakeProxy = (options: { admin?: string; rows?: Row[]; users?: Row[]
 
       return team ? reply(200, { team_id: team.team_id, team_info: team, keys: [] }) : reply(404, { error: { message: `Team not found, passed team id: ${query.get('team_id')}.`, code: '404' } })
     }
+    if (route === '/team/list') {
+      return reply(200, [...teams.values()])
+    }
+    if (route === '/global/spend/models') {
+      return reply(200, [{ model: 'cloud/auto', total_spend: 12.5 }, { model: 'cloud/auto-long', total_spend: 30 }])
+    }
+    if (route === '/model/info') {
+      return reply(200, { data: [{ model_name: 'cloud/auto' }, { model_name: 'cloud/auto-long' }, { model_name: 'cheap' }] })
+    }
     if (route === '/v2/team/list') {
       const alias = query.get('team_alias')
 

@@ -11,6 +11,7 @@ import type { Tone } from './summary'
 import { identity } from './facts'
 import { detailsTab } from './tab-details'
 import { modelsTab } from './tab-models'
+import { adminTab } from './tab-admin'
 import { overviewBody } from './tab-overview'
 import { pingTab } from './tab-ping'
 import { TAB_WHAT, textOf } from './tab-text'
@@ -29,6 +30,7 @@ const TABS: readonly { name: ViewName; label: string; hotkey: string }[] = [
   { name: 'models', label: 'Models', hotkey: '3' },
   { name: 'details', label: 'Details', hotkey: '4' },
   { name: 'ping', label: 'Ping', hotkey: '5' },
+  { name: 'admin', label: 'Admin', hotkey: '6' },
 ]
 
 const SETUP = [
@@ -40,7 +42,7 @@ const SETUP = [
 /** The tabs: the one showing is a mark, the others are plain buttons, which draw their own hotkey ("2: Usage"). */
 const tabBar = ({ Box, Text, Button }: Ui, props: DashboardProps): RenderElement => (
   <Box columnGap={2} flexWrap="wrap">
-    {TABS.map(tab =>
+    {TABS.filter(tab => tab.name !== 'admin' || props.isAdmin).map(tab =>
       tab.name === props.tab ? (
         <Text inverse bold>{` ${tab.hotkey}: ${tab.label} `}</Text>
       ) : (
@@ -58,7 +60,9 @@ const tabBar = ({ Box, Text, Button }: Ui, props: DashboardProps): RenderElement
   </Box>
 )
 
-export const dashboard = (ui: Ui, props: DashboardProps): RenderElement => {
+export const dashboard = (ui: Ui, shown: DashboardProps): RenderElement => {
+  // The Admin tab is for admins: for anyone else the pane shows the overview, whatever tab was left open.
+  const props = shown.tab === 'admin' && !shown.isAdmin ? { ...shown, tab: 'overview' as const } : shown
   const { Box, Text, Button } = ui
   const { snapshot, failure, isLoading, now } = props
   const compact = isCompactAt(props.placement, props.columns, props.isCompact)
@@ -122,7 +126,9 @@ export const dashboard = (ui: Ui, props: DashboardProps): RenderElement => {
           ? detailsTab(ui, props, snapshot, layout)
           : props.tab === 'ping'
             ? pingTab(ui, props, layout)
-            : overviewBody(ui, props, snapshot, { compact, hasSections, gap })
+            : props.tab === 'admin'
+              ? adminTab(ui, props, layout)
+              : overviewBody(ui, props, snapshot, { compact, hasSections, gap })
   const updated = (isShort: boolean): string =>
     `Updated ${clock(snapshot.fetchedAt)}${isShort ? '' : ` · every ${props.refreshSeconds}s`}${isLoading ? ' · refreshing…' : ''}`
   const plan = footerPlan(props.columns, buttonsWidth(labels), updated(false), updated(true))

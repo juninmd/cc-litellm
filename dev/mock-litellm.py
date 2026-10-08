@@ -81,7 +81,7 @@ def user_info(c):
         "user_info": {
             "user_id": "demo",
             "user_email": "demo@example.com",
-            "user_role": "internal_user",
+            "user_role": "proxy_admin" if c.get("admin") else "internal_user",
             "spend": c["user"],
             "max_budget": 150.0,
             "budget_duration": "30d",
@@ -163,12 +163,39 @@ def daily_activity(config):
     return {"results": results, "metadata": {"total_spend": sum(r["metrics"]["spend"] for r in results)}}
 
 
+def admin_keys(state):
+    return {"keys": state["keys"], "total_count": len(state["keys"]), "current_page": 1, "total_pages": 1}
+
+
+def admin_state():
+    def key(n, alias, spend, cap, **extra):
+        return {"token": f"{n:02x}" * 32, "key_alias": alias, "key_name": f"sk-...{n:04d}", "spend": spend, "max_budget": cap, "user_id": extra.get("user"), "team_id": extra.get("team"), "blocked": False}
+
+    return {
+        "keys": [
+            key(1, "claude-code-demo", 41.37, 50.0, user="demo"),
+            key(2, "ci-runner", 18.2, 25.0, team="platform-eng"),
+            key(3, "batch-nightly", 63.9, 100.0, team="data"),
+            key(4, "old-contractor", 7.5, None, user="temp"),
+        ],
+        "teams": [
+            {"team_id": "platform-eng", "team_alias": "platform-eng", "spend": 212.4, "max_budget": 300.0},
+            {"team_id": "data", "team_alias": "data", "spend": 96.0, "max_budget": 100.0},
+        ],
+    }
+
+
+def spend_models():
+    return [{"model": "claude-sonnet-4-5", "total_spend": 188.2}, {"model": "claude-opus-4-1", "total_spend": 96.7}, {"model": "claude-haiku-4-5", "total_spend": 12.1}]
+
+
 def health():
     return {"status": "healthy", "db": "connected", "cache": None, "litellm_version": "1.77.0", "success_callbacks": []}
 
 
 def handler(config, delay, fail_after, off=()):
     reads = {"key": 0}
+    state = admin_state()
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -212,11 +239,40 @@ def handler(config, delay, fail_after, off=()):
                 "/model_group/info": model_groups,
                 "/user/daily/activity": lambda: daily_activity(config),
                 "/health/readiness": health,
+                "/key/list": lambda: admin_keys(state),
+                "/team/list": lambda: state["teams"],
+                "/global/spend/models": spend_models,
+                "/model/info": lambda: {"data": [{"model_name": m["model"]} for m in spend_models()]},
             }
+            if path in ("/key/list", "/team/list", "/global/spend/models", "/model/info") and not config.get("admin"):
+                return self.reply(401, {"error": {"message": "Authentication Error, Only proxy admin can be used. Your role=internal_user", "type": "auth_error", "param": "None", "code": "401"}})
             if path in off or path not in routes:
                 return self.reply(404, {"detail": "Not Found"})
             if path in routes:
                 return self.reply(200, routes[path]())
+            return self.reply(404, {"detail": "Not Found"})
+
+        def do_POST(self):
+            sent = self.headers.get("x-litellm-api-key") or self.headers.get("authorization") or ""
+            body = json.loads(self.rfile.read(int(self.headers.get("content-length") or 0)) or b"{}")
+            if KEY not in sent or not config.get("admin"):
+                return self.reply(401, {"error": {"message": "Only proxy admin", "type": "auth_error", "param": "None", "code": "401"}})
+            path = urlparse(self.path).path
+            if path in ("/key/block", "/key/unblock"):
+                for row in state["keys"]:
+                    if row["token"] == body.get("key"):
+                        row["blocked"] = path == "/key/block"
+                return self.reply(200, {"token": body.get("key"), "blocked": path == "/key/block"})
+            if path == "/team/update":
+                for row in state["teams"]:
+                    if row["team_id"] == body.get("team_id"):
+                        row["max_budget"] = body.get("max_budget")
+                return self.reply(200, {"team_id": body.get("team_id")})
+            if path == "/key/update":
+                for row in state["keys"]:
+                    if row["token"] == body.get("key"):
+                        row["max_budget"] = body.get("max_budget", row["max_budget"])
+                return self.reply(200, {"key": body.get("key")})
             return self.reply(404, {"detail": "Not Found"})
 
     return Handler
@@ -234,6 +290,7 @@ if __name__ == "__main__":
     parser.add_argument("--max-budget", help="the key budget in dollars, or none")
     parser.add_argument("--expires-hours", type=float, help="hours until the key expires (negative: already expired)")
     parser.add_argument("--blocked", action="store_true")
+    parser.add_argument("--admin", action="store_true", help="the key is a proxy admin: answer the management endpoints")
     parser.add_argument("--delay", type=float, default=0.0)
     parser.add_argument("--fail-after", type=int)
     parser.add_argument("--today", type=float, help="what today has spent in the usage history")
@@ -251,6 +308,7 @@ if __name__ == "__main__":
     if args.blocked:
         config["blocked"] = True
     config["today"] = args.today
+    config["admin"] = args.admin
     off = tuple(path for flag, path in ((args.no_usage, "/user/daily/activity"), (args.no_health, "/health/readiness")) if flag)
     print(f"mock LiteLLM ({args.scenario}) on http://127.0.0.1:{args.port}  key: {KEY}", flush=True)
     ThreadingHTTPServer(("127.0.0.1", args.port), handler(config, args.delay, args.fail_after, off)).serve_forever()

@@ -234,8 +234,8 @@ describe('/litellm tab', () => {
 
     await start($, clock)
 
-    expect((await run($, 'tab nope')).text).toBe('Unknown tab "nope". The tabs are overview, usage, models, details, ping.')
-    expect((await run($, 'tab usgae')).text).toBe('Unknown tab "usgae". Did you mean "usage"? The tabs are overview, usage, models, details, ping.')
+    expect((await run($, 'tab nope')).text).toBe('Unknown tab "nope". The tabs are overview, usage, models, details, ping, admin.')
+    expect((await run($, 'tab usgae')).text).toBe('Unknown tab "usgae". Did you mean "usage"? The tabs are overview, usage, models, details, ping, admin.')
     expect((await run($, 'tab')).text).toContain('The tabs are')
     expect(log.opens).toEqual([])
   })
