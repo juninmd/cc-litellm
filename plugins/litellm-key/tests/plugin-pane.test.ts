@@ -5,7 +5,7 @@ import { BASE, KEY, keyBody, reply, standardRoutes } from './support'
 
 const SURFACES = ['terminal', 'desktop', 'vscode', 'mobile'] as const
 // Refresh, Copy and Close, and the three tabs that are not the one showing
-const ACTIONS_AND_TABS = 6
+const ACTIONS_AND_TABS = 7
 // the filled part of a bar (whole cells and one partial eighth) and its track
 const FILLED = /^[█▏▎▍▌▋▊▉]+$/
 const TRACK = /^░+$/

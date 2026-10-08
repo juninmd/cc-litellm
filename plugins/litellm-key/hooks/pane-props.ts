@@ -1,6 +1,6 @@
 import type { UiPressArgument } from 'claude-code'
 
-import type { Failure, MetricName, Snapshot, SortName, ViewName } from '../types'
+import type { Failure, MetricName, PingState, Snapshot, SortName, ViewName } from '../types'
 import type { Placement } from './layout'
 
 export type DashboardProps = {
@@ -27,7 +27,11 @@ export type DashboardProps = {
   filter: string
   /** The day picked under the chart, as `YYYY-MM-DD`. */
   day: string | null
+  /** The last round of the Ping tab, null before the first. */
+  ping: PingState | null
   onRefresh: () => void
+  /** Asks every endpoint once and times each. */
+  onPing: () => void
   onClose: () => void
   /** Puts text on the clipboard of the surface the press came from, and says what it was ("the summary"). */
   onCopy: (text: string, what: string, press: UiPressArgument) => void

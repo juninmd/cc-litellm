@@ -12,7 +12,8 @@ import { clean } from './format'
 import type { Reply } from './litellm'
 import type { Init, Ports } from './ports'
 import { parsePrefs } from './prefs'
-import { ping } from './probe'
+import { pinged, pinging } from './ping-state'
+import { ping, pingRound } from './probe'
 import type { Session } from './session'
 import { createSession } from './session'
 import { configOf } from './settings'
@@ -30,7 +31,7 @@ const sortState = atom({ plugin: 'litellm-key', key: 'sort' } as const, 'spend')
 const metricState = atom({ plugin: 'litellm-key', key: 'metric' } as const, 'spend')
 const filterState = atom({ plugin: 'litellm-key', key: 'filter' } as const, '')
 const dayState = atom({ plugin: 'litellm-key', key: 'day' } as const, null)
-
+const pingState = atom({ plugin: 'litellm-key', key: 'ping' } as const, null)
 /**
  * Esc closes the pane at an empty prompt, as the person's close does, and so it would when pressed to leave the filter
  * field: the Models tab, the only one with a field, leaves Esc to the field alone and is closed by q or the button.
@@ -107,6 +108,18 @@ const portsOf = ($: EngineInterface): Ports => ({
     await $.store.set('notified', ids)
   },
 })
+
+/** Runs one round for the Ping tab and keeps its time beside the rounds before; one at a time. */
+const runPingTab = async ($: EngineInterface, session: Session): Promise<void> => {
+  const before = await read($, pingState)
+
+  if (!before?.isRunning) {
+    await update($, pingState, () => pinging(before))
+    const round = await pingRound(session, portsOf($)).catch(() => null)
+
+    await update($, pingState, () => pinged(before, round))
+  }
+}
 
 /** What the pane was last told about Esc: whether it closes the pane (it does, except on the tab with the field). */
 type PaneMode = { escapes: boolean }
@@ -208,6 +221,7 @@ export const register: Register = (on, options) => {
     const metric = await read($, metricState)
     const filter = await read($, filterState)
     const day = await read($, dayState)
+    const ping = await read($, pingState)
     const now = await $.clock.now()
     const { config } = state
 
@@ -229,6 +243,8 @@ export const register: Register = (on, options) => {
       metric,
       filter,
       day,
+      ping,
+      onPing: () => void runPingTab($, session),
       onRefresh: () => {
         session.reload(portsOf($), 'force')
       },
@@ -247,6 +263,9 @@ export const register: Register = (on, options) => {
         void update($, viewState, () => next)
           .then(() => read($, viewState))
           .then(shown => {
+            if (shown === 'ping') {
+              void read($, pingState).then(last => (last === null ? runPingTab($, session) : undefined)) // measures by itself, once
+            }
             // Open again to change what Esc does, when the tab that is really showing (two presses can land before a
             // redraw) is not the kind the pane was told about: the one tab that has a field keeps Esc to itself.
             if ((shown !== 'models') !== pane.escapes) {
@@ -272,12 +291,8 @@ export const register: Register = (on, options) => {
         // Typed or pasted, it goes into a field the engine refuses to draw if it holds a control character.
         void update($, filterState, () => clean(text))
       },
-      onDay: date => {
-        void update($, dayState, () => date)
-      },
-      onFocusFilter: () => {
-        $.ui.focus({ requestId: PANE, key: 'filter' }).catch(() => undefined)
-      },
+      onDay: date => void update($, dayState, () => date),
+      onFocusFilter: () => void $.ui.focus({ requestId: PANE, key: 'filter' }).catch(() => undefined),
     })
   })
 }

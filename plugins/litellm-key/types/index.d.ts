@@ -168,7 +168,20 @@ export type Failure = {
 }
 
 /** The tabs of the pane. */
-export type ViewName = 'overview' | 'usage' | 'models' | 'details'
+export type ViewName = 'overview' | 'usage' | 'models' | 'details' | 'ping'
+
+/** What the Ping tab shows: the last round of probes, the times of the rounds before it, and whether one is running. */
+export type PingState = {
+  host: string
+  root: string
+  at: number
+  probes: { path: string; status: number | null; ms: number | null; ok: boolean; detail: string }[]
+  /** The time of `/key/info` in each of the last rounds, oldest first. */
+  history: number[]
+  /** Why the last round could not run at all (no credentials), or null. */
+  failure: string | null
+  isRunning: boolean
+}
 
 /** What the usage chart counts per day. */
 export type MetricName = 'spend' | 'requests' | 'tokens'
@@ -192,6 +205,7 @@ declare module 'claude-code' {
       filter: string
       /** The day picked under the chart of the Usage tab, as `YYYY-MM-DD`. */
       day: string | null
+      ping: PingState | null
     }
   }
 }

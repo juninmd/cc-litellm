@@ -41,7 +41,7 @@ This repository is a plugin marketplace (`cc-litellm`) with one plugin: [`litell
 | --- | --- | --- |
 | 👀 **Watch** | **Status line** under the prompt, always visible | `⚠ litellm-key: 86% of budget · $30.00 of $35.00 · resets in 27d (30d)` |
 | | **`/litellm` pane** | meters for key, team, user and **team-member** budgets, the user's **role**, limits, expiry, models, 7-day sparkline, **top models** of the week, and a **runway** forecast; refreshes itself |
-| | **Pane tabs** | **Usage** (spend, requests or tokens per day as bars over 7, 14 or 30 days, a day to pick, how each model moved), **Models** (what each spent, a filter, a sort), **Details** (the key's fields, LiteLLM's version and database, latency) |
+| | **Pane tabs** | **Usage** (spend, requests or tokens per day as bars over 7, 14 or 30 days, a day to pick, how each model moved), **Models** (what each spent, a filter, a sort), **Details** (the key's fields, LiteLLM's version and database, latency), **Ping** (press `p`: every endpoint timed, latency average, best, worst and a sparkline of the last pings) |
 | | **Guidance** | **Allowance** (what to spend a day to last until the reset), **Headroom** (how many more requests the cap holds), **Today** against the usual day, **Session** (what this Claude Code session spent, and at what rate) |
 | | **Toasts** | at 80% (configurable), 95%, 100%; key about to expire; key blocked or expired; today over your **daily alert**. Once per budget window, even across sessions |
 | | **Over-budget banner** | a red band above the prompt that **stays for as long as a budget is spent up** (key, user, team, window or model) and leaves only when the numbers are normal again |

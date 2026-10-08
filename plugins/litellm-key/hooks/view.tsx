@@ -12,6 +12,7 @@ import { identity } from './facts'
 import { detailsTab } from './tab-details'
 import { modelsTab } from './tab-models'
 import { overviewBody } from './tab-overview'
+import { pingTab } from './tab-ping'
 import { TAB_WHAT, textOf } from './tab-text'
 import { usageTab } from './tab-usage'
 
@@ -27,6 +28,7 @@ const TABS: readonly { name: ViewName; label: string; hotkey: string }[] = [
   { name: 'usage', label: 'Usage', hotkey: '2' },
   { name: 'models', label: 'Models', hotkey: '3' },
   { name: 'details', label: 'Details', hotkey: '4' },
+  { name: 'ping', label: 'Ping', hotkey: '5' },
 ]
 
 const SETUP = [
@@ -118,7 +120,9 @@ export const dashboard = (ui: Ui, props: DashboardProps): RenderElement => {
         ? modelsTab(ui, props, snapshot, layout)
         : props.tab === 'details'
           ? detailsTab(ui, props, snapshot, layout)
-          : overviewBody(ui, props, snapshot, { compact, hasSections, gap })
+          : props.tab === 'ping'
+            ? pingTab(ui, props, layout)
+            : overviewBody(ui, props, snapshot, { compact, hasSections, gap })
   const updated = (isShort: boolean): string =>
     `Updated ${clock(snapshot.fetchedAt)}${isShort ? '' : ` · every ${props.refreshSeconds}s`}${isLoading ? ' · refreshing…' : ''}`
   const plan = footerPlan(props.columns, buttonsWidth(labels), updated(false), updated(true))

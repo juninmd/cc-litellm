@@ -27,7 +27,7 @@ const PANE_WAIT_MS = 2_500
 
 const HELP = [
   '/litellm                  open the live pane (on the tab you left it)',
-  '/litellm tab <name>       open the pane on overview, usage, models or details',
+  '/litellm tab <name>       open the pane on overview, usage, models, details or ping',
   '/litellm refresh          read the key again now',
   '/litellm info             print the full summary here',
   '/litellm status           print the status line as text',
@@ -56,7 +56,7 @@ const HELP = [
 ].join('\n')
 
 // What a typo of a subcommand is held against: the names, not their aliases.
-const VIEWS: readonly ViewName[] = ['overview', 'usage', 'models', 'details']
+const VIEWS: readonly ViewName[] = ['overview', 'usage', 'models', 'details', 'ping']
 
 const viewNamed = (word: string): ViewName | null =>
   VIEWS.find((view, at) => view === word.toLowerCase() || String(at + 1) === word) ?? null

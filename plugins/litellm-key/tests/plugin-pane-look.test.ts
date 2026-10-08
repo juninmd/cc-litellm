@@ -143,6 +143,7 @@ describe('how the pane looks', () => {
       ['Usage', '2'],
       ['Models', '3'],
       ['Details', '4'],
+      ['Ping', '5'],
       ['Refresh (r)', 'r'],
       ['Copy (c)', 'c'],
       ['Close (q)', 'q'],
