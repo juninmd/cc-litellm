@@ -1,0 +1,21 @@
+# Falsos positivos confirmados manualmente - Chaves fake de teste (sk-test-*, sk-custom-header-key, hunter2) e senha local do compose de dev.
+# Formato: commit:arquivo:regra:linha (fingerprint exato; segredo novo no mesmo
+# arquivo continua sendo detectado). Nao usar path allowlist para isso.
+
+7c797d010a4c4e5ab2d90660c08d80d80ae539ba:plugins/litellm-key/tests/litellm.test.ts:juninmd-db-uri-credentials:189
+e9dbfc074641f77956228f8fae017de74358d0b0:plugins/litellm-key/tests/plugin-admin.test.ts:generic-api-key:15
+e9dbfc074641f77956228f8fae017de74358d0b0:plugins/litellm-key/tests/plugin-session.test.ts:juninmd-authorization-header:203
+e9dbfc074641f77956228f8fae017de74358d0b0:plugins/litellm-key/tests/credentials.test.ts:juninmd-authorization-header:57
+e9dbfc074641f77956228f8fae017de74358d0b0:plugins/litellm-key/tests/credentials.test.ts:juninmd-authorization-header:66
+b8fe753d8661452156faad8b857566e3ec3bed22:plugins/litellm-key/tests/plugin-admin.test.ts:generic-api-key:15
+b8fe753d8661452156faad8b857566e3ec3bed22:plugins/litellm-key/tests/credentials.test.ts:juninmd-authorization-header:57
+b8fe753d8661452156faad8b857566e3ec3bed22:plugins/litellm-key/tests/credentials.test.ts:juninmd-authorization-header:66
+b8fe753d8661452156faad8b857566e3ec3bed22:plugins/litellm-key/tests/plugin-session.test.ts:juninmd-authorization-header:203
+3815b240f7a8e739538de3a0a6bb54641d7ef96e:plugins/litellm-key/tests/plugin.test.ts:generic-api-key:761
+3815b240f7a8e739538de3a0a6bb54641d7ef96e:plugins/litellm-key/tests/admin-session.test.ts:generic-api-key:13
+f88a858725e3b36075f1d0d2b3aaa7fb960cd870:dev/litellm/docker-compose.yml:juninmd-db-uri-credentials:35
+6c84126960ff3d69253dee84a31dacf086516733:plugins/litellm-key/tests/format.test.ts:generic-api-key:104
+6c84126960ff3d69253dee84a31dacf086516733:plugins/litellm-key/tests/support.ts:generic-api-key:4
+6c84126960ff3d69253dee84a31dacf086516733:plugins/litellm-key/tests/plugin.test.ts:juninmd-authorization-header:324
+6c84126960ff3d69253dee84a31dacf086516733:plugins/litellm-key/tests/litellm.test.ts:juninmd-authorization-header:97
+6c84126960ff3d69253dee84a31dacf086516733:plugins/litellm-key/tests/litellm.test.ts:juninmd-authorization-header:106
