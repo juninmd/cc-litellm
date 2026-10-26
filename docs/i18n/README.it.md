@@ -8,7 +8,7 @@
   <img alt="Claude Code 2.1.289" src="https://img.shields.io/badge/Claude%20Code-2.1.289%20tested-0ea5e9?style=for-the-badge">
   <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/juninmd/cc-litellm/ci.yml?branch=main&style=for-the-badge&label=CI">
   <img alt="License: MIT" src="https://img.shields.io/github/license/juninmd/cc-litellm?style=for-the-badge&color=22c55e">
-  <img alt="Versione 0.3.0" src="https://img.shields.io/badge/version-0.3.0-f472b6?style=for-the-badge">
+  <img alt="Versione 0.7.0" src="https://img.shields.io/badge/version-0.7.0-f472b6?style=for-the-badge">
 </p>
 
 <p align="center">
