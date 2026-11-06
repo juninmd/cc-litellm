@@ -3,7 +3,7 @@
 # reads that commit to choose the next version. Usage: check-pr-title.sh "<title>" | --self-test
 set -euo pipefail
 
-TYPES='feat|fix|perf|refactor|docs|style|test|build|ci|chore|revert'
+TYPES='feat|fix|perf|refactor|docs|style|test|build|ci|chore|revert|WIP'
 PATTERN="^(${TYPES})(\([a-z0-9][a-z0-9._/-]*\))?!?: [^[:space:]].*\$"
 
 is_valid() { [[ "$1" =~ $PATTERN ]]; }
