@@ -2,6 +2,14 @@
 
 <!-- Written by release-please from Conventional Commits (see RELEASING.md). Edit the release PR, not this file. -->
 
+## [0.11.0](https://github.com/juninmd/cc-litellm/compare/litellm-key--v0.10.0...litellm-key--v0.11.0) (2026-11-13)
+
+
+### Added
+
+* **litellm-key:** show the answer speed in the status line ([c0b30dd](https://github.com/juninmd/cc-litellm/commit/c0b30ddcfa41966ab015031a515b294210034af1))
+* **litellm-key:** show the answer speed in the status line ([d0c341a](https://github.com/juninmd/cc-litellm/commit/d0c341a320655b546438d14308c83732b3514be0))
+
 ## [0.10.0](https://github.com/juninmd/cc-litellm/compare/litellm-key--v0.9.0...litellm-key--v0.10.0) (2026-11-13)
 
 
