@@ -19,6 +19,8 @@ const cycle = (options: Record<string, string | number | boolean>, routes = stan
     env: async () => ({ ANTHROPIC_BASE_URL: BASE, ANTHROPIC_AUTH_TOKEN: KEY }),
     settings: async () => ({}),
     run: async () => ({ exitCode: 1, stdout: '', stderr: '' }),
+    chosen: async () => undefined,
+    choose: async () => undefined,
     fetch: (url, init) => net.http(url, init.headers),
     loading: async () => undefined,
     publish: async (snapshot, failure) => {

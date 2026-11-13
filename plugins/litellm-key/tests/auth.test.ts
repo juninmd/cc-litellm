@@ -72,7 +72,7 @@ describe('/litellm auth', () => {
     expect(row('helper')).toContain('✓')
     expect(row('header')).toContain('–')
     expect(row('litellm_key')).toContain('–')
-    expect(text).toContain('The key in use (auth_token) is not valid. Set auth_source to api_key or helper')
+    expect(text).toContain('The key in use (auth_token) is not valid. Switch with /litellm auth use api_key or helper')
     expect(exitCode).toBe(3)
     // The same key under two sources (api_key and helper) is asked once.
     const asked = net.calls.slice(before).filter(call => call.url.endsWith('/key/info') && call.headers.authorization === `Bearer ${GOOD}`)
@@ -101,7 +101,7 @@ describe('/litellm auth', () => {
     const { text: out, exitCode } = await run($, 'auth')
     const text = out ?? ''
 
-    expect(text).toContain('auth_source is auto')
+    expect(text).toContain('The choice is auto')
     expect(exitCode).toBeUndefined()
   })
 
@@ -115,5 +115,71 @@ describe('/litellm auth', () => {
 
     expect(text).toContain('No source has a key')
     expect(exitCode).toBe(3)
+  })
+})
+
+describe('/litellm auth use', () => {
+  const nothing = { routes: routes(), env }
+
+  test('keeps a valid source, and the next readings use it', async ($, on) => {
+    forgetHelper()
+    const { clock, net, log } = boot(on, nothing)
+
+    await start($, clock)
+    expect((await run($, 'auth use api_key')).text).toContain('Using api_key (ANTHROPIC_API_KEY, sk-…7890) from now on')
+    expect(log.stored.authSource).toBe('api_key')
+    await clock.advance(1000)
+    const last = net.calls.filter(call => call.url.endsWith('/key/info')).at(-1)
+
+    expect(last?.headers.authorization).toBe(`Bearer ${GOOD}`)
+    expect((await run($, 'auth')).text).toContain('The choice is api_key')
+  })
+
+  test('refuses a source the proxy rejects, unless forced', async ($, on) => {
+    forgetHelper()
+    const { clock, log } = boot(on, nothing)
+
+    await start($, clock)
+    const refused = await run($, 'auth use auth_token')
+
+    expect(refused.text).toContain('The proxy does not accept auth_token')
+    expect(refused.exitCode).toBe(3)
+    expect(log.stored.authSource).toBeUndefined()
+    expect((await run($, 'auth use auth_token --force')).text).toContain('forced')
+    expect(log.stored.authSource).toBe('auth_token')
+  })
+
+  test('refuses a source with no key, and a name that is not a source', async ($, on) => {
+    forgetHelper()
+    const { clock, log } = boot(on, nothing)
+
+    await start($, clock)
+    expect((await run($, 'auth use helper')).text).toContain('helper has no key')
+    expect((await run($, 'auth use nope')).text).toContain('"nope" is not a source')
+    expect((await run($, 'auth use')).text).toContain('Usage: /litellm auth use')
+    expect(log.stored.authSource).toBeUndefined()
+  })
+
+  test('auto undoes the choice', async ($, on) => {
+    forgetHelper()
+    const { clock, log } = boot(on, { ...nothing, store: { authSource: 'api_key' } })
+
+    await start($, clock)
+    expect((await run($, 'auth use auto')).text).toContain('auto')
+    expect(log.stored.authSource).toBe('auto')
+    // Back to the first with a key: the rejected auth_token is the one in use again.
+    const line = ((await run($, 'auth')).text ?? '').split('\n').find(found => found.includes(' auth_token '))
+
+    expect(line).toContain('►')
+  })
+
+  test('a stored choice wins over the option', async ($, on) => {
+    forgetHelper()
+    const { clock } = boot(on, { ...nothing, store: { authSource: 'api_key' } })
+
+    await start($, clock)
+    const text = (await run($, 'auth')).text ?? ''
+
+    expect(text.split('\n').find(line => line.includes(' api_key '))).toContain('►')
   })
 })

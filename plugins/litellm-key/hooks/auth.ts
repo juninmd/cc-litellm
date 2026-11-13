@@ -1,4 +1,4 @@
-import { AUTH_SOURCES, resolveCredentials } from './credentials'
+import { AUTH_SOURCES, authSourceOf, resolveCredentials } from './credentials'
 import type { AuthSource } from './credentials'
 import { messageOf } from './failures'
 import { maskKey, redact, truncate } from './format'
@@ -86,7 +86,7 @@ export const authRows = async (session: Session, ports: Ports): Promise<AuthRow[
 /** `/litellm auth`: every place a key can come from, which one is in use, and which of them the proxy accepts. */
 export const authReport = async (session: Session, ports: Ports): Promise<{ text: string; exitCode?: number }> => {
   const rows = await authRows(session, ports)
-  const { authSource } = session.state.config
+  const authSource = await chosenSource(session, ports)
   const present = rows.filter(row => row.verdict !== 'absent')
   const valid = present.filter(row => row.verdict === 'valid')
   const width = Math.max(...rows.map(row => row.id.length))
@@ -102,10 +102,50 @@ export const authReport = async (session: Session, ports: Ports): Promise<{ text
       : valid.length === 0
         ? 'The proxy rejects or cannot check every key it found.'
         : using && using.verdict !== 'valid'
-          ? `The key in use (${using.id}) is not valid. Set auth_source to ${valid.map(row => row.id).join(' or ')} (claude plugin configure litellm-key).`
+          ? `The key in use (${using.id}) is not valid. Switch with /litellm auth use ${valid.map(row => row.id).join(' or ')}.`
           : valid.length > 1
-            ? `More than one source works. auth_source is ${authSource ?? 'auto (the first with a key)'}; set it to pick one on purpose.`
-            : `auth_source is ${authSource ?? 'auto'}.`
+            ? `More than one source works. The choice is ${authSource ?? 'auto (the first with a key)'}; pick one on purpose with /litellm auth use <name>.`
+            : `The choice is ${authSource ?? 'auto'}.`
 
   return { text: [`Keys the plugin can use (► in use, ✓ valid, ✗ rejected, ? could not check, – none)`, ...lines, '', advice].join('\n'), ...(using?.verdict === 'valid' ? {} : { exitCode: 3 }) }
 }
+
+/** What is in force: the source picked with `/litellm auth use`, else the `auth_source` option; null is auto. */
+const chosenSource = async (session: Session, ports: Ports): Promise<AuthSource | null> => {
+  const stored = await ports.chosen().catch(() => undefined)
+
+  return stored === 'auto' ? null : (authSourceOf(stored) ?? session.state.config.authSource)
+}
+
+const USE = `Usage: /litellm auth use <${[...AUTH_SOURCES, 'auto'].join('|')}> [--force]`
+
+/** `/litellm auth use <name>`: keeps a source the proxy accepts (or `--force`) for the next readings. */
+const useSource = async (session: Session, ports: Ports, words: string[]): Promise<{ text: string; exitCode?: number; isChanged?: boolean }> => {
+  const name = words[0]?.toLowerCase() ?? ''
+  const isForced = words.slice(1).some(word => word.toLowerCase() === '--force')
+
+  if (name === 'auto') {
+    await ports.choose('auto')
+
+    return { text: 'Using the first source that has a key (auto).', isChanged: true }
+  }
+  const id = authSourceOf(name)
+
+  if (id === null) {
+    return { text: name === '' ? USE : `"${name}" is not a source. ${USE}`, exitCode: 2 }
+  }
+  const row = (await authRows(session, ports)).find(found => found.id === id)
+
+  if (row === undefined || row.verdict === 'absent') {
+    return { text: `${id} has no key (${row?.detail ?? 'no key'}), so it cannot be used. /litellm auth shows the sources that do.`, exitCode: 3 }
+  }
+  if (row.verdict !== 'valid' && !isForced) {
+    return { text: `The proxy does not accept ${id} (${row.detail}). Pick another source, or add --force to use it anyway.`, exitCode: 3 }
+  }
+  await ports.choose(id)
+
+  return { text: `Using ${id} (${row.source}, ${row.key}) from now on${row.verdict === 'valid' ? '' : ' (forced: the proxy does not accept it)'}. This wins over the auth_source option; /litellm auth use auto undoes it.`, isChanged: true }
+}
+
+export const authCommand = async (session: Session, ports: Ports, words: string[]) =>
+  words[0]?.toLowerCase() === 'use' ? useSource(session, ports, words.slice(1)) : authReport(session, ports)

@@ -43,6 +43,7 @@ const HELP = [
   '/litellm share [what]     hand a report to Claude, to ask about it',
   '/litellm ping             try every endpoint the plugin reads, with times',
   '/litellm auth             every place a key can come from, which one is in use, which the proxy accepts',
+  '/litellm auth use <name>  use that source (litellm_key, header, auth_token, api_key, helper, proxy_key) or auto',
   '/litellm debug            show where the URL and the key come from',
   '/litellm close            close the pane',
   '',
@@ -204,8 +205,15 @@ export const runCommand = async (ctx: CommandContext, args: string): Promise<Com
       case 'ping':
       case 'health':
         return ctx.ping()
-      case 'auth':
-        return ctx.auth()
+      case 'auth': {
+        const { isChanged, ...outcome } = await ctx.auth(rest)
+
+        if (isChanged) {
+          ctx.reload()
+        }
+
+        return outcome
+      }
       case 'keys':
       case 'key':
       case 'grant':

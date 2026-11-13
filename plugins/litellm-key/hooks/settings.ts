@@ -44,6 +44,7 @@ export type SourceReaders = {
   settings: () => Promise<{ env?: unknown; apiKeyHelper?: unknown }>
   /** Runs a command; without it the `apiKeyHelper` is not read. */
   run?: Run
+  chosen?: () => Promise<unknown>
   now?: () => Promise<number>
 }
 
@@ -70,7 +71,10 @@ export const sourcesOf = async (config: Config, read: SourceReaders, isAll = fal
   }
   const env = await read.env()
 
-  const sources: Sources = { url: config.url, key: config.key, env, settingsEnv, prefer: config.authSource }
+  // What `/litellm auth use` stored wins over the option; `auto` there means the first with a key, on purpose.
+  const stored = await read.chosen?.().catch(() => undefined)
+  const prefer = stored === 'auto' ? null : (authSourceOf(stored) ?? config.authSource)
+  const sources: Sources = { url: config.url, key: config.key, env, settingsEnv, prefer }
 
   // Claude Code tries the helper after the environment keys: run it only when nothing before it has a key.
   if (command && read.run && read.now) {

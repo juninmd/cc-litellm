@@ -5,7 +5,7 @@ import type { ViewName } from '../types'
 
 import { adminLink } from './admin-link'
 import { adminBusy, stepAdmin } from './admin-pane'
-import { authReport } from './auth'
+import { authCommand } from './auth'
 import { overBudgetBand } from './band'
 import type { CommandContext } from './commands'
 import { runCommand } from './commands'
@@ -36,10 +36,7 @@ const dayState = atom({ plugin: 'litellm-key', key: 'day' } as const, null)
 const pingState = atom({ plugin: 'litellm-key', key: 'ping' } as const, null)
 const adminState = atom({ plugin: 'litellm-key', key: 'admin' } as const, null)
 
-/**
- * Esc closes the pane at an empty prompt, as the person's close does, and so it would when pressed to leave the filter
- * field: the Models tab, the only one with a field, leaves Esc to the field alone and is closed by q or the button.
- */
+/** Esc closes the pane, except on the Models tab: its filter field keeps Esc, and q or the button close it. */
 const paneArgs = (tab: ViewName) =>
   ({ id: PANE, title: 'LiteLLM key', ...(tab === 'models' ? {} : { closeOnEscape: true as const }), rows: 22, columns: 76 }) as const
 
@@ -99,6 +96,8 @@ const portsOf = ($: EngineInterface): Ports => ({
   toast: message => $.ui.toast(message, { timeoutMs: 8000 }),
   remembered: () => $.store.get('notified'),
   remember: async ids => void (await $.store.set('notified', ids)),
+  chosen: () => $.store.get('authSource'),
+  choose: async id => void (await $.store.set('authSource', id)),
 })
 
 /** Runs one round for the Ping tab and keeps its time beside the rounds before; one at a time. */
@@ -176,7 +175,7 @@ const contextOf = ($: EngineInterface, session: Session, pane: PaneMode): Comman
       }
     },
     ping: () => ping(session, ports),
-    auth: () => authReport(session, ports),
+    auth: words => authCommand(session, ports, words),
     admin: () => adminOf($, session),
   }
 }
