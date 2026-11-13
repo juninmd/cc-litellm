@@ -5,6 +5,7 @@ import type { ViewName } from '../types'
 
 import { adminLink } from './admin-link'
 import { adminBusy, stepAdmin } from './admin-pane'
+import { authReport } from './auth'
 import { overBudgetBand } from './band'
 import type { CommandContext } from './commands'
 import { runCommand } from './commands'
@@ -107,7 +108,6 @@ const runPingTab = async ($: EngineInterface, session: Session): Promise<void> =
   if (!before?.isRunning) {
     await update($, pingState, () => pinging(before))
     const round = await pingRound(session, portsOf($)).catch(() => null)
-
     await update($, pingState, () => pinged(before, round))
   }
 }
@@ -176,6 +176,7 @@ const contextOf = ($: EngineInterface, session: Session, pane: PaneMode): Comman
       }
     },
     ping: () => ping(session, ports),
+    auth: () => authReport(session, ports),
     admin: () => adminOf($, session),
   }
 }
@@ -191,7 +192,7 @@ export const register: Register = (on, options) => {
     await $.command.register({
       name: 'litellm',
       description: 'Show your LiteLLM virtual key: budget, limits, models and usage',
-      argumentHint: '[refresh|info|status|pace|usage|compare|day|models|check|json|csv|copy|share|ping|keys|key|grant|org|fallbacks|debug|close|help]',
+      argumentHint: '[refresh|info|status|pace|usage|compare|day|models|check|json|csv|copy|share|ping|auth|keys|key|grant|org|fallbacks|debug|close|help]',
     })
     state.ticker?.cancel()
     state.ticker = $.clock.every(state.config.refreshSeconds * 1000, () => {

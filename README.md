@@ -224,6 +224,7 @@ Everything above is the real LiteLLM v1.99.1 admin UI reflecting what the plugin
 | `/litellm copy [what]` | Put a report on the clipboard: `overview`, `usage`, `models`, `details`, `pace`, `compare`, `csv` or `json`. |
 | `/litellm share [what]` | Hand a report to Claude, out of sight, so the next question can be about it. |
 | `/litellm ping` | Try every endpoint the plugin reads, with its status and time. |
+| `/litellm auth` | List every place a key can come from (`litellm_key`, `header`, `auth_token`, `api_key`, `helper`, `proxy_key`), which one is in use, and which the proxy accepts (one `/key/info` each, keys masked). Exit code 3 when the one in use is not valid. |
 | `/litellm debug` | Show where the URL and the keys come from (always masked), what was tried, the result. |
 | `/litellm close` | Close the pane. |
 | `/litellm keys [--user ID \| --team ID \| --all]` | List keys. Default: the keys of your own user. 🔐 |
@@ -349,6 +350,7 @@ All options are optional (Claude Code says at install that they are "not set"; t
 | --- | --- | --- |
 | `litellm_url` | empty | A proxy at a non-default place (Bedrock/Vertex via LiteLLM, URL with a prefix). |
 | `litellm_key` | empty | An explicit key. 🔒 stored in the credential store, not in `settings.json`. |
+| `auth_source` | `auto` | Which key to use. `auto` takes the first source that has one; set `litellm_key`, `header`, `auth_token`, `api_key`, `helper` or `proxy_key` to pick one on purpose. `/litellm auth` tells which are valid. |
 | `litellm_admin_key` | empty | Admin key for `keys`, `key new/set/reset-spend/block/unblock`, `grant`, `org`, `fallbacks`. 🔒 same storage. Never printed. |
 | `refresh_seconds` | 60 | Read interval (15 to 3600). Also reads after each turn, at most every 20 s. |
 | `warn_percent` | 80 | First budget warning (it also warns at 95% and 100%). |

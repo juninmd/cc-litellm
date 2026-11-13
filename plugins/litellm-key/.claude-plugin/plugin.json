@@ -35,6 +35,11 @@
       "description": "Only for /litellm keys, key new/set/reset-spend/block, grant, org and fallbacks. Leave empty to use the virtual key itself, which the proxy lets manage keys only if it is an admin key. Never printed, and sent only to the proxy.",
       "sensitive": true
     },
+    "auth_source": {
+      "type": "string",
+      "title": "Which key to use",
+      "description": "auto (the default) takes the first source that has a key. To pick one on purpose: litellm_key, header (x-litellm-api-key), auth_token (ANTHROPIC_AUTH_TOKEN), api_key (ANTHROPIC_API_KEY), helper (apiKeyHelper) or proxy_key (LITELLM_PROXY_API_KEY). /litellm auth tests each one against the proxy."
+    },
     "refresh_seconds": {
       "type": "number",
       "title": "Refresh interval (seconds)",
