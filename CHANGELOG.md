@@ -2,6 +2,13 @@
 
 <!-- Written by release-please from Conventional Commits (see RELEASING.md). Edit the release PR, not this file. -->
 
+## [0.8.0](https://github.com/juninmd/cc-litellm/compare/litellm-key--v0.7.0...litellm-key--v0.8.0) (2026-11-13)
+
+
+### Added
+
+* **litellm-key:** read the key from apiKeyHelper ([#26](https://github.com/juninmd/cc-litellm/issues/26)) ([8c38a12](https://github.com/juninmd/cc-litellm/commit/8c38a122680c42365efa78825b6b7211c34f83ad))
+
 ## [0.7.0](https://github.com/juninmd/cc-litellm/compare/litellm-key--v0.6.0...litellm-key--v0.7.0) (2026-10-08)
 
 
