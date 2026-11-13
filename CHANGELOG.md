@@ -2,6 +2,14 @@
 
 <!-- Written by release-please from Conventional Commits (see RELEASING.md). Edit the release PR, not this file. -->
 
+## [0.10.0](https://github.com/juninmd/cc-litellm/compare/litellm-key--v0.9.0...litellm-key--v0.10.0) (2026-11-13)
+
+
+### Added
+
+* **litellm-key:** pick the credential with /litellm auth use ([1fbe60c](https://github.com/juninmd/cc-litellm/commit/1fbe60ce4a77561407aa57ccc4701663dd4b231f))
+* **litellm-key:** pick the credential with /litellm auth use ([32521b3](https://github.com/juninmd/cc-litellm/commit/32521b3ed4c6ef9332f8b59f16ca0d54ae9f4dd6))
+
 ## [0.9.0](https://github.com/juninmd/cc-litellm/compare/litellm-key--v0.8.0...litellm-key--v0.9.0) (2026-11-13)
 
 
