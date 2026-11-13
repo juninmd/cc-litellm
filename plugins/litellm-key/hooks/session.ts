@@ -10,6 +10,8 @@ import { fetchSnapshot } from './litellm'
 import type { Diagnostics, Mode, Ports } from './ports'
 import type { Config } from './settings'
 import { configOf, sourcesOf } from './settings'
+import { NO_SPEED, speedText, withTurn } from './speed'
+import type { Speed } from './speed'
 import { statusText } from './summary'
 
 const MIN_TICK_GAP_MS = 10_000
@@ -31,6 +33,8 @@ export type State = {
   diagnostics: Diagnostics | null
   /** What the session has spent, and for which key: another key starts again from nothing. */
   tracked: { id: string; session: SessionSpend } | null
+  /** How fast the last turns answered. */
+  speed: Speed
 }
 
 /** The reading cycle: one read at a time, a forced read never lost behind a running one. */
@@ -43,6 +47,7 @@ export const createSession = () => {
     pinnedKeyHint: null,
     diagnostics: null,
     tracked: null,
+    speed: NO_SPEED,
   }
   let inFlight: Promise<void> | undefined
   let queued: Promise<void> | undefined
@@ -87,13 +92,31 @@ export const createSession = () => {
     }
   }
 
+  /** The status line: the budget, and the speed of the answers when show_speed is on. */
+  const statusLine = (snapshot: Snapshot | null, failure: Failure | null, now: number): string | undefined => {
+    const base = state.config.isStatusShown ? statusText(snapshot, failure, now, state.config.dailyAlert) : undefined
+    const speed = state.config.isSpeedShown ? speedText(state.speed) : undefined
+
+    return base !== undefined && speed !== undefined ? `${speed} · ${base}` : base
+  }
+
+  /** A finished turn: its speed joins the status line at once, without waiting for the next reading. */
+  const recordTurn = async (ports: Ports, turn: Parameters<typeof withTurn>[1]): Promise<void> => {
+    const next = withTurn(state.speed, turn)
+
+    if (next !== state.speed) {
+      state.speed = next
+      ports.status(statusLine(state.latest.snapshot, state.latest.failure, await ports.now()))
+    }
+  }
+
   const settle = async (ports: Ports, snapshot: Snapshot | null, failure: Failure | null, now: number): Promise<void> => {
     const kept = failure === null || TRANSIENT.includes(failure.kind) ? snapshot : null
     const shown = failure === null && kept ? track(kept) : kept
 
     state.latest = { snapshot: shown, failure }
     await ports.publish(shown, failure)
-    ports.status(state.config.isStatusShown ? statusText(shown, failure, now, state.config.dailyAlert) : undefined)
+    ports.status(statusLine(shown, failure, now))
 
     if (failure === null && shown) {
       await notify(ports, shown, now)
@@ -217,7 +240,7 @@ export const createSession = () => {
     }
   }
 
-  return { state, isPinnedFor, load, reload, ensureFresh }
+  return { state, isPinnedFor, load, reload, ensureFresh, recordTurn }
 }
 
 export type Session = ReturnType<typeof createSession>

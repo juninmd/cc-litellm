@@ -17,6 +17,7 @@ import {
 } from './commands-reports'
 import { copyCommand, shareCommand } from './commands-share'
 import { clock, maskKey, money, redact, truncate, withoutCredentials } from './format'
+import { speedLine } from './speed'
 import { oneLine, summaryText } from './summary'
 import { textOf } from './tab-text'
 import { closest, splitWords } from './words'
@@ -99,6 +100,7 @@ const debugText = async (ctx: CommandContext): Promise<string> => {
     `Refresh every ${config.refreshSeconds}s · status line ${config.isStatusShown ? 'on' : 'off'} · related ${config.isRelatedShown ? 'on' : 'off'} · usage ${config.isUsageShown ? 'on' : 'off'} · compact pane ${config.isCompact ? 'on' : 'off'}`,
     `Alerts   toasts ${config.isToastShown ? 'on' : 'off'} · warn at ${config.warnPercent}% · daily alert ${config.dailyAlert > 0 ? money(config.dailyAlert) : 'off'}`,
     `Pane     ${view.tab} tab · ${view.range} days`,
+    `Speed    ${config.isSpeedShown ? 'on' : 'off'} · ${speedLine(ctx.session.state.speed)}`,
     diagnostics
       ? `Proxy    ${diagnostics.host} (tries ${diagnostics.roots.map(withoutCredentials).join(', ')}${pinnedRoot ? `; using ${withoutCredentials(pinnedRoot)}` : ''})`
       : 'Proxy    not resolved',

@@ -76,6 +76,12 @@
       "description": "Pin a one-line budget summary under the prompt.",
       "default": true
     },
+    "show_speed": {
+      "type": "boolean",
+      "title": "Answer speed",
+      "description": "Show how fast the model answered (output tokens per second of the last turn) at the start of the status line. Needs the status line, and a turn that reports its output tokens.",
+      "default": true
+    },
     "show_related": {
       "type": "boolean",
       "title": "User and team budgets",

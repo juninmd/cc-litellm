@@ -358,6 +358,7 @@ All options are optional (Claude Code says at install that they are "not set"; t
 | `daily_alert` | 0 (off) | Warn once today's spend on the key reaches this many dollars: a toast once a day, the status line and the pane. With it on, the usage history is read every 3 minutes. |
 | `show_toasts` | yes | The toasts that warn about the budget, the daily alert, an expiring key and a failing proxy. Off keeps the warnings to the status line and the pane. |
 | `show_status_line` | yes | The line under the prompt. |
+| `show_speed` | yes | Put how fast the model answered at the start of the status line (`⚡ 42 tok/s · 86% of budget …`): the output tokens of the last finished turn over its duration. It shows after the first turn that reports its output tokens, never a guess; aborted turns do not count. The duration is the whole turn (it includes the wait for the first token and the tools), so it reads a little below the raw generation speed. `/litellm debug` also shows the session average. |
 | `show_related` | yes | Read `/user/info` and `/team/info`: those budgets can block requests too. |
 | `show_usage` | yes | Read `/user/daily/activity` (a beta LiteLLM endpoint): the last 30 days of usage, which the Usage and Models tabs, the reports, the runway and the daily alert draw on. |
 | `compact_pane` | no | Compact pane above the prompt in narrow terminals (74 to 121 columns): one meter per line, facts side by side. |

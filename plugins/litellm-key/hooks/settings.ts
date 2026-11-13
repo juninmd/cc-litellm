@@ -23,6 +23,7 @@ export const configOf = (options: PluginOptions) => ({
   dailyAlert: Math.round(bounded(options.daily_alert, 0, 0, 1_000_000) * 100) / 100,
   isToastShown: options.show_toasts !== false,
   isStatusShown: options.show_status_line !== false,
+  isSpeedShown: options.show_speed !== false,
   isRelatedShown: options.show_related !== false,
   isUsageShown: options.show_usage !== false,
   isCompact: options.compact_pane === true,
