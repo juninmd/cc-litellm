@@ -22,4 +22,7 @@ export type Ports = {
   toast: (message: string) => void
   remembered: () => Promise<unknown>
   remember: (ids: string[]) => Promise<void>
+  /** The source picked with `/litellm auth use`; it wins over the `auth_source` option. */
+  chosen: () => Promise<unknown>
+  choose: (source: string) => Promise<void>
 }

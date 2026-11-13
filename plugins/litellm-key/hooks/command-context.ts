@@ -22,7 +22,7 @@ export type CommandContext = {
   view: () => Promise<{ tab: ViewName; range: number }>
   copy: (text: string) => Promise<{ isCopied: boolean; reason?: string | undefined }>
   ping: () => Promise<{ text: string; exitCode?: number }>
-  auth: () => Promise<{ text: string; exitCode?: number }>
+  auth: (words: string[]) => Promise<{ text: string; exitCode?: number; isChanged?: boolean }>
   admin: () => Promise<{ deps: Deps } | { text: string }>
 }
 
