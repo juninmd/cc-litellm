@@ -2,6 +2,13 @@
 
 <!-- Written by release-please from Conventional Commits (see RELEASING.md). Edit the release PR, not this file. -->
 
+## [0.12.0](https://github.com/juninmd/cc-litellm/compare/litellm-key--v0.11.0...litellm-key--v0.12.0) (2026-11-13)
+
+
+### Added
+
+* **litellm-key:** live tokens per second while the answer streams ([#34](https://github.com/juninmd/cc-litellm/issues/34)) ([428c9e3](https://github.com/juninmd/cc-litellm/commit/428c9e3f38e8bc93896430ccc1718e84ee5488cc))
+
 ## [0.11.0](https://github.com/juninmd/cc-litellm/compare/litellm-key--v0.10.0...litellm-key--v0.11.0) (2026-11-13)
 
 
