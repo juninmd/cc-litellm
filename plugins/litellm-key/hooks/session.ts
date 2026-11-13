@@ -10,7 +10,7 @@ import { fetchSnapshot } from './litellm'
 import type { Diagnostics, Mode, Ports } from './ports'
 import type { Config } from './settings'
 import { configOf, sourcesOf } from './settings'
-import { NO_SPEED, speedText, withTurn } from './speed'
+import { NO_SPEED, speedText, withStep, withTurn } from './speed'
 import type { Speed } from './speed'
 import { statusText } from './summary'
 
@@ -54,6 +54,7 @@ export const createSession = () => {
   let lastRunAt = 0
   let lastSlowAt = 0
   let toasted: string | null = null
+  let sawStep = false
 
   // True while the root that last accepted a session key is still one of this key's roots and the key is still that key.
   const isPinnedFor = (credentials: Credentials): boolean =>
@@ -100,13 +101,35 @@ export const createSession = () => {
     return base !== undefined && speed !== undefined ? `${speed} · ${base}` : base
   }
 
-  /** A finished turn: its speed joins the status line at once, without waiting for the next reading. */
+  const redraw = async (ports: Ports): Promise<void> => {
+    ports.status(statusLine(state.latest.snapshot, state.latest.failure, await ports.now()))
+  }
+
+  /** The rate of a step that is still streaming: it shows at once, and the step's end replaces it with the settled one. */
+  const showSpeed = async (ports: Ports, rate: number): Promise<void> => {
+    state.speed = { ...state.speed, last: rate }
+    await redraw(ports)
+  }
+
+  /** A step that streamed long enough to say: its tokens and time join the average. */
+  const endStep = async (ports: Ports, step: { tokens: number; ms: number }): Promise<void> => {
+    state.speed = withStep(state.speed, step)
+    sawStep = true
+    await redraw(ports)
+  }
+
+  /** A finished turn: when no step reported its speed (a stream too short to time), its own tokens and time stand in. */
   const recordTurn = async (ports: Ports, turn: Parameters<typeof withTurn>[1]): Promise<void> => {
+    if (sawStep) {
+      sawStep = false
+
+      return
+    }
     const next = withTurn(state.speed, turn)
 
     if (next !== state.speed) {
       state.speed = next
-      ports.status(statusLine(state.latest.snapshot, state.latest.failure, await ports.now()))
+      await redraw(ports)
     }
   }
 
@@ -240,7 +263,7 @@ export const createSession = () => {
     }
   }
 
-  return { state, isPinnedFor, load, reload, ensureFresh, recordTurn }
+  return { state, isPinnedFor, load, reload, ensureFresh, recordTurn, showSpeed, endStep }
 }
 
 export type Session = ReturnType<typeof createSession>
