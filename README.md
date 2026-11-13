@@ -339,7 +339,7 @@ The plugin reads the same URL and key Claude Code uses, in this order (process v
 | What | From |
 | --- | --- |
 | URL | option `litellm_url`, `ANTHROPIC_BASE_URL`, `LITELLM_PROXY_API_BASE` |
-| Key | option `litellm_key`, the `x-litellm-api-key` header in `ANTHROPIC_CUSTOM_HEADERS`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY`, `LITELLM_PROXY_API_KEY` |
+| Key | option `litellm_key`, the `x-litellm-api-key` header in `ANTHROPIC_CUSTOM_HEADERS`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY`, the `apiKeyHelper` of `settings.json`, `LITELLM_PROXY_API_KEY` |
 
 If the URL ends in a pass-through route (`/anthropic`, `/bedrock`, `/v1`…), the plugin also tries the proxy root. A key is only used with the URL it belongs to: environment keys never go to a `litellm_url` on another host, and `LITELLM_PROXY_API_BASE` only pairs with `LITELLM_PROXY_API_KEY`.
 
@@ -429,7 +429,7 @@ Layout of the plugin: `hooks/register.tsx` is the only file that touches Claude 
 
 ## Known limits
 
-- `apiKeyHelper` is not read (running a user command is out of scope). Use `litellm_key`.
+- `apiKeyHelper` is read from `settings.json` and run through `sh -c` (10 s timeout, the answer kept 5 minutes), but only when nothing earlier supplies a key: the plugin option, `x-litellm-api-key`, `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_API_KEY` come first. It is the command Claude Code already runs; its output is used as the key and never printed. It is not used for `LITELLM_PROXY_API_BASE` or a custom `litellm_url` (that key belongs to another host). Needs `sh` (Git Bash on Windows).
 - `/user/daily/activity` is beta in LiteLLM and may change.
 - Per-model budgets (`model_max_budget`), temporary budget increases and key regeneration are enterprise-only on the proxy side, so they are not offered (see [Budgets](#budgets-what-litellm-can-and-cannot-do)). Editing fallback chains needs `STORE_MODEL_IN_DB=True` on the proxy, so `/litellm fallbacks` stays read-only.
 - An **organization's** budget is not in the key's own answer and a virtual key may not read it, so the pane only names the organization; `/litellm org` reads it with an admin key. The admin key is still sent only when you type an admin command, never on the refresh timer.

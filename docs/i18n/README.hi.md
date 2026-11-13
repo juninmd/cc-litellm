@@ -423,7 +423,7 @@ Plugin का layout: `hooks/register.tsx` अकेली ऐसी file है
 
 ## ज्ञात सीमाएँ
 
-- `apiKeyHelper` नहीं पढ़ा जाता (user का command चलाना scope से बाहर है)। `litellm_key` इस्तेमाल करें।
+- `apiKeyHelper` is read from `settings.json` and run through `sh -c` (10 s timeout, the answer kept 5 minutes), but only when nothing earlier supplies a key: the plugin option, `x-litellm-api-key`, `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_API_KEY` come first. It is the command Claude Code already runs; its output is used as the key and never printed. It is not used for `LITELLM_PROXY_API_BASE` or a custom `litellm_url` (that key belongs to another host). Needs `sh` (Git Bash on Windows).
 - `/user/daily/activity` LiteLLM में beta है और बदल सकता है।
 - Per-model budgets (`model_max_budget`), temporary budget increases और key regeneration proxy की तरफ़ से सिर्फ़ enterprise में हैं, इसलिए इन्हें offer नहीं किया जाता ([Budgets](#budgets-what-litellm-can-and-cannot-do) देखें)। Fallback chains को edit करने के लिए proxy पर `STORE_MODEL_IN_DB=True` चाहिए, इसलिए `/litellm fallbacks` read-only ही रहता है।
 - किसी **organization** का budget key के अपने जवाब में नहीं होता और virtual key उसे पढ़ ही न पाए, ऐसा हो सकता है, इसलिए pane सिर्फ़ organization का नाम बताता है; `/litellm org` उसे admin key से पढ़ता है। Admin key अब भी सिर्फ़ तब भेजी जाती है जब आप admin command टाइप करें, refresh timer पर कभी नहीं।

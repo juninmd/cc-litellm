@@ -9,6 +9,10 @@ export type Setup = {
   routes?: Record<string, Route>
   env?: Record<string, string>
   settingsEnv?: Record<string, string>
+  /** The `apiKeyHelper` command of settings.json. */
+  apiKeyHelper?: string
+  /** What a command run by the plugin answers; the default is the key printed. */
+  run?: (argv: string[]) => { exitCode: number; stdout: string; stderr?: string } | Error
   surfaces?: readonly RenderSurface[]
   store?: Record<string, unknown>
   open?: { isPlaced: boolean; reason?: string }
@@ -30,6 +34,7 @@ export const boot = (on: On, setup: Setup = {}) => {
     closes: [] as string[],
     copies: [] as string[],
     commands: [] as string[],
+    runs: [] as string[][],
   }
   const net = router(setup.routes ?? standardRoutes())
   const clock = mock.clock(on, { now: NOW })
@@ -50,7 +55,22 @@ export const boot = (on: On, setup: Setup = {}) => {
   mock.env(on, setup.env ?? { ANTHROPIC_BASE_URL: BASE, ANTHROPIC_AUTH_TOKEN: KEY })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('turn.complete', (_$, e) => ({ text: e.answer }))
-  on('settings.read', () => ({ value: setup.settingsEnv ? { env: setup.settingsEnv } : {} }))
+  on('settings.read', () => ({
+    value: { ...(setup.settingsEnv ? { env: setup.settingsEnv } : {}), ...(setup.apiKeyHelper ? { apiKeyHelper: setup.apiKeyHelper } : {}) },
+  }))
+  on('process.run', (_$, e) => {
+    const argv = typeof e.argv === 'string' ? [e.argv] : [...e.argv]
+    const answer = setup.run?.(argv) ?? { exitCode: 0, stdout: `${KEY}\n` }
+
+    log.runs.push(argv)
+    if (answer instanceof Error) {
+      throw answer
+    }
+
+    return {
+      value: { exitCode: answer.exitCode, stdout: answer.stdout, stderr: answer.stderr ?? '', isStdoutTruncated: false, isStderrTruncated: false },
+    }
+  })
   on('session.surfaces', () => ({ value: setup.surfaces ?? ['terminal'] }))
   on('command.register', (_$, e) => {
     log.commands.push(e.name)

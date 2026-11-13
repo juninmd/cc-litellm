@@ -1,5 +1,6 @@
 import type { Failure, Snapshot } from '../types'
 import type { EnvName } from './credentials'
+import type { Run } from './helper'
 import type { Reply } from './litellm'
 
 export type Mode = 'tick' | 'turn' | 'force'
@@ -12,7 +13,8 @@ export type Init = { method?: string; headers: Record<string, string>; body?: st
 export type Ports = {
   now: () => Promise<number>
   env: () => Promise<Partial<Record<EnvName, string>>>
-  settings: () => Promise<{ env?: unknown }>
+  settings: () => Promise<{ env?: unknown; apiKeyHelper?: unknown }>
+  run: Run
   fetch: (url: string, init: Init, ms?: number) => Promise<Reply>
   loading: (isLoading: boolean) => Promise<void>
   publish: (snapshot: Snapshot | null, failure: Failure | null) => Promise<void>

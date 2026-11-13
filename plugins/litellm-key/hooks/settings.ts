@@ -1,6 +1,9 @@
 import type { PluginOptions } from 'claude-code'
 
 import type { EnvName, Sources } from './credentials'
+import { resolveCredentials } from './credentials'
+import type { Run } from './helper'
+import { helperKey } from './helper'
 import { isObject } from './json'
 
 const text = (value: unknown): string | null =>
@@ -37,17 +40,22 @@ const ENV_NAMES: readonly EnvName[] = [
 
 export type SourceReaders = {
   env: () => Promise<Partial<Record<EnvName, string>>>
-  settings: () => Promise<{ env?: unknown }>
+  settings: () => Promise<{ env?: unknown; apiKeyHelper?: unknown }>
+  /** Runs a command; without it the `apiKeyHelper` is not read. */
+  run?: Run
+  now?: () => Promise<number>
 }
 
 /** The process environment and the env block of settings.json, as resolveCredentials wants them. */
 export const sourcesOf = async (config: Config, read: SourceReaders): Promise<Sources> => {
   let block: Record<string, unknown> = {}
+  let command: string | null = null
 
   try {
     const settings = await read.settings()
 
     block = isObject(settings.env) ? settings.env : {}
+    command = text(settings.apiKeyHelper)
   } catch {
     block = {}
   }
@@ -60,5 +68,18 @@ export const sourcesOf = async (config: Config, read: SourceReaders): Promise<So
   }
   const env = await read.env()
 
-  return { url: config.url, key: config.key, env, settingsEnv }
+  const sources: Sources = { url: config.url, key: config.key, env, settingsEnv }
+
+  // Claude Code tries the helper after the environment keys: run it only when nothing before it has a key.
+  if (command && read.run && read.now) {
+    const now = await read.now()
+
+    if (!resolveCredentials(sources, now).ok) {
+      const helped = await helperKey(command, read.run, now)
+
+      return 'key' in helped ? { ...sources, helperKey: helped.key } : { ...sources, helperError: helped.error }
+    }
+  }
+
+  return sources
 }

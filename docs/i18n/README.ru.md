@@ -423,7 +423,7 @@ bash dev/check-file-size.sh                             # no source file over 30
 
 ## Известные ограничения
 
-- `apiKeyHelper` не читается (запуск пользовательской команды выходит за рамки). Используйте `litellm_key`.
+- `apiKeyHelper` is read from `settings.json` and run through `sh -c` (10 s timeout, the answer kept 5 minutes), but only when nothing earlier supplies a key: the plugin option, `x-litellm-api-key`, `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_API_KEY` come first. It is the command Claude Code already runs; its output is used as the key and never printed. It is not used for `LITELLM_PROXY_API_BASE` or a custom `litellm_url` (that key belongs to another host). Needs `sh` (Git Bash on Windows).
 - `/user/daily/activity` в LiteLLM находится в бете и может измениться.
 - Бюджеты на модель (`model_max_budget`), временные увеличения бюджета и перевыпуск ключей на стороне прокси доступны только в enterprise-версии, поэтому не предлагаются (см. [Бюджеты](#budgets-what-litellm-can-and-cannot-do)). Редактирование цепочек fallback требует `STORE_MODEL_IN_DB=True` на прокси, поэтому `/litellm fallbacks` остаётся только для чтения.
 - Бюджет **организации** отсутствует в собственном ответе ключа, а виртуальный ключ может не иметь права его читать, поэтому панель лишь называет организацию; `/litellm org` читает его админ-ключом. Админ-ключ по-прежнему отправляется только когда вы вводите админскую команду, но не по таймеру обновления.
