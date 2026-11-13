@@ -19,7 +19,15 @@ export type Sources = {
   helperKey?: string | null
   /** Why the helper gave no key, to say it when no other source has one. */
   helperError?: string | null
+  /** The one source to use (`auth_source`); anything else, or none, takes the first that has a key. */
+  prefer?: string | null
 }
+
+/** The places a key can come from, in the order Claude Code tries them. `auto` is the first of them that has a key. */
+export const AUTH_SOURCES = ['litellm_key', 'header', 'auth_token', 'api_key', 'helper', 'proxy_key'] as const
+export type AuthSource = (typeof AUTH_SOURCES)[number]
+
+export const authSourceOf = (value: unknown): AuthSource | null => AUTH_SOURCES.find(id => id === value) ?? null
 
 export type Credentials = {
   roots: string[]
@@ -142,19 +150,31 @@ export const resolveCredentials = (sources: Sources, now: number): Resolved => {
       ? 'anthropic'
       : 'litellm'
   const headerKey = route === 'anthropic' ? customHeader(pick('ANTHROPIC_CUSTOM_HEADERS'), 'x-litellm-api-key') : null
-  const candidates: { key: string | null | undefined; source: string; header?: 'x-litellm-api-key' }[] = [
-    { key: sources.key?.trim(), source: 'plugin option litellm_key' },
+  const candidates: { id: AuthSource; key: string | null | undefined; source: string; header?: 'x-litellm-api-key' }[] = [
+    { id: 'litellm_key', key: sources.key?.trim(), source: 'plugin option litellm_key' },
     ...(route === 'anthropic'
       ? [
-          { key: headerKey ? bearer(headerKey) : null, source: 'ANTHROPIC_CUSTOM_HEADERS (x-litellm-api-key)', header: 'x-litellm-api-key' as const },
-          { key: pick('ANTHROPIC_AUTH_TOKEN'), source: 'ANTHROPIC_AUTH_TOKEN' },
-          { key: pick('ANTHROPIC_API_KEY'), source: 'ANTHROPIC_API_KEY' },
-          { key: sources.helperKey?.trim(), source: 'apiKeyHelper' },
+          { id: 'header' as const, key: headerKey ? bearer(headerKey) : null, source: 'ANTHROPIC_CUSTOM_HEADERS (x-litellm-api-key)', header: 'x-litellm-api-key' as const },
+          { id: 'auth_token' as const, key: pick('ANTHROPIC_AUTH_TOKEN'), source: 'ANTHROPIC_AUTH_TOKEN' },
+          { id: 'api_key' as const, key: pick('ANTHROPIC_API_KEY'), source: 'ANTHROPIC_API_KEY' },
+          { id: 'helper' as const, key: sources.helperKey?.trim(), source: 'apiKeyHelper' },
         ]
       : []),
-    ...(route === 'custom' ? [] : [{ key: pick('LITELLM_PROXY_API_KEY'), source: 'LITELLM_PROXY_API_KEY' }]),
+    ...(route === 'custom' ? [] : [{ id: 'proxy_key' as const, key: pick('LITELLM_PROXY_API_KEY'), source: 'LITELLM_PROXY_API_KEY' }]),
   ]
-  const chosen = candidates.find(candidate => candidate.key)
+  const preferred = authSourceOf(sources.prefer)
+  const chosen = preferred ? candidates.find(candidate => candidate.id === preferred && candidate.key) : candidates.find(candidate => candidate.key)
+
+  if (preferred && !chosen?.key) {
+    const have = candidates.filter(candidate => candidate.key).map(candidate => candidate.id)
+
+    return {
+      ok: false,
+      failure: failure('not-configured', `auth_source is "${preferred}", but that source has no key for ${hostOf(base)}.`, now, {
+        hint: `${sources.helperError && preferred === 'helper' ? `${sources.helperError}. ` : ''}${have.length > 0 ? `Sources with a key: ${have.join(', ')}. ` : ''}Change auth_source, or set it to auto, with: claude plugin configure litellm-key`,
+      }),
+    }
+  }
 
   if (!chosen?.key) {
     const hints = {

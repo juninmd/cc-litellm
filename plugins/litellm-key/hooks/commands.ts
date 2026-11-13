@@ -42,6 +42,7 @@ const HELP = [
   '/litellm copy [what]      copy a report: overview, usage, models, details, pace, compare, csv, json',
   '/litellm share [what]     hand a report to Claude, to ask about it',
   '/litellm ping             try every endpoint the plugin reads, with times',
+  '/litellm auth             every place a key can come from, which one is in use, which the proxy accepts',
   '/litellm debug            show where the URL and the key come from',
   '/litellm close            close the pane',
   '',
@@ -77,6 +78,7 @@ const NAMES = [
   'copy',
   'share',
   'ping',
+  'auth',
   'keys',
   'key',
   'grant',
@@ -202,6 +204,8 @@ export const runCommand = async (ctx: CommandContext, args: string): Promise<Com
       case 'ping':
       case 'health':
         return ctx.ping()
+      case 'auth':
+        return ctx.auth()
       case 'keys':
       case 'key':
       case 'grant':

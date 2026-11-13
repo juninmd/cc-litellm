@@ -1,7 +1,7 @@
 import type { PluginOptions } from 'claude-code'
 
-import type { EnvName, Sources } from './credentials'
-import { resolveCredentials } from './credentials'
+import type { AuthSource, EnvName, Sources } from './credentials'
+import { authSourceOf, resolveCredentials } from './credentials'
 import type { Run } from './helper'
 import { helperKey } from './helper'
 import { isObject } from './json'
@@ -16,6 +16,7 @@ export const configOf = (options: PluginOptions) => ({
   url: text(options.litellm_url),
   key: text(options.litellm_key),
   adminKey: text(options.litellm_admin_key),
+  authSource: authSourceOf(text(options.auth_source)) as AuthSource | null,
   refreshSeconds: Math.round(bounded(options.refresh_seconds, 60, 15, 3600)),
   warnPercent: Math.round(bounded(options.warn_percent, 80, 1, 99)),
   // Dollars a day, to the cent; zero is off.
@@ -47,7 +48,8 @@ export type SourceReaders = {
 }
 
 /** The process environment and the env block of settings.json, as resolveCredentials wants them. */
-export const sourcesOf = async (config: Config, read: SourceReaders): Promise<Sources> => {
+/** `isAll` runs the helper even when another source has a key: `/litellm auth` tests every source. */
+export const sourcesOf = async (config: Config, read: SourceReaders, isAll = false): Promise<Sources> => {
   let block: Record<string, unknown> = {}
   let command: string | null = null
 
@@ -68,13 +70,13 @@ export const sourcesOf = async (config: Config, read: SourceReaders): Promise<So
   }
   const env = await read.env()
 
-  const sources: Sources = { url: config.url, key: config.key, env, settingsEnv }
+  const sources: Sources = { url: config.url, key: config.key, env, settingsEnv, prefer: config.authSource }
 
   // Claude Code tries the helper after the environment keys: run it only when nothing before it has a key.
   if (command && read.run && read.now) {
     const now = await read.now()
 
-    if (!resolveCredentials(sources, now).ok) {
+    if (isAll || !resolveCredentials(sources, now).ok) {
       const helped = await helperKey(command, read.run, now)
 
       return 'key' in helped ? { ...sources, helperKey: helped.key } : { ...sources, helperError: helped.error }
