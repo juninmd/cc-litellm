@@ -2,6 +2,14 @@
 
 <!-- Written by release-please from Conventional Commits (see RELEASING.md). Edit the release PR, not this file. -->
 
+## [0.9.0](https://github.com/juninmd/cc-litellm/compare/litellm-key--v0.8.0...litellm-key--v0.9.0) (2026-11-13)
+
+
+### Added
+
+* **litellm-key:** choose the key source and check which are valid ([bd64b55](https://github.com/juninmd/cc-litellm/commit/bd64b555ef6d5896f261154573bc9d098799c147))
+* **litellm-key:** choose the key source and check which are valid ([e65e33c](https://github.com/juninmd/cc-litellm/commit/e65e33c40861d15fceb130973f55dfe42c826a26))
+
 ## [0.8.0](https://github.com/juninmd/cc-litellm/compare/litellm-key--v0.7.0...litellm-key--v0.8.0) (2026-11-13)
 
 
