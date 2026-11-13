@@ -423,7 +423,7 @@ bash dev/check-file-size.sh                             # no source file over 30
 
 ## 既知の制限
 
-- `apiKeyHelper` は読み取りません(ユーザーのコマンドを実行することはスコープ外です)。`litellm_key` を使ってください。
+- `apiKeyHelper` is read from `settings.json` and run through `sh -c` (10 s timeout, the answer kept 5 minutes), but only when nothing earlier supplies a key: the plugin option, `x-litellm-api-key`, `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_API_KEY` come first. It is the command Claude Code already runs; its output is used as the key and never printed. It is not used for `LITELLM_PROXY_API_BASE` or a custom `litellm_url` (that key belongs to another host). Needs `sh` (Git Bash on Windows).
 - `/user/daily/activity` は LiteLLM のベータ版で、変更される可能性があります。
 - モデル別の予算(`model_max_budget`)、一時的な予算の増額、キーの再生成は、プロキシ側ではエンタープライズ限定のため提供していません([予算](#budgets-what-litellm-can-and-cannot-do)を参照)。フォールバックチェーンの編集にはプロキシ側で `STORE_MODEL_IN_DB=True` が必要なため、`/litellm fallbacks` は読み取り専用のままです。
 - **組織**の予算はキー自身の応答に含まれず、仮想キーでは読み取れない場合があるため、ペインには組織名が表示されるだけです。`/litellm org` は管理者キーで読み取ります。管理者キーは、これまでどおり管理者コマンドを入力したときにだけ送信され、更新タイマーでは送信されません。

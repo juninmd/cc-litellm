@@ -423,7 +423,7 @@ Eklentinin yapısı: `hooks/register.tsx`, Claude Code'un `$` nesnesine dokunan 
 
 ## Bilinen sınırlar
 
-- `apiKeyHelper` okunmaz (kullanıcı komutu çalıştırmak kapsam dışıdır). `litellm_key` kullanın.
+- `apiKeyHelper` is read from `settings.json` and run through `sh -c` (10 s timeout, the answer kept 5 minutes), but only when nothing earlier supplies a key: the plugin option, `x-litellm-api-key`, `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_API_KEY` come first. It is the command Claude Code already runs; its output is used as the key and never printed. It is not used for `LITELLM_PROXY_API_BASE` or a custom `litellm_url` (that key belongs to another host). Needs `sh` (Git Bash on Windows).
 - `/user/daily/activity` LiteLLM'de betadır ve değişebilir.
 - Model başına bütçeler (`model_max_budget`), geçici bütçe artışları ve anahtar yeniden üretimi proxy tarafında yalnızca enterprise sürümündedir; bu yüzden sunulmaz ([Bütçeler](#budgets-what-litellm-can-and-cannot-do) bölümüne bakın). Fallback zincirlerini düzenlemek proxy'de `STORE_MODEL_IN_DB=True` gerektirir; bu yüzden `/litellm fallbacks` salt okunur kalır.
 - Bir **organizasyonun** bütçesi anahtarın kendi yanıtında yoktur ve sanal anahtar onu okuyamayabilir; bu yüzden panel yalnızca organizasyonun adını gösterir, `/litellm org` onu admin anahtarıyla okur. Admin anahtarı yine yalnızca bir yönetici komutu yazdığınızda gönderilir, yenileme zamanlayıcısında asla.

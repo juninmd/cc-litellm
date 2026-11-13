@@ -423,7 +423,7 @@ Structure du plugin : `hooks/register.tsx` est le seul fichier qui touche au `$`
 
 ## Limites connues
 
-- `apiKeyHelper` n'est pas lu (exécuter une commande de l'utilisateur est hors périmètre). Utilisez `litellm_key`.
+- `apiKeyHelper` is read from `settings.json` and run through `sh -c` (10 s timeout, the answer kept 5 minutes), but only when nothing earlier supplies a key: the plugin option, `x-litellm-api-key`, `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_API_KEY` come first. It is the command Claude Code already runs; its output is used as the key and never printed. It is not used for `LITELLM_PROXY_API_BASE` or a custom `litellm_url` (that key belongs to another host). Needs `sh` (Git Bash on Windows).
 - `/user/daily/activity` est en bêta dans LiteLLM et peut changer.
 - Les budgets par modèle (`model_max_budget`), les augmentations temporaires de budget et la régénération de clé sont réservés à l'édition enterprise côté proxy : ils ne sont donc pas proposés (voir [Budgets](#budgets-what-litellm-can-and-cannot-do)). Modifier les chaînes de fallback exige `STORE_MODEL_IN_DB=True` sur le proxy ; `/litellm fallbacks` reste donc en lecture seule.
 - Le budget d'une **organisation** ne figure pas dans la réponse de la clé elle-même et une clé virtuelle peut ne pas pouvoir le lire : le volet se contente donc de nommer l'organisation ; `/litellm org` le lit avec une clé admin. La clé admin n'est toujours envoyée que lorsque vous saisissez une commande admin, jamais sur le minuteur de rafraîchissement.

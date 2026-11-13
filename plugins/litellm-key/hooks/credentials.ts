@@ -15,6 +15,10 @@ export type Sources = {
   key: string | null
   env: Partial<Record<EnvName, string>>
   settingsEnv: Partial<Record<EnvName, string>>
+  /** What the `apiKeyHelper` of settings.json printed, when it was run. */
+  helperKey?: string | null
+  /** Why the helper gave no key, to say it when no other source has one. */
+  helperError?: string | null
 }
 
 export type Credentials = {
@@ -145,6 +149,7 @@ export const resolveCredentials = (sources: Sources, now: number): Resolved => {
           { key: headerKey ? bearer(headerKey) : null, source: 'ANTHROPIC_CUSTOM_HEADERS (x-litellm-api-key)', header: 'x-litellm-api-key' as const },
           { key: pick('ANTHROPIC_AUTH_TOKEN'), source: 'ANTHROPIC_AUTH_TOKEN' },
           { key: pick('ANTHROPIC_API_KEY'), source: 'ANTHROPIC_API_KEY' },
+          { key: sources.helperKey?.trim(), source: 'apiKeyHelper' },
         ]
       : []),
     ...(route === 'custom' ? [] : [{ key: pick('LITELLM_PROXY_API_KEY'), source: 'LITELLM_PROXY_API_KEY' }]),
@@ -160,7 +165,9 @@ export const resolveCredentials = (sources: Sources, now: number): Resolved => {
 
     return {
       ok: false,
-      failure: failure('not-configured', `No virtual key found for ${hostOf(base)}.`, now, { hint: hints[route] }),
+      failure: failure('not-configured', `No virtual key found for ${hostOf(base)}.`, now, {
+        hint: sources.helperError && route === 'anthropic' ? `${sources.helperError}. ${hints[route]}` : hints[route],
+      }),
     }
   }
   const key = bearer(chosen.key)

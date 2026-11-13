@@ -26,7 +26,7 @@
     "litellm_key": {
       "type": "string",
       "title": "LiteLLM virtual key",
-      "description": "Leave empty to use the key Claude Code already sends (ANTHROPIC_AUTH_TOKEN, ANTHROPIC_API_KEY or the x-litellm-api-key custom header).",
+      "description": "Leave empty to use the key Claude Code already sends (ANTHROPIC_AUTH_TOKEN, ANTHROPIC_API_KEY, the x-litellm-api-key custom header or the apiKeyHelper of settings.json).",
       "sensitive": true
     },
     "litellm_admin_key": {
