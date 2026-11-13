@@ -14,6 +14,7 @@ import { clean } from './format'
 import type { Reply } from './litellm'
 import type { Init, Ports } from './ports'
 import { parsePrefs } from './prefs'
+import { liveSpeed } from './live-speed'
 import { pinged, pinging } from './ping-state'
 import { ping, pingRound } from './probe'
 import type { Session } from './session'
@@ -58,9 +59,7 @@ const loadPrefs = async ($: EngineInterface): Promise<void> => {
 const fetchWithin = async ($: EngineInterface, url: string, init: Init, ms: number): Promise<Reply> => {
   const started = await $.clock.now()
   let timer: { cancel: () => void } | undefined
-  const late = new Promise<never>((_, reject) => {
-    timer = $.clock.after(ms, () => reject(new Error(`no answer within ${ms / 1000}s`)))
-  })
+  const late = new Promise<never>((_, reject) => void (timer = $.clock.after(ms, () => reject(new Error(`no answer within ${ms / 1000}s`)))))
 
   try {
     const { status, text } = await Promise.race([$.http.fetch(url, init), late])
@@ -197,19 +196,19 @@ export const register: Register = (on, options) => {
     state.ticker = $.clock.every(state.config.refreshSeconds * 1000, () => {
       session.reload(portsOf($), 'tick')
     })
-    $.clock.after(250, () => {
-      session.reload(portsOf($), 'force')
-    })
+    $.clock.after(250, () => session.reload(portsOf($), 'force'))
     await loadPrefs($)
 
     return next(e)
   })
 
+  on('turn.step', async function* ($, e, next) {
+    yield* liveSpeed(session, portsOf($), e, next)
+  })
+
   on('turn.complete', async ($, e, next) => {
     void session.recordTurn(portsOf($), e).catch(() => undefined)
-    $.clock.after(1500, () => {
-      session.reload(portsOf($), 'turn')
-    })
+    $.clock.after(1500, () => session.reload(portsOf($), 'turn'))
 
     return next(e)
   })
