@@ -206,6 +206,7 @@ export const register: Register = (on, options) => {
   })
 
   on('turn.complete', async ($, e, next) => {
+    void session.recordTurn(portsOf($), e).catch(() => undefined)
     $.clock.after(1500, () => {
       session.reload(portsOf($), 'turn')
     })
