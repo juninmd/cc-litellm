@@ -228,6 +228,8 @@ Tudo acima é a UI de admin real do LiteLLM v1.99.1 refletindo o que o plugin fe
 | `/litellm copy [o quê]` | Põe um relatório na área de transferência: `overview`, `usage`, `models`, `details`, `pace`, `compare`, `csv` ou `json`. |
 | `/litellm share [o quê]` | Entrega um relatório ao Claude, fora de vista, para que a próxima pergunta seja sobre ele. |
 | `/litellm ping` | Tenta cada endpoint que o plugin lê, com o status e o tempo. |
+| `/litellm auth` | Lista cada lugar de onde uma chave pode vir (`litellm_key`, `header`, `auth_token`, `api_key`, `helper`, `proxy_key`), qual está em uso e quais o proxy aceita (um `/key/info` para cada, chaves mascaradas). Código de saída 3 quando a em uso não é válida. |
+| `/litellm auth use <name>` | Mantém uma fonte para as próximas leituras, ou `auto` para desfazer. Antes confere a chave no proxy e recusa uma rejeitada ou ausente (`--force` mantém uma rejeitada). Fica guardada pelo plugin e vale mais que a opção `auth_source`. |
 | `/litellm debug` | Mostra de onde vêm a URL e as chaves (sempre mascaradas), o que foi tentado e o resultado. |
 | `/litellm close` | Fecha o painel. |
 | `/litellm keys [--user ID \| --team ID \| --all]` | Lista chaves. Padrão: as chaves do seu próprio usuário. 🔐 |
@@ -343,12 +345,14 @@ Todas as opções são opcionais (o Claude Code avisa na instalação que elas e
 | --- | --- | --- |
 | `litellm_url` | vazio | Um proxy em local fora do padrão (Bedrock/Vertex via LiteLLM, URL com prefixo). |
 | `litellm_key` | vazio | Uma chave explícita. 🔒 guardada no armazenamento de credenciais, não no `settings.json`. |
+| `auth_source` | `auto` | Qual chave usar. `auto` pega a primeira fonte que tem uma; defina `litellm_key`, `header`, `auth_token`, `api_key`, `helper` ou `proxy_key` para escolher de propósito. `/litellm auth` diz quais são válidas e `/litellm auth use <nome>` escolhe uma sem editar opções. |
 | `litellm_admin_key` | vazio | Chave de admin para `keys`, `key new/set/reset-spend/block/unblock`, `grant`, `org`, `fallbacks`. 🔒 mesmo armazenamento. Nunca é impressa. |
 | `refresh_seconds` | 60 | Intervalo de leitura (15 a 3600). Também lê depois de cada turno, no máximo a cada 20 s. |
 | `warn_percent` | 80 | Primeiro aviso de orçamento (também avisa em 95% e 100%). |
 | `daily_alert` | 0 (desligado) | Avisa quando o gasto de hoje da chave chega a tantos dólares: um toast por dia, a linha de status e o painel. Com ele ligado, o histórico de uso é lido a cada 3 minutos. |
 | `show_toasts` | sim | Os toasts que avisam do orçamento, do alerta diário, de uma chave que vai expirar e de um proxy que falha. Desligado, os avisos ficam na linha de status e no painel. |
 | `show_status_line` | sim | A linha abaixo do prompt. |
+| `show_speed` | `yes` | Mostra a velocidade da resposta do modelo no começo da linha de status (`⚡ 42 tok/s · …`), **ao vivo enquanto a resposta chega**: o texto que chega (4 caracteres ≈ 1 token) sobre o tempo desde o primeiro pedaço, e ao fim do passo vale a contagem real de tokens de saída. Nada aparece enquanto não há o que medir, e uma velocidade com mais de 2 minutos é retirada. `/litellm debug` mostra também a média da sessão. |
 | `show_related` | sim | Lê `/user/info` e `/team/info`: esses orçamentos também podem bloquear requisições. |
 | `show_usage` | sim | Lê `/user/daily/activity` (um endpoint beta do LiteLLM): os últimos 30 dias de uso, em que se apoiam as abas Usage e Models, os relatórios, o runway e o alerta diário. |
 | `compact_pane` | não | Painel compacto acima do prompt em terminais estreitos (74 a 121 colunas): um medidor por linha, informações lado a lado. |
@@ -423,7 +427,7 @@ Estrutura do plugin: `hooks/register.tsx` é o único arquivo que toca o `$` do 
 
 ## Limites conhecidos
 
-- `apiKeyHelper` é lido do `settings.json` e executado via `sh -c` (timeout de 10 s, resposta guardada por 5 minutos), mas só quando nenhuma fonte anterior traz uma chave: opção do plugin, `x-litellm-api-key`, `ANTHROPIC_AUTH_TOKEN` e `ANTHROPIC_API_KEY` vêm antes. É o mesmo comando que o Claude Code já executa; a saída vira a chave e nunca é impressa. Não vale para `LITELLM_PROXY_API_BASE` nem para um `litellm_url` próprio. Exige `sh` (Git Bash no Windows).
+- `apiKeyHelper` é lido do `settings.json` do usuário (ou da política da organização), nunca do de um projeto, e executado via `sh -c` (timeout de 10 s, resposta guardada por 5 minutos e pedida de novo na hora quando o proxy rejeita a chave), mas só quando nenhuma fonte anterior traz uma chave: opção do plugin, `x-litellm-api-key`, `ANTHROPIC_AUTH_TOKEN` e `ANTHROPIC_API_KEY` vêm antes. É o mesmo comando que o Claude Code já executa; a saída vira a chave e nunca é impressa. Não vale para `LITELLM_PROXY_API_BASE` nem para um `litellm_url` próprio. Exige `sh` (Git Bash no Windows).
 - `/user/daily/activity` é beta no LiteLLM e pode mudar.
 - Orçamentos por modelo (`model_max_budget`), aumentos temporários de orçamento e regeneração de chave são exclusivos do enterprise no lado do proxy, então não são oferecidos (veja [Orçamentos](#budgets-what-litellm-can-and-cannot-do)). Editar as cadeias de fallback exige `STORE_MODEL_IN_DB=True` no proxy, então `/litellm fallbacks` continua somente leitura.
 - O orçamento de uma **organização** não vem na resposta da própria chave e uma chave virtual pode não poder lê-lo, então o painel só nomeia a organização; `/litellm org` o lê com uma chave de admin. A chave de admin continua sendo enviada só quando você digita um comando de admin, nunca no timer de atualização.

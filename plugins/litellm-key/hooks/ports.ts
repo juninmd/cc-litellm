@@ -13,7 +13,8 @@ export type Init = { method?: string; headers: Record<string, string>; body?: st
 export type Ports = {
   now: () => Promise<number>
   env: () => Promise<Partial<Record<EnvName, string>>>
-  settings: () => Promise<{ env?: unknown; apiKeyHelper?: unknown }>
+  settings: () => Promise<{ env?: unknown }>
+  trusted: () => Promise<readonly { apiKeyHelper?: unknown }[]>
   run: Run
   fetch: (url: string, init: Init, ms?: number) => Promise<Reply>
   loading: (isLoading: boolean) => Promise<void>

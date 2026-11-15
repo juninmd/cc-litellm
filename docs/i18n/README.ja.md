@@ -228,6 +228,8 @@ claude -p "/litellm csv 30" > usage.csv
 | `/litellm copy [what]` | レポートをクリップボードに置く: `overview`、`usage`、`models`、`details`、`pace`、`compare`、`csv`、`json`。 |
 | `/litellm share [what]` | 画面には出さずにレポートを Claude に渡し、次の質問をそのレポートについてできるようにする。 |
 | `/litellm ping` | プラグインが読み込む各エンドポイントを試し、ステータスと所要時間を表示する。 |
+| `/litellm auth` | キーの取得元をすべて(`litellm_key`、`header`、`auth_token`、`api_key`、`helper`、`proxy_key`)一覧し、どれが使われているか、プロキシがどれを受け付けるかを示す(それぞれ `/key/info` を1回、キーはマスク)。使用中のキーが無効なら終了コード 3。 |
+| `/litellm auth use <name>` | 次回以降の読み取りに使う取得元を1つ保持する。`auto` で解除。先にプロキシでキーを確認し、拒否または未設定のものは断る(`--force` なら拒否されたキーも保持)。プラグインが保存し、`auth_source` オプションより優先される。 |
 | `/litellm debug` | URL とキーの取得元(常にマスク)、試行した内容、結果を表示する。 |
 | `/litellm close` | ペインを閉じる。 |
 | `/litellm keys [--user ID \| --team ID \| --all]` | キーを一覧表示する。既定は自分のユーザーのキー。🔐 |
@@ -343,12 +345,14 @@ URL がパススルーのルート(`/anthropic`、`/bedrock`、`/v1` など)で�
 | --- | --- | --- |
 | `litellm_url` | 空 | 既定以外の場所にあるプロキシ(LiteLLM 経由の Bedrock/Vertex、プレフィックス付きの URL)。 |
 | `litellm_key` | 空 | 明示的に指定するキー。🔒 資格情報ストアに保存され、`settings.json` には保存されない。 |
+| `auth_source` | `auto` | 使うキー。`auto` はキーのある最初の取得元を使う。意図的に選ぶには `litellm_key`、`header`、`auth_token`、`api_key`、`helper`、`proxy_key` のいずれかを設定。`/litellm auth` でどれが有効か分かり、`/litellm auth use <name>` でオプションを編集せずに1つ選べる。 |
 | `litellm_admin_key` | 空 | `keys`、`key new/set/reset-spend/block/unblock`、`grant`、`org`、`fallbacks` 用の管理者キー。🔒 保存先は同じ。表示されない。 |
 | `refresh_seconds` | 60 | 読み取り間隔(15〜3600)。各ターンの後にも、最短 20 秒の間隔で読み取る。 |
 | `warn_percent` | 80 | 最初の予算警告(95% と 100% でも警告する)。 |
 | `daily_alert` | 0(無効) | その日のキーの使用額がこのドル額に達したら警告する。トーストは 1 日 1 回、ステータスラインとペインにも表示。有効にすると、使用履歴を 3 分ごとに読み込む。 |
 | `show_toasts` | `yes` | 予算、日次アラート、期限が近いキー、応答しないプロキシを知らせるトースト。オフにすると、警告はステータスラインとペインだけに表示される。 |
 | `show_status_line` | `yes` | プロンプトの下の行。 |
+| `show_speed` | `yes` | モデルの応答速度をステータス行の先頭に表示する(`⚡ 42 tok/s · …`)。**応答が届く間はリアルタイム**で、届いたテキスト(4文字≒1トークン)を最初の断片からの経過時間で割り、ステップ終了時は実際の出力トークン数で確定する。測るものがない間は何も表示せず、2分より古い速度は消える。`/litellm debug` にはセッション平均も出る。 |
 | `show_related` | `yes` | `/user/info` と `/team/info` を読む。それらの予算でもリクエストがブロックされうるため。 |
 | `show_usage` | `yes` | `/user/daily/activity`(LiteLLM のベータ版エンドポイント)を読み、直近 30 日間の使用状況を取得する。Usage タブと Models タブ、レポート、runway、日次アラートがこれを土台にしている。 |
 | `compact_pane` | `no` | 狭いターミナル(74〜121 桁)で、プロンプト上のペインをコンパクトにする。1 行に 1 メーター、情報は横並び。 |
@@ -423,7 +427,7 @@ bash dev/check-file-size.sh                             # no source file over 30
 
 ## 既知の制限
 
-- `apiKeyHelper` is read from `settings.json` and run through `sh -c` (10 s timeout, the answer kept 5 minutes), but only when nothing earlier supplies a key: the plugin option, `x-litellm-api-key`, `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_API_KEY` come first. It is the command Claude Code already runs; its output is used as the key and never printed. It is not used for `LITELLM_PROXY_API_BASE` or a custom `litellm_url` (that key belongs to another host). Needs `sh` (Git Bash on Windows).
+- `apiKeyHelper` はユーザー(または組織ポリシー)の `settings.json` から読み取り、プロジェクトのものは決して読まず、`sh -c` で実行します(タイムアウト10秒、結果は5分保持、プロキシがキーを拒否したらすぐ再取得)。ただし先行する取得元にキーがないときだけです。プラグインのオプション、`x-litellm-api-key`、`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_API_KEY` が先です。Claude Code がすでに実行しているのと同じコマンドで、出力はキーとして使われ、表示されません。`LITELLM_PROXY_API_BASE` や独自の `litellm_url` には使いません。`sh` が必要です(Windows では Git Bash)。
 - `/user/daily/activity` は LiteLLM のベータ版で、変更される可能性があります。
 - モデル別の予算(`model_max_budget`)、一時的な予算の増額、キーの再生成は、プロキシ側ではエンタープライズ限定のため提供していません([予算](#budgets-what-litellm-can-and-cannot-do)を参照)。フォールバックチェーンの編集にはプロキシ側で `STORE_MODEL_IN_DB=True` が必要なため、`/litellm fallbacks` は読み取り専用のままです。
 - **組織**の予算はキー自身の応答に含まれず、仮想キーでは読み取れない場合があるため、ペインには組織名が表示されるだけです。`/litellm org` は管理者キーで読み取ります。管理者キーは、これまでどおり管理者コマンドを入力したときにだけ送信され、更新タイマーでは送信されません。

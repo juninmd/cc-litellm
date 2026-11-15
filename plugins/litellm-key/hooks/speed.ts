@@ -1,5 +1,5 @@
 /** How fast the model answered: output tokens over the time of the turn, the last turn and the session so far. */
-export type Speed = { last: number | null; tokens: number; ms: number; turns: number }
+export type Speed = { last: number | null; tokens: number; ms: number; turns: number; at: number | null }
 
 /** What one model step has streamed so far: when its first and last pieces came, and how much text they held. */
 export type Meter = { firstAt: number | null; lastAt: number; firstChars: number; chars: number; shownAt: number }
@@ -12,7 +12,10 @@ export const CHARS_PER_TOKEN = 4
 export const MIN_SPAN_MS = 300
 export const REFRESH_MS = 400
 
-export const NO_SPEED: Speed = { last: null, tokens: 0, ms: 0, turns: 0 }
+export const NO_SPEED: Speed = { last: null, tokens: 0, ms: 0, turns: 0, at: null }
+
+/** A speed this old is no longer how the model is answering: the status line drops it rather than show a stale number. */
+export const STALE_MS = 2 * 60_000
 
 const positive = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0
 
@@ -21,7 +24,7 @@ const positive = (value: unknown): value is number => typeof value === 'number' 
  * tokens or no time, is not counted: nothing is shown rather than a made-up speed. The time is the whole turn (it also
  * holds the wait for the first token and the tools), so the speed reads a little low.
  */
-export const withTurn = (speed: Speed, turn: { usage?: unknown; durationMs?: unknown; isAborted?: unknown }): Speed => {
+export const withTurn = (speed: Speed, turn: { usage?: unknown; durationMs?: unknown; isAborted?: unknown }, now: number): Speed => {
   const usage = typeof turn.usage === 'object' && turn.usage !== null ? (turn.usage as { output_tokens?: unknown }) : {}
   const tokens = usage.output_tokens
 
@@ -29,7 +32,7 @@ export const withTurn = (speed: Speed, turn: { usage?: unknown; durationMs?: unk
     return speed
   }
 
-  return { last: tokens / (turn.durationMs / 1000), tokens: speed.tokens + tokens, ms: speed.ms + turn.durationMs, turns: speed.turns + 1 }
+  return { last: tokens / (turn.durationMs / 1000), tokens: speed.tokens + tokens, ms: speed.ms + turn.durationMs, turns: speed.turns + 1, at: now }
 }
 
 const rate = (value: number): string => (value >= 100 ? String(Math.round(value)) : value.toFixed(1).replace(/\.0$/, ''))
@@ -37,8 +40,9 @@ const rate = (value: number): string => (value >= 100 ? String(Math.round(value)
 /** The average of the session: tokens over the time of all the turns that counted. */
 export const averageOf = (speed: Speed): number | null => (speed.ms > 0 ? speed.tokens / (speed.ms / 1000) : null)
 
-/** `⚡ 42 tok/s`, for the status line; nothing before the first turn that counted. */
-export const speedText = (speed: Speed): string | undefined => (speed.last === null ? undefined : `⚡ ${rate(speed.last)} tok/s`)
+/** `⚡ 42 tok/s`, for the status line; nothing before the first turn that counted, nor once it has gone stale. */
+export const speedText = (speed: Speed, now: number): string | undefined =>
+  speed.last === null || (speed.at !== null && now - speed.at > STALE_MS) ? undefined : `⚡ ${rate(speed.last)} tok/s`
 
 /** For `/litellm debug`: the last turn, the average and how many turns it rests on. */
 export const speedLine = (speed: Speed): string => {
@@ -78,9 +82,10 @@ export const settle = (meter: Meter, outputTokens: unknown): { tokens: number; m
 }
 
 /** A finished step joins the session: the last rate and the average. */
-export const withStep = (speed: Speed, step: { tokens: number; ms: number }): Speed => ({
+export const withStep = (speed: Speed, step: { tokens: number; ms: number }, now: number): Speed => ({
   last: step.tokens / (step.ms / 1000),
   tokens: speed.tokens + step.tokens,
   ms: speed.ms + step.ms,
   turns: speed.turns + 1,
+  at: now,
 })

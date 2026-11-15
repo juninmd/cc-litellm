@@ -1,6 +1,7 @@
 import { AUTH_SOURCES, authSourceOf, resolveCredentials } from './credentials'
 import type { AuthSource } from './credentials'
 import { messageOf } from './failures'
+import { forgetHelper } from './helper'
 import { maskKey, redact, truncate } from './format'
 import { parse } from './json'
 import type { Ports } from './ports'
@@ -79,6 +80,11 @@ export const authRows = async (session: Session, ports: Ports): Promise<AuthRow[
       }
     }),
   )
+
+  // A helper key the proxy refused may have been rotated: the next reading asks the helper again.
+  if (rows.some(row => row.id === 'helper' && row.verdict === 'rejected')) {
+    forgetHelper()
+  }
 
   return rows
 }

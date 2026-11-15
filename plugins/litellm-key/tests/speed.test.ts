@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { NO_SPEED, speedLine, speedText, withTurn } from '../hooks/speed'
+import { NO_SPEED, STALE_MS, speedLine, speedText, withTurn } from '../hooks/speed'
 import { configOf } from '../hooks/settings'
 import { liveSpeed } from '../hooks/live-speed'
 import type { Ports } from '../hooks/ports'
@@ -12,34 +12,41 @@ const turn = (tokens: number, ms: number) => ({ usage: usage(tokens), durationMs
 
 describe('speed of the answers', () => {
   test('is the output tokens over the time of the turn', () => {
-    const speed = withTurn(NO_SPEED, turn(420, 10_000))
+    const speed = withTurn(NO_SPEED, turn(420, 10_000), NOW)
 
     expect(speed.last).toBe(42)
-    expect(speedText(speed)).toBe('⚡ 42 tok/s')
+    expect(speedText(speed, NOW)).toBe('⚡ 42 tok/s')
   })
 
   test('keeps the average of the session beside the last turn', () => {
-    const speed = withTurn(withTurn(NO_SPEED, turn(100, 10_000)), turn(300, 10_000))
+    const speed = withTurn(withTurn(NO_SPEED, turn(100, 10_000), NOW), turn(300, 10_000), NOW)
 
     expect(speed.last).toBe(30)
     expect(speedLine(speed)).toBe('30 tok/s last turn · 20 tok/s average of 2 turns')
   })
 
   test('counts nothing it cannot trust, and shows nothing before a turn counts', () => {
-    const aborted = withTurn(NO_SPEED, { ...turn(100, 1000), isAborted: true })
+    const aborted = withTurn(NO_SPEED, { ...turn(100, 1000), isAborted: true }, NOW)
 
     expect(aborted).toBe(NO_SPEED)
-    expect(withTurn(NO_SPEED, { durationMs: 1000 })).toBe(NO_SPEED)
-    expect(withTurn(NO_SPEED, turn(0, 1000))).toBe(NO_SPEED)
-    expect(withTurn(NO_SPEED, turn(100, 0))).toBe(NO_SPEED)
-    expect(withTurn(NO_SPEED, { usage: 'x', durationMs: 5 })).toBe(NO_SPEED)
-    expect(speedText(NO_SPEED)).toBeUndefined()
+    expect(withTurn(NO_SPEED, { durationMs: 1000 }, NOW)).toBe(NO_SPEED)
+    expect(withTurn(NO_SPEED, turn(0, 1000), NOW)).toBe(NO_SPEED)
+    expect(withTurn(NO_SPEED, turn(100, 0), NOW)).toBe(NO_SPEED)
+    expect(withTurn(NO_SPEED, { usage: 'x', durationMs: 5 }, NOW)).toBe(NO_SPEED)
+    expect(speedText(NO_SPEED, NOW)).toBeUndefined()
     expect(speedLine(NO_SPEED)).toContain('none yet')
   })
 
   test('rounds big and small rates', () => {
-    expect(speedText(withTurn(NO_SPEED, turn(1234, 10_000)))).toBe('⚡ 123 tok/s')
-    expect(speedText(withTurn(NO_SPEED, turn(25, 10_000)))).toBe('⚡ 2.5 tok/s')
+    expect(speedText(withTurn(NO_SPEED, turn(1234, 10_000), NOW), NOW)).toBe('⚡ 123 tok/s')
+    expect(speedText(withTurn(NO_SPEED, turn(25, 10_000), NOW), NOW)).toBe('⚡ 2.5 tok/s')
+  })
+
+  test('drops a speed that has gone stale', () => {
+    const speed = withTurn(NO_SPEED, turn(420, 10_000), NOW)
+
+    expect(speedText(speed, NOW + STALE_MS)).toBe('⚡ 42 tok/s')
+    expect(speedText(speed, NOW + STALE_MS + 1)).toBeUndefined()
   })
 
   test('show_speed is on unless turned off', () => {
@@ -56,6 +63,7 @@ describe('speed in the plugin', () => {
     const before = log.statuses.at(-1)
 
     await $.turn.complete({ answer: 'ok', durationMs: 10_000, isAborted: false, turnId: 't1', reason: 'answer', usage: usage(420) })
+    await clock.advance(10)
     expect(log.statuses.at(-1)).toBe(`⚡ 42 tok/s · ${before}`)
     // The next reading keeps it.
     await clock.advance(61_000)
