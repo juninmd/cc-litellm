@@ -9,8 +9,10 @@ export type Setup = {
   routes?: Record<string, Route>
   env?: Record<string, string>
   settingsEnv?: Record<string, string>
-  /** The `apiKeyHelper` command of settings.json. */
+  /** The `apiKeyHelper` command of the user's settings.json. */
   apiKeyHelper?: string
+  /** An `apiKeyHelper` named by the project's settings: it shows in the merged read only. */
+  projectApiKeyHelper?: string
   /** What a command run by the plugin answers; the default is the key printed. */
   run?: (argv: string[]) => { exitCode: number; stdout: string; stderr?: string } | Error
   surfaces?: readonly RenderSurface[]
@@ -55,9 +57,20 @@ export const boot = (on: On, setup: Setup = {}) => {
   mock.env(on, setup.env ?? { ANTHROPIC_BASE_URL: BASE, ANTHROPIC_AUTH_TOKEN: KEY })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('turn.complete', (_$, e) => ({ text: e.answer }))
-  on('settings.read', () => ({
-    value: { ...(setup.settingsEnv ? { env: setup.settingsEnv } : {}), ...(setup.apiKeyHelper ? { apiKeyHelper: setup.apiKeyHelper } : {}) },
-  }))
+  on('settings.read', (_$, e) => {
+    const source = (e as { source?: string }).source
+    const env = setup.settingsEnv ? { env: setup.settingsEnv } : {}
+
+    // The user's own read has the user's helper; the policy has none; the merged read has the project's too.
+    if (source === 'user') {
+      return { value: setup.apiKeyHelper ? { apiKeyHelper: setup.apiKeyHelper } : {} }
+    }
+    if (source !== undefined) {
+      return { value: {} }
+    }
+
+    return { value: { ...env, ...(setup.projectApiKeyHelper ?? setup.apiKeyHelper ? { apiKeyHelper: setup.projectApiKeyHelper ?? setup.apiKeyHelper } : {}) } }
+  })
   on('process.run', (_$, e) => {
     const argv = typeof e.argv === 'string' ? [e.argv] : [...e.argv]
     const answer = setup.run?.(argv) ?? { exitCode: 0, stdout: `${KEY}\n` }

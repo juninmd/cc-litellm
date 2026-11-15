@@ -228,6 +228,8 @@ Team हर member के खर्च पर cap लगा सकती है 
 | `/litellm copy [what]` | किसी report को clipboard पर रखता है: `overview`, `usage`, `models`, `details`, `pace`, `compare`, `csv` या `json`। |
 | `/litellm share [what]` | किसी report को Claude को नज़र से बाहर सौंपता है, ताकि अगला सवाल उसी के बारे में हो सके। |
 | `/litellm ping` | Plugin जो हर endpoint पढ़ता है उसे आज़माता है, उसके status और समय के साथ। |
+| `/litellm auth` | उन सभी जगहों की सूची जहाँ से key आ सकती है (`litellm_key`, `header`, `auth_token`, `api_key`, `helper`, `proxy_key`), कौन-सी उपयोग में है और proxy किन्हें स्वीकार करता है (हर एक के लिए एक `/key/info`, keys masked)। उपयोग वाली key अमान्य हो तो exit code 3। |
+| `/litellm auth use <name>` | अगली रीडिंग के लिए एक स्रोत रखता है, या पलटने के लिए `auto`। पहले proxy पर key जाँचता है और अस्वीकृत या गायब key को मना कर देता है (`--force` अस्वीकृत को भी रखता है)। plugin इसे सहेजता है और यह `auth_source` option से ऊपर है। |
 | `/litellm debug` | दिखाता है कि URL और keys कहाँ से आ रही हैं (हमेशा masked), क्या-क्या आज़माया गया और नतीजा क्या रहा। |
 | `/litellm close` | Pane बंद करता है। |
 | `/litellm keys [--user ID \| --team ID \| --all]` | Keys की list। Default: आपके अपने user की keys। 🔐 |
@@ -343,12 +345,14 @@ Plugin वही URL और key पढ़ता है जो Claude Code इस
 | --- | --- | --- |
 | `litellm_url` | खाली | Default जगह पर न होने वाला proxy (LiteLLM के ज़रिए Bedrock/Vertex, prefix वाला URL)। |
 | `litellm_key` | खाली | कोई explicit key। 🔒 credential store में रखी जाती है, `settings.json` में नहीं। |
+| `auth_source` | `auto` | कौन-सी key इस्तेमाल हो। `auto` पहला वह स्रोत लेता है जिसमें key हो; जान-बूझकर चुनने के लिए `litellm_key`, `header`, `auth_token`, `api_key`, `helper` या `proxy_key` सेट करें। `/litellm auth` बताता है कौन-सी मान्य हैं, और `/litellm auth use <नाम>` options बदले बिना एक चुन देता है। |
 | `litellm_admin_key` | खाली | `keys`, `key new/set/reset-spend/block/unblock`, `grant`, `org`, `fallbacks` के लिए admin key। 🔒 वही storage। कभी print नहीं होती। |
 | `refresh_seconds` | 60 | पढ़ने का interval (15 से 3600)। हर turn के बाद भी पढ़ता है, ज़्यादा से ज़्यादा हर 20 s में। |
 | `warn_percent` | 80 | पहली budget warning (95% और 100% पर भी warn करता है)। |
 | `daily_alert` | 0 (बंद) | key का आज का spend इतने dollars तक पहुँचते ही warn करता है: दिन में एक toast, status line और pane। चालू होने पर usage history हर 3 मिनट में पढ़ी जाती है। |
 | `show_toasts` | yes | वे toasts जो budget, daily alert, expiry के क़रीब पहुँची key और failing proxy के बारे में warn करते हैं। बंद होने पर warnings status line और pane में ही रहती हैं। |
 | `show_status_line` | yes | Prompt के नीचे की line। |
+| `show_speed` | `yes` | model के जवाब की गति status line की शुरुआत में दिखाता है (`⚡ 42 tok/s · …`), **जवाब आते समय live**: आया हुआ text (4 अक्षर ≈ 1 token) पहले टुकड़े के बाद के समय से भाग दिया जाता है; step ख़त्म होने पर असली output-token गिनती मानी जाती है। जब तक कुछ मापने को न हो, कुछ नहीं दिखता, और 2 मिनट से पुरानी गति हटा दी जाती है। `/litellm debug` session का औसत भी दिखाता है। |
 | `show_related` | yes | `/user/info` और `/team/info` पढ़ें: वे budgets भी requests को block कर सकते हैं। |
 | `show_usage` | yes | `/user/daily/activity` (LiteLLM का एक beta endpoint) पढ़ें: पिछले 30 दिनों का usage, जिस पर Usage और Models tabs, reports, runway और daily alert टिके हैं। |
 | `compact_pane` | no | संकरे terminals (74 से 121 columns) में prompt के ऊपर compact pane: हर line पर एक meter, facts अगल-बगल। |
@@ -423,7 +427,7 @@ Plugin का layout: `hooks/register.tsx` अकेली ऐसी file है
 
 ## ज्ञात सीमाएँ
 
-- `apiKeyHelper` is read from `settings.json` and run through `sh -c` (10 s timeout, the answer kept 5 minutes), but only when nothing earlier supplies a key: the plugin option, `x-litellm-api-key`, `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_API_KEY` come first. It is the command Claude Code already runs; its output is used as the key and never printed. It is not used for `LITELLM_PROXY_API_BASE` or a custom `litellm_url` (that key belongs to another host). Needs `sh` (Git Bash on Windows).
+- `apiKeyHelper` user के (या संगठन की policy के) `settings.json` से पढ़ा जाता है, किसी project के से कभी नहीं, और `sh -c` से चलता है (10 s timeout, जवाब 5 मिनट रखा जाता है और proxy के key ठुकराने पर तुरंत फिर माँगा जाता है), लेकिन केवल तब जब पहले का कोई स्रोत key न दे: plugin option, `x-litellm-api-key`, `ANTHROPIC_AUTH_TOKEN` और `ANTHROPIC_API_KEY` पहले आते हैं। यह वही command है जो Claude Code पहले से चलाता है; उसका output key की तरह इस्तेमाल होता है और कभी print नहीं होता। `LITELLM_PROXY_API_BASE` या अपने `litellm_url` पर लागू नहीं। `sh` चाहिए (Windows पर Git Bash)।
 - `/user/daily/activity` LiteLLM में beta है और बदल सकता है।
 - Per-model budgets (`model_max_budget`), temporary budget increases और key regeneration proxy की तरफ़ से सिर्फ़ enterprise में हैं, इसलिए इन्हें offer नहीं किया जाता ([Budgets](#budgets-what-litellm-can-and-cannot-do) देखें)। Fallback chains को edit करने के लिए proxy पर `STORE_MODEL_IN_DB=True` चाहिए, इसलिए `/litellm fallbacks` read-only ही रहता है।
 - किसी **organization** का budget key के अपने जवाब में नहीं होता और virtual key उसे पढ़ ही न पाए, ऐसा हो सकता है, इसलिए pane सिर्फ़ organization का नाम बताता है; `/litellm org` उसे admin key से पढ़ता है। Admin key अब भी सिर्फ़ तब भेजी जाती है जब आप admin command टाइप करें, refresh timer पर कभी नहीं।

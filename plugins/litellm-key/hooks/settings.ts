@@ -42,7 +42,9 @@ const ENV_NAMES: readonly EnvName[] = [
 
 export type SourceReaders = {
   env: () => Promise<Partial<Record<EnvName, string>>>
-  settings: () => Promise<{ env?: unknown; apiKeyHelper?: unknown }>
+  settings: () => Promise<{ env?: unknown }>
+  /** The user's own settings and the organization's policy, never the project's: only these may name a command to run. */
+  trusted?: () => Promise<readonly { apiKeyHelper?: unknown }[]>
   /** Runs a command; without it the `apiKeyHelper` is not read. */
   run?: Run
   chosen?: () => Promise<unknown>
@@ -59,9 +61,15 @@ export const sourcesOf = async (config: Config, read: SourceReaders, isAll = fal
     const settings = await read.settings()
 
     block = isObject(settings.env) ? settings.env : {}
-    command = text(settings.apiKeyHelper)
   } catch {
     block = {}
+  }
+  // A helper named by the project's settings is a command from a repository the person may not have trusted yet:
+  // Claude Code asks first, so the plugin does not run it. Only the user's and the policy's helper is run.
+  const trusted = await read.trusted?.().catch(() => [])
+
+  for (const level of trusted ?? []) {
+    command = text(level.apiKeyHelper) ?? command
   }
   const settingsEnv: Sources['settingsEnv'] = {}
 

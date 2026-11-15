@@ -6,6 +6,7 @@ import type { Credentials } from './credentials'
 import { resolveCredentials } from './credentials'
 import { maskKey, redact, truncate } from './format'
 import { advanceSession, beginSession } from './guidance'
+import { forgetHelper } from './helper'
 import { fetchSnapshot } from './litellm'
 import type { Diagnostics, Mode, Ports } from './ports'
 import type { Config } from './settings'
@@ -96,7 +97,7 @@ export const createSession = () => {
   /** The status line: the budget, and the speed of the answers when show_speed is on. */
   const statusLine = (snapshot: Snapshot | null, failure: Failure | null, now: number): string | undefined => {
     const base = state.config.isStatusShown ? statusText(snapshot, failure, now, state.config.dailyAlert) : undefined
-    const speed = state.config.isSpeedShown ? speedText(state.speed) : undefined
+    const speed = state.config.isSpeedShown ? speedText(state.speed, now) : undefined
 
     return base !== undefined && speed !== undefined ? `${speed} · ${base}` : base
   }
@@ -107,13 +108,13 @@ export const createSession = () => {
 
   /** The rate of a step that is still streaming: it shows at once, and the step's end replaces it with the settled one. */
   const showSpeed = async (ports: Ports, rate: number): Promise<void> => {
-    state.speed = { ...state.speed, last: rate }
+    state.speed = { ...state.speed, last: rate, at: await ports.now() }
     await redraw(ports)
   }
 
   /** A step that streamed long enough to say: its tokens and time join the average. */
   const endStep = async (ports: Ports, step: { tokens: number; ms: number }): Promise<void> => {
-    state.speed = withStep(state.speed, step)
+    state.speed = withStep(state.speed, step, await ports.now())
     sawStep = true
     await redraw(ports)
   }
@@ -125,7 +126,7 @@ export const createSession = () => {
 
       return
     }
-    const next = withTurn(state.speed, turn)
+    const next = withTurn(state.speed, turn, await ports.now())
 
     if (next !== state.speed) {
       state.speed = next
@@ -207,6 +208,10 @@ export const createSession = () => {
         lastSlowAt = isSlow ? now : lastSlowAt
         await settle(ports, fetched.snapshot, null, now)
       } else {
+        // A key the helper printed and the proxy refused may have been rotated: ask the helper again next time.
+        if (fetched.failure.kind === 'auth' && credentials.keySource === 'apiKeyHelper') {
+          forgetHelper()
+        }
         await settle(ports, previous, fetched.failure, now)
       }
     } catch (error) {

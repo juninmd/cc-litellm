@@ -4,11 +4,14 @@
 import type { Admin, Send } from '../../plugins/litellm-key/hooks/admin'
 import { runAdmin } from '../../plugins/litellm-key/hooks/admin-commands'
 import type { Deps } from '../../plugins/litellm-key/hooks/admin-commands'
+import { authCommand, authRows } from '../../plugins/litellm-key/hooks/auth'
 import { exceededItems } from '../../plugins/litellm-key/hooks/exceeded'
 import { maskKey } from '../../plugins/litellm-key/hooks/format'
 import type { Credentials } from '../../plugins/litellm-key/hooks/credentials'
 import { fetchSnapshot } from '../../plugins/litellm-key/hooks/litellm'
 import type { Http } from '../../plugins/litellm-key/hooks/litellm'
+import type { Ports } from '../../plugins/litellm-key/hooks/ports'
+import { createSession } from '../../plugins/litellm-key/hooks/session'
 import { statusText, summaryText } from '../../plugins/litellm-key/hooks/summary'
 
 const URL_ = (process.env.LITELLM_URL ?? 'http://127.0.0.1:4000').replace(/\/+$/, '')
@@ -242,6 +245,55 @@ const main = async (): Promise<void> => {
 
   say(refused.text.split('\n').map(line => `    ${line}`).join('\n'))
   check('a non-admin key is told to set litellm_admin_key', refused.text.includes('litellm_admin_key'))
+
+  step('10b. which credential: every source asked, one chosen')
+  const { execFile } = await import('node:child_process')
+  const wrongKey = 'sk-not-a-real-key-000000'
+  let stored = ''
+  const authPorts: Ports = {
+    now: async () => Date.now(),
+    env: async () => ({ ANTHROPIC_BASE_URL: URL_, ANTHROPIC_AUTH_TOKEN: wrongKey, ANTHROPIC_API_KEY: secret }),
+    settings: async () => ({}),
+    // The user's own apiKeyHelper, run through a real shell, as the plugin does.
+    trusted: async () => [{ apiKeyHelper: `printf '%s' '${secret}'` }],
+    run: (argv, timeoutMs) =>
+      new Promise(resolve =>
+        execFile(argv[0] ?? 'sh', argv.slice(1), { timeout: timeoutMs }, (error, stdout, stderr) =>
+          resolve({ exitCode: error ? ((error as { code?: number }).code ?? null) : 0, stdout, stderr, isStdoutTruncated: false, isStderrTruncated: false }),
+        ),
+      ),
+    fetch: async (url, init) => {
+      const reply = await fetch(url, { headers: init.headers })
+
+      return { status: reply.status, text: await reply.text() }
+    },
+    chosen: async () => (stored === '' ? undefined : stored),
+    choose: async source => void (stored = source),
+    loading: async () => undefined,
+    publish: async () => undefined,
+    status: () => undefined,
+    toast: () => undefined,
+    remembered: async () => [],
+    remember: async () => undefined,
+  }
+  const authSession = createSession()
+  const rows = await authRows(authSession, authPorts)
+  const verdict = (id: string) => rows.find(row => row.id === id)?.verdict
+
+  check('the wrong token is rejected by the real proxy', verdict('auth_token') === 'rejected')
+  check('ANTHROPIC_API_KEY is accepted', verdict('api_key') === 'valid')
+  check('the apiKeyHelper ran in a shell and its key is accepted', verdict('helper') === 'valid')
+  check('the sources with no key say none', verdict('litellm_key') === 'absent' && verdict('proxy_key') === 'absent')
+  check('no key is printed whole', !JSON.stringify(rows).includes(secret) && !JSON.stringify(rows).includes(wrongKey))
+  const refusedUse = await authCommand(authSession, authPorts, ['use', 'auth_token'])
+
+  check('a rejected source is refused', refusedUse.exitCode === 3 && stored === '', refusedUse.text)
+  const usedKey = await authCommand(authSession, authPorts, ['use', 'api_key'])
+
+  check('a valid source is kept', usedKey.isChanged === true && stored === 'api_key', usedKey.text)
+  const afterUse = await authRows(authSession, authPorts)
+
+  check('the stored choice is the one in use', afterUse.find(row => row.isActive)?.id === 'api_key')
 
   step('11. cleanup')
   for (const name of created) {

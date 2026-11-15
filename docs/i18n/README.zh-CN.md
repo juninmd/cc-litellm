@@ -227,6 +227,8 @@ claude -p "/litellm csv 30" > usage.csv
 | `/litellm copy [what]` | 把报告放进剪贴板：`overview`、`usage`、`models`、`details`、`pace`、`compare`、`csv` 或 `json`。 |
 | `/litellm share [what]` | 把报告交给 Claude，不显示在界面上，这样你的下一个问题就可以直接针对它。 |
 | `/litellm ping` | 逐个试探插件读取的端点，并给出各自的状态和耗时。 |
+| `/litellm auth` | 列出密钥可能来自的每个位置(`litellm_key`、`header`、`auth_token`、`api_key`、`helper`、`proxy_key`)、当前使用的是哪个,以及代理接受哪些(每个各发一次 `/key/info`,密钥已遮蔽)。使用中的密钥无效时退出码为 3。 |
+| `/litellm auth use <name>` | 为之后的读取固定一个来源,`auto` 表示撤销。先向代理校验密钥,拒绝被拒绝或不存在的密钥(`--force` 可保留被拒绝的)。由插件保存,优先于 `auth_source` 选项。 |
 | `/litellm debug` | 显示 URL 和密钥的来源（始终做掩码处理）、尝试过什么、结果如何。 |
 | `/litellm close` | 关闭面板。 |
 | `/litellm keys [--user ID \| --team ID \| --all]` | 列出密钥。默认：你自己所属用户的密钥。🔐 |
@@ -340,12 +342,14 @@ claude -p "/litellm csv 30" > usage.csv
 | --- | --- | --- |
 | `litellm_url` | 空 | 代理位于非默认位置时使用（经 LiteLLM 的 Bedrock/Vertex，或带前缀的 URL）。 |
 | `litellm_key` | 空 | 显式指定密钥。🔒 存放在凭据存储中，不写入 `settings.json`。 |
+| `auth_source` | `auto` | 使用哪个密钥。`auto` 取第一个有密钥的来源;要明确指定,请设为 `litellm_key`、`header`、`auth_token`、`api_key`、`helper` 或 `proxy_key`。`/litellm auth` 会告诉你哪些有效,`/litellm auth use <名称>` 无需编辑选项即可选定一个。 |
 | `litellm_admin_key` | 空 | 供 `keys`、`key new/set/reset-spend/block/unblock`、`grant`、`org`、`fallbacks` 使用的管理员密钥。🔒 存储方式相同。绝不打印。 |
 | `refresh_seconds` | 60 | 读取间隔（15 到 3600）。每轮对话结束后也会读取，最多每 20 秒一次。 |
 | `warn_percent` | 80 | 首次预算预警（用到 95% 和 100% 时也会预警）。 |
 | `daily_alert` | 0（关闭） | 当密钥今天的花费达到这个美元数时发出提醒：每天一条 toast，同时显示在状态栏和面板中。开启后，用量历史每 3 分钟读取一次。 |
 | `show_toasts` | `yes` | 就预算、每日提醒、即将过期的密钥和出故障的代理发出提醒的 toast。关闭后，提醒只保留在状态栏和面板中。 |
 | `show_status_line` | `yes` | 输入框下方的那一行状态栏。 |
+| `show_speed` | `yes` | 在状态行开头显示模型的响应速度(`⚡ 42 tok/s · …`),**回答流式返回时实时更新**:已到达的文本(4 个字符≈1 个 token)除以自第一个片段起的时间,步骤结束时改用真实的输出 token 数。没有可测量的内容时不显示,超过 2 分钟的速度会被移除。`/litellm debug` 还会显示本次会话的平均值。 |
 | `show_related` | `yes` | 读取 `/user/info` 和 `/team/info`：这些预算同样可能拦截请求。 |
 | `show_usage` | `yes` | 读取 `/user/daily/activity`（LiteLLM 的一个 beta 端点），获得最近 30 天的用量，Usage 和 Models 标签页、各类报告、runway 以及每日提醒都以它为依据。 |
 | `compact_pane` | `no` | 在窄终端（74 到 121 列）中使用输入框上方的紧凑面板：每行一个用量条，各项信息并排显示。 |
@@ -420,7 +424,7 @@ bash dev/check-file-size.sh                             # no source file over 30
 
 ## 已知限制
 
-- 不读取 `apiKeyHelper`（执行用户命令不在范围之内）。请使用 `litellm_key`。
+- `apiKeyHelper` 从用户(或组织策略)的 `settings.json` 读取,绝不读取项目的,并通过 `sh -c` 执行(10 秒超时,结果保留 5 分钟,代理拒绝密钥时立即重新获取),但仅在前面的来源都没有密钥时才执行:插件选项、`x-litellm-api-key`、`ANTHROPIC_AUTH_TOKEN` 和 `ANTHROPIC_API_KEY` 优先。这正是 Claude Code 本来就会执行的命令;其输出作为密钥使用,从不打印。不适用于 `LITELLM_PROXY_API_BASE` 或自定义的 `litellm_url`。需要 `sh`(Windows 上为 Git Bash)。
 - `/user/daily/activity` 在 LiteLLM 中仍是 beta 端点，可能会变化。
 - 按模型预算（`model_max_budget`）、临时预算上调和密钥重新生成在代理端都是企业版专属功能，因此不提供（见[预算](#budgets-what-litellm-can-and-cannot-do)）。在代理端编辑回退链需要 `STORE_MODEL_IN_DB=True`，因此 `/litellm fallbacks` 保持只读。
 - **组织**的预算不在密钥自身的响应里，虚拟密钥也可能无权读取它，所以面板只显示组织的名称；`/litellm org` 用管理员密钥读取。管理员密钥仍然只在你输入管理员命令时才会发送，绝不会随刷新定时器发送。

@@ -82,6 +82,7 @@ const portsOf = ($: EngineInterface): Ports => ({
     LITELLM_PROXY_API_KEY: await $.env.get('LITELLM_PROXY_API_KEY'),
   }),
   settings: () => $.settings.read(),
+  trusted: () => Promise.all([$.settings.read({ source: 'user' }), $.settings.read({ source: 'policy' })]),
   run: (argv, timeoutMs) => $.process.run(argv, { timeoutMs }),
   fetch: (url, init, ms = REQUEST_MS) => fetchWithin($, url, init, ms),
   loading: async isLoading => {

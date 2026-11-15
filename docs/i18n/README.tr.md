@@ -228,6 +228,8 @@ Yukarıdakilerin hepsi, eklentinin yaptıklarını yansıtan gerçek LiteLLM v1.
 | `/litellm copy [what]` | Bir raporu panoya koyar: `overview`, `usage`, `models`, `details`, `pace`, `compare`, `csv` veya `json`. |
 | `/litellm share [what]` | Bir raporu Claude'a görünmeden verir, böylece sonraki soru onun hakkında olabilir. |
 | `/litellm ping` | Eklentinin okuduğu her endpoint'i durumu ve süresiyle birlikte dener. |
+| `/litellm auth` | Bir anahtarın gelebileceği her yeri (`litellm_key`, `header`, `auth_token`, `api_key`, `helper`, `proxy_key`), hangisinin kullanıldığını ve proxy'nin hangilerini kabul ettiğini listeler (her biri için bir `/key/info`, anahtarlar maskeli). Kullanılan geçerli değilse çıkış kodu 3. |
+| `/litellm auth use <name>` | Sonraki okumalar için bir kaynağı tutar, geri almak için `auto`. Önce anahtarı proxy'de kontrol eder; reddedilmiş veya olmayanı geri çevirir (`--force` reddedileni yine tutar). Eklenti saklar ve `auth_source` seçeneğinden önce gelir. |
 | `/litellm debug` | URL'nin ve anahtarların nereden geldiğini (her zaman maskeli), nelerin denendiğini ve sonucu gösterir. |
 | `/litellm close` | Paneli kapatır. |
 | `/litellm keys [--user ID \| --team ID \| --all]` | Anahtarları listeler. Varsayılan: kendi kullanıcınızın anahtarları. 🔐 |
@@ -343,12 +345,14 @@ Tüm seçenekler isteğe bağlıdır (Claude Code kurulumda bunların "ayarlanma
 | --- | --- | --- |
 | `litellm_url` | boş | Varsayılan olmayan bir yerdeki proxy (LiteLLM üzerinden Bedrock/Vertex, önek içeren URL). |
 | `litellm_key` | boş | Açıkça belirtilmiş bir anahtar. 🔒 kimlik bilgisi deposunda saklanır, `settings.json` içinde değil. |
+| `auth_source` | `auto` | Hangi anahtarın kullanılacağı. `auto` anahtarı olan ilk kaynağı alır; bilerek seçmek için `litellm_key`, `header`, `auth_token`, `api_key`, `helper` veya `proxy_key` girin. `/litellm auth` hangilerinin geçerli olduğunu söyler, `/litellm auth use <ad>` seçenekleri düzenlemeden birini seçer. |
 | `litellm_admin_key` | boş | `keys`, `key new/set/reset-spend/block/unblock`, `grant`, `org`, `fallbacks` için admin anahtarı. 🔒 aynı depolama. Asla yazdırılmaz. |
 | `refresh_seconds` | 60 | Okuma aralığı (15 ila 3600). Her turdan sonra da okur, en fazla 20 sn'de bir. |
 | `warn_percent` | 80 | İlk bütçe uyarısı (%95 ve %100'de de uyarır). |
 | `daily_alert` | 0 (kapalı) | Anahtarın bugünkü harcaması bu dolar tutarına ulaştığında uyarır: günde bir toast, durum satırı ve panel. Açıkken kullanım geçmişi 3 dakikada bir okunur. |
 | `show_toasts` | evet | Bütçe, günlük uyarı, süresi dolmak üzere olan anahtar ve çalışmayan proxy hakkında uyaran toast'lar. Kapalıyken uyarılar durum satırında ve panelde kalır. |
 | `show_status_line` | evet | Prompt'un altındaki satır. |
+| `show_speed` | `yes` | Modelin yanıt hızını durum satırının başında gösterir (`⚡ 42 tok/s · …`), **yanıt gelirken canlı olarak**: gelen metin (4 karakter ≈ 1 token) ilk parçadan beri geçen süreye bölünür; adım bitince gerçek çıktı token sayısı geçerli olur. Ölçülecek bir şey olana kadar hiçbir şey görünmez ve 2 dakikadan eski bir hız kaldırılır. `/litellm debug` oturum ortalamasını da gösterir. |
 | `show_related` | evet | `/user/info` ve `/team/info` okunur: bu bütçeler de istekleri engelleyebilir. |
 | `show_usage` | evet | `/user/daily/activity` okunur (beta bir LiteLLM endpoint'i): Usage ve Models sekmelerinin, raporların, runway'in ve günlük uyarının dayandığı son 30 günlük kullanım. |
 | `compact_pane` | hayır | Dar terminallerde (74 ila 121 sütun) prompt'un üzerinde kompakt panel: satır başına bir gösterge, bilgiler yan yana. |
@@ -423,7 +427,7 @@ Eklentinin yapısı: `hooks/register.tsx`, Claude Code'un `$` nesnesine dokunan 
 
 ## Bilinen sınırlar
 
-- `apiKeyHelper` is read from `settings.json` and run through `sh -c` (10 s timeout, the answer kept 5 minutes), but only when nothing earlier supplies a key: the plugin option, `x-litellm-api-key`, `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_API_KEY` come first. It is the command Claude Code already runs; its output is used as the key and never printed. It is not used for `LITELLM_PROXY_API_BASE` or a custom `litellm_url` (that key belongs to another host). Needs `sh` (Git Bash on Windows).
+- `apiKeyHelper` kullanıcının (veya kuruluş politikasının) `settings.json` dosyasından okunur, projeninkinden asla, ve `sh -c` ile çalıştırılır (10 sn zaman aşımı, yanıt 5 dakika tutulur ve proxy anahtarı reddedince hemen yeniden istenir); ama yalnızca önceki hiçbir kaynak anahtar vermediğinde: eklenti seçeneği, `x-litellm-api-key`, `ANTHROPIC_AUTH_TOKEN` ve `ANTHROPIC_API_KEY` önce gelir. Claude Code'un zaten çalıştırdığı komuttur; çıktısı anahtar olarak kullanılır ve asla yazdırılmaz. `LITELLM_PROXY_API_BASE` ya da kendi `litellm_url` için geçerli değildir. `sh` gerekir (Windows'ta Git Bash).
 - `/user/daily/activity` LiteLLM'de betadır ve değişebilir.
 - Model başına bütçeler (`model_max_budget`), geçici bütçe artışları ve anahtar yeniden üretimi proxy tarafında yalnızca enterprise sürümündedir; bu yüzden sunulmaz ([Bütçeler](#budgets-what-litellm-can-and-cannot-do) bölümüne bakın). Fallback zincirlerini düzenlemek proxy'de `STORE_MODEL_IN_DB=True` gerektirir; bu yüzden `/litellm fallbacks` salt okunur kalır.
 - Bir **organizasyonun** bütçesi anahtarın kendi yanıtında yoktur ve sanal anahtar onu okuyamayabilir; bu yüzden panel yalnızca organizasyonun adını gösterir, `/litellm org` onu admin anahtarıyla okur. Admin anahtarı yine yalnızca bir yönetici komutu yazdığınızda gönderilir, yenileme zamanlayıcısında asla.

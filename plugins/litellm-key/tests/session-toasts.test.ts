@@ -18,6 +18,7 @@ const cycle = (options: Record<string, string | number | boolean>, routes = stan
     now: async () => NOW,
     env: async () => ({ ANTHROPIC_BASE_URL: BASE, ANTHROPIC_AUTH_TOKEN: KEY }),
     settings: async () => ({}),
+    trusted: async () => [],
     run: async () => ({ exitCode: 1, stdout: '', stderr: '' }),
     chosen: async () => undefined,
     choose: async () => undefined,
