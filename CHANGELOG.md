@@ -2,6 +2,13 @@
 
 <!-- Written by release-please from Conventional Commits (see RELEASING.md). Edit the release PR, not this file. -->
 
+## [0.12.1](https://github.com/juninmd/cc-litellm/compare/litellm-key--v0.12.0...litellm-key--v0.12.1) (2026-11-15)
+
+
+### Fixed
+
+* **litellm-key:** run only the user's apiKeyHelper, retry rejected keys, drop stale speed ([#36](https://github.com/juninmd/cc-litellm/issues/36)) ([7f89d52](https://github.com/juninmd/cc-litellm/commit/7f89d52d2d6e0592c07fc4cd8087e2bcd8c34d4b))
+
 ## [0.12.0](https://github.com/juninmd/cc-litellm/compare/litellm-key--v0.11.0...litellm-key--v0.12.0) (2026-11-13)
 
 
