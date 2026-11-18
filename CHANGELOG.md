@@ -2,6 +2,13 @@
 
 <!-- Written by release-please from Conventional Commits (see RELEASING.md). Edit the release PR, not this file. -->
 
+## [0.13.0](https://github.com/juninmd/cc-litellm/compare/litellm-key--v0.12.1...litellm-key--v0.13.0) (2026-11-18)
+
+
+### Added
+
+* **litellm-key:** latency chart and context in use beside tok/s ([#40](https://github.com/juninmd/cc-litellm/issues/40)) ([532f4fb](https://github.com/juninmd/cc-litellm/commit/532f4fbbc5b6a1571118ed0986b931ce57eb802a))
+
 ## [0.12.1](https://github.com/juninmd/cc-litellm/compare/litellm-key--v0.12.0...litellm-key--v0.12.1) (2026-11-15)
 
 
