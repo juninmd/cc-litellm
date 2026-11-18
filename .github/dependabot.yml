@@ -9,9 +9,19 @@ updates:
 
   # The local lab pins the LiteLLM image the plugin was checked against: a bump here is a version
   # change: the `lab` CI job runs the smoke test on the PR, but still read the release notes before merging it.
+    groups:
+      github-actions:
+        patterns: ['*']
+    cooldown:
+      default-days: 7
   - package-ecosystem: docker-compose
     directory: /dev/litellm
     schedule:
-      interval: monthly
+      interval: weekly
     commit-message:
       prefix: "chore(deps)"
+    groups:
+      docker-compose:
+        patterns: ['*']
+    cooldown:
+      default-days: 7
