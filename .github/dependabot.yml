@@ -12,6 +12,8 @@ updates:
     groups:
       github-actions:
         patterns: ['*']
+    cooldown:
+      default-days: 7
   - package-ecosystem: docker-compose
     directory: /dev/litellm
     schedule:
@@ -21,3 +23,5 @@ updates:
     groups:
       docker-compose:
         patterns: ['*']
+    cooldown:
+      default-days: 7
