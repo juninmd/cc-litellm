@@ -54,6 +54,8 @@ export async function* liveSpeed<Step, Chunk>(
           }
         } else if (piece.kind === 'stop') {
           const usage = typeof piece.usage === 'object' && piece.usage !== null ? (piece.usage as { output_tokens?: unknown }) : {}
+
+          await session.noteContext(ports, piece.usage)
           const done = settle(meter, usage.output_tokens)
 
           if (done) {

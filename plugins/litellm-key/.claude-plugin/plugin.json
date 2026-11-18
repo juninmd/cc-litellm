@@ -82,6 +82,12 @@
       "description": "Show how fast the model answered (output tokens per second) at the start of the status line, with the wait for its first piece charted beside it and a live count while it is silent. Needs the status line, and a turn that reports its output tokens.",
       "default": true
     },
+    "show_context": {
+      "type": "boolean",
+      "title": "Context in use",
+      "description": "Show how much of the model's context window the conversation fills (🧠 84k/200k 42%) in the status line. The window comes from the proxy's model prices; without it only the tokens in use show. Needs the status line.",
+      "default": true
+    },
     "show_related": {
       "type": "boolean",
       "title": "User and team budgets",

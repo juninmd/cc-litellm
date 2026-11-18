@@ -5,7 +5,7 @@ import { liveSpeed } from '../hooks/live-speed'
 import type { Ports } from '../hooks/ports'
 import { createSession } from '../hooks/session'
 import { boot, run, start } from './boot'
-import { BASE, KEY, NOW } from './support'
+import { BASE, KEY, NOW, snapshotOf } from './support'
 
 const usage = (output: number) => ({ input_tokens: 100, output_tokens: output, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, model: 'claude-sonnet-5-5' })
 const turn = (tokens: number, ms: number) => ({ usage: usage(tokens), durationMs: ms, isAborted: false })
@@ -259,5 +259,19 @@ describe('latency chart beside the speed', () => {
     const speed = { ...withTurn(NO_SPEED, turn(420, 10_000), NOW), lag: [800, 1200] }
 
     expect(speedLine(speed)).toBe('42 tok/s last turn · 42 tok/s average of 1 turn · first piece 1.0 s on average of 2 steps')
+  })
+})
+
+describe('context in the stream', () => {
+  const prices = { 'cloud/auto': { input: 3, output: 15, context: 200_000 } }
+  const used = (input: number) => ({ input_tokens: input, output_tokens: 1000, cache_read_input_tokens: 5000, cache_creation_input_tokens: 0, model: 'cloud/auto' })
+
+  test('a step that ends with its usage puts the context in the status line, beside the speed', async () => {
+    const { run, session, statuses } = streaming([text(40), { wait: 500 }, text(40), { kind: 'stop', stopReason: 'end_turn', usage: used(78_000) }])
+
+    session.state.latest = { snapshot: { ...(await snapshotOf()), prices }, failure: null }
+    await run()
+    expect(session.state.context).toEqual({ used: 84_000, model: 'cloud/auto' })
+    expect(statuses.at(-1)).toMatch(/^⚡ [\d.]+ tok\/s ⏱ 0 ms · 🧠 84k\/200k 42% · /)
   })
 })

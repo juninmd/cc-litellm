@@ -24,6 +24,7 @@ export const configOf = (options: PluginOptions) => ({
   isToastShown: options.show_toasts !== false,
   isStatusShown: options.show_status_line !== false,
   isSpeedShown: options.show_speed !== false,
+  isContextShown: options.show_context !== false,
   isRelatedShown: options.show_related !== false,
   isUsageShown: options.show_usage !== false,
   isCompact: options.compact_pane === true,
