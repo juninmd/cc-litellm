@@ -242,7 +242,7 @@ describe('latency chart beside the speed', () => {
     let drawn = 0
     const source = async function* () {
       tick()
-      await new Promise(done => setTimeout(done, 5))
+      await Promise.resolve()
       drawn = statuses.length
       yield text(8)
     }
