@@ -79,7 +79,7 @@
     "show_speed": {
       "type": "boolean",
       "title": "Answer speed",
-      "description": "Show how fast the model answered (output tokens per second of the last turn) at the start of the status line. Needs the status line, and a turn that reports its output tokens.",
+      "description": "Show how fast the model answered (output tokens per second) at the start of the status line, with the wait for its first piece charted beside it and a live count while it is silent. Needs the status line, and a turn that reports its output tokens.",
       "default": true
     },
     "show_related": {

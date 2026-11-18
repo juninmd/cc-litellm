@@ -191,3 +191,73 @@ describe('speed while the answer streams', () => {
     expect((await run()).length).toBe(3)
   })
 })
+
+describe('latency chart beside the speed', () => {
+  test('the wait for the first piece is charted, and the steps before it make the sparkline', async () => {
+    const { run, session } = streaming([{ wait: 800 }, text(40), { wait: 400 }, text(40), stop(20)])
+
+    await run()
+    expect(session.state.speed.lag).toEqual([800])
+    expect(session.state.speed.waitingSince).toBeNull()
+    expect(speedText(session.state.speed, NOW + 1200)).toMatch(/^⚡ [\d.]+ tok\/s ⏱ 800 ms$/)
+
+    const second = streaming([{ wait: 1600 }, text(40), { wait: 400 }, text(40), stop(20)])
+
+    second.session.state.speed = session.state.speed
+    await second.run()
+    expect(second.session.state.speed.lag).toEqual([800, 1600])
+    expect(speedText(second.session.state.speed, NOW + 3000)).toContain('⏱ 1.6 s ')
+  })
+
+  test('says the model is silent while nothing has come, and an error ends the wait', async () => {
+    const waiting = { ...NO_SPEED, waitingSince: NOW }
+
+    expect(speedText(waiting, NOW + 3000)).toBe('⏳ 3s')
+    expect(speedText(waiting, NOW + 45_000)).toBe('⚠ no reply 45s')
+
+    const { run, session } = streaming([])
+    const broken = async function* (): AsyncGenerator<never> {
+      throw new Error('down')
+    }
+    const flow = liveSpeed(session, { now: async () => NOW, status: () => undefined } as unknown as Ports, {}, broken)
+
+    await expect(flow.next()).rejects.toThrow('down')
+    expect(session.state.speed.waitingSince).toBeNull()
+    await run()
+  })
+
+  test('a timer redraws the wait every second and stops at the first piece', async () => {
+    const { session, statuses } = streaming([])
+    let cancelled = false
+    let tick: () => void = () => undefined
+    const ports = {
+      now: async () => NOW,
+      status: (text: string | undefined) => void statuses.push(text),
+      every: (_ms: number, fn: () => void) => {
+        tick = fn
+
+        return { cancel: () => void (cancelled = true) }
+      },
+    } as unknown as Ports
+    let drawn = 0
+    const source = async function* () {
+      tick()
+      await new Promise(done => setTimeout(done, 5))
+      drawn = statuses.length
+      yield text(8)
+    }
+
+    for await (const _ of liveSpeed(session, ports, {}, source)) {
+      // drained
+    }
+    expect(cancelled).toBe(true)
+    // The start of the step drew once, and the tick drew again while the model was silent.
+    expect(drawn).toBe(2)
+  })
+
+  test('debug tells the average wait', () => {
+    const speed = { ...withTurn(NO_SPEED, turn(420, 10_000), NOW), lag: [800, 1200] }
+
+    expect(speedLine(speed)).toBe('42 tok/s last turn · 42 tok/s average of 1 turn · first piece 1.0 s on average of 2 steps')
+  })
+})

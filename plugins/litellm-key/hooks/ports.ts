@@ -20,6 +20,8 @@ export type Ports = {
   loading: (isLoading: boolean) => Promise<void>
   publish: (snapshot: Snapshot | null, failure: Failure | null) => Promise<void>
   status: (text: string | undefined) => void
+  /** Calls `fn` every `ms` until cancelled; the wait for a model's first piece is counted with it. */
+  every?: (ms: number, fn: () => void) => { cancel: () => void }
   toast: (message: string) => void
   remembered: () => Promise<unknown>
   remember: (ids: string[]) => Promise<void>

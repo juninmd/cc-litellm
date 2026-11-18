@@ -22,30 +22,52 @@ export async function* liveSpeed<Step, Chunk>(
   next: (step: Step) => AsyncIterable<Chunk>,
 ): AsyncGenerator<Chunk> {
   let meter = newMeter()
+  const startedAt = await ports.now()
+  // While the model is silent nothing else redraws the status line, so a timer counts the wait out loud.
+  let timer: { cancel: () => void } | undefined
 
-  for await (const chunk of next(step)) {
-    try {
-      const piece = chunk as Piece
-      const size = sizeOf(piece)
+  try {
+    await session.beginStep(ports)
+    timer = ports.every?.(1000, () => void session.tickWait(ports).catch(() => undefined))
+  } catch {
+    // The status line is a courtesy; the answer is what matters.
+  }
 
-      if (size > 0) {
-        const fed = feed(meter, await ports.now(), size)
+  try {
+    for await (const chunk of next(step)) {
+      try {
+        const piece = chunk as Piece
+        const size = sizeOf(piece)
 
-        meter = fed.meter
-        if (fed.rate !== null) {
-          await session.showSpeed(ports, fed.rate)
+        if (size > 0) {
+          const now = await ports.now()
+
+          if (meter.firstAt === null) {
+            timer?.cancel()
+            await session.endWait(ports, Math.max(0, now - startedAt))
+          }
+          const fed = feed(meter, now, size)
+
+          meter = fed.meter
+          if (fed.rate !== null) {
+            await session.showSpeed(ports, fed.rate)
+          }
+        } else if (piece.kind === 'stop') {
+          const usage = typeof piece.usage === 'object' && piece.usage !== null ? (piece.usage as { output_tokens?: unknown }) : {}
+          const done = settle(meter, usage.output_tokens)
+
+          if (done) {
+            await session.endStep(ports, done)
+          }
         }
-      } else if (piece.kind === 'stop') {
-        const usage = typeof piece.usage === 'object' && piece.usage !== null ? (piece.usage as { output_tokens?: unknown }) : {}
-        const done = settle(meter, usage.output_tokens)
-
-        if (done) {
-          await session.endStep(ports, done)
-        }
+      } catch {
+        // The status line is a courtesy; the answer is what matters.
       }
-    } catch {
-      // The status line is a courtesy; the answer is what matters.
+      yield chunk
     }
-    yield chunk
+  } finally {
+    // A step that ended or failed without a first piece is no longer waited for.
+    timer?.cancel()
+    await session.endWait(ports).catch(() => undefined)
   }
 }
