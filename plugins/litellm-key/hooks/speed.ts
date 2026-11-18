@@ -1,5 +1,19 @@
-/** How fast the model answered: output tokens over the time of the turn, the last turn and the session so far. */
-export type Speed = { last: number | null; tokens: number; ms: number; turns: number; at: number | null }
+import { sparkline } from './format'
+
+/**
+ * How fast the model answered: output tokens over the time of the turn, the last turn and the session so far.
+ * `lag` is the wait for the first piece of each recent step (is the model answering, and how soon), and
+ * `waitingSince` is set while a step is out and nothing has come back yet.
+ */
+export type Speed = {
+  last: number | null
+  tokens: number
+  ms: number
+  turns: number
+  at: number | null
+  lag: readonly number[]
+  waitingSince: number | null
+}
 
 /** What one model step has streamed so far: when its first and last pieces came, and how much text they held. */
 export type Meter = { firstAt: number | null; lastAt: number; firstChars: number; chars: number; shownAt: number }
@@ -12,7 +26,11 @@ export const CHARS_PER_TOKEN = 4
 export const MIN_SPAN_MS = 300
 export const REFRESH_MS = 400
 
-export const NO_SPEED: Speed = { last: null, tokens: 0, ms: 0, turns: 0, at: null }
+export const NO_SPEED: Speed = { last: null, tokens: 0, ms: 0, turns: 0, at: null, lag: [], waitingSince: null }
+
+/** How many steps the latency chart remembers, and after how long a silent step is called out. */
+export const LAG_HISTORY = 12
+export const SILENT_MS = 30_000
 
 /** A speed this old is no longer how the model is answering: the status line drops it rather than show a stale number. */
 export const STALE_MS = 2 * 60_000
@@ -32,7 +50,7 @@ export const withTurn = (speed: Speed, turn: { usage?: unknown; durationMs?: unk
     return speed
   }
 
-  return { last: tokens / (turn.durationMs / 1000), tokens: speed.tokens + tokens, ms: speed.ms + turn.durationMs, turns: speed.turns + 1, at: now }
+  return { ...speed, last: tokens / (turn.durationMs / 1000), tokens: speed.tokens + tokens, ms: speed.ms + turn.durationMs, turns: speed.turns + 1, at: now }
 }
 
 const rate = (value: number): string => (value >= 100 ? String(Math.round(value)) : value.toFixed(1).replace(/\.0$/, ''))
@@ -40,18 +58,55 @@ const rate = (value: number): string => (value >= 100 ? String(Math.round(value)
 /** The average of the session: tokens over the time of all the turns that counted. */
 export const averageOf = (speed: Speed): number | null => (speed.ms > 0 ? speed.tokens / (speed.ms / 1000) : null)
 
-/** `⚡ 42 tok/s`, for the status line; nothing before the first turn that counted, nor once it has gone stale. */
-export const speedText = (speed: Speed, now: number): string | undefined =>
-  speed.last === null || (speed.at !== null && now - speed.at > STALE_MS) ? undefined : `⚡ ${rate(speed.last)} tok/s`
+const lagLabel = (ms: number): string => (ms >= 10_000 ? `${Math.round(ms / 1000)} s` : ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`)
+
+/** The wait of the last step and a chart of the recent ones: `⏱ 820 ms ▂▅▃`. */
+export const lagText = (lag: readonly number[]): string | undefined => {
+  const last = lag.at(-1)
+
+  return last === undefined ? undefined : `⏱ ${lagLabel(last)}${lag.length > 1 ? ` ${sparkline(lag)}` : ''}`
+}
+
+/**
+ * `⚡ 42 tok/s ⏱ 820 ms ▂▅▃`, for the status line: how fast the model answers, and how soon it began. While a step is
+ * waiting for its first piece it says so (`⏳ 3s`, and `⚠ no reply 45s` once it is long). Nothing before the first
+ * step that counted, nor once it has gone stale.
+ */
+export const speedText = (speed: Speed, now: number): string | undefined => {
+  const isFresh = speed.at === null || now - speed.at <= STALE_MS
+  const parts: string[] = []
+
+  if (speed.last !== null && isFresh) {
+    parts.push(`⚡ ${rate(speed.last)} tok/s`)
+  }
+  if (speed.waitingSince !== null) {
+    const waited = Math.max(0, now - speed.waitingSince)
+    const seconds = Math.floor(waited / 1000)
+
+    parts.push(waited >= SILENT_MS ? `⚠ no reply ${seconds}s` : `⏳ ${seconds}s`)
+  } else if (isFresh) {
+    const lag = lagText(speed.lag)
+
+    if (lag !== undefined) {
+      parts.push(lag)
+    }
+  }
+
+  return parts.length === 0 ? undefined : parts.join(' ')
+}
 
 /** For `/litellm debug`: the last turn, the average and how many turns it rests on. */
 export const speedLine = (speed: Speed): string => {
   const average = averageOf(speed)
+  const lag = speed.lag.length === 0 ? '' : ` · first piece ${lagLabel(Math.round(speed.lag.reduce((sum, ms) => sum + ms, 0) / speed.lag.length))} on average of ${speed.lag.length} step${speed.lag.length === 1 ? '' : 's'}`
 
   return speed.last === null || average === null
     ? 'none yet (needs a finished turn that reports its output tokens)'
-    : `${rate(speed.last)} tok/s last turn · ${rate(average)} tok/s average of ${speed.turns} turn${speed.turns === 1 ? '' : 's'}`
+    : `${rate(speed.last)} tok/s last turn · ${rate(average)} tok/s average of ${speed.turns} turn${speed.turns === 1 ? '' : 's'}${lag}`
 }
+
+/** A step got its first piece after `ms`: the chart remembers it. */
+export const withLag = (speed: Speed, ms: number, now: number): Speed => ({ ...speed, lag: [...speed.lag, ms].slice(-LAG_HISTORY), waitingSince: null, at: now })
 
 /**
  * Takes one piece of the stream. The time before the first piece (the model thinking of its answer) is not generation,
@@ -83,6 +138,7 @@ export const settle = (meter: Meter, outputTokens: unknown): { tokens: number; m
 
 /** A finished step joins the session: the last rate and the average. */
 export const withStep = (speed: Speed, step: { tokens: number; ms: number }, now: number): Speed => ({
+  ...speed,
   last: step.tokens / (step.ms / 1000),
   tokens: speed.tokens + step.tokens,
   ms: speed.ms + step.ms,

@@ -5,7 +5,7 @@ import { liveSpeed } from '../hooks/live-speed'
 import type { Ports } from '../hooks/ports'
 import { createSession } from '../hooks/session'
 import { boot, run, start } from './boot'
-import { BASE, KEY, NOW } from './support'
+import { BASE, KEY, NOW, snapshotOf } from './support'
 
 const usage = (output: number) => ({ input_tokens: 100, output_tokens: output, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, model: 'claude-sonnet-5-5' })
 const turn = (tokens: number, ms: number) => ({ usage: usage(tokens), durationMs: ms, isAborted: false })
@@ -189,5 +189,89 @@ describe('speed while the answer streams', () => {
       throw new Error('no status')
     }
     expect((await run()).length).toBe(3)
+  })
+})
+
+describe('latency chart beside the speed', () => {
+  test('the wait for the first piece is charted, and the steps before it make the sparkline', async () => {
+    const { run, session } = streaming([{ wait: 800 }, text(40), { wait: 400 }, text(40), stop(20)])
+
+    await run()
+    expect(session.state.speed.lag).toEqual([800])
+    expect(session.state.speed.waitingSince).toBeNull()
+    expect(speedText(session.state.speed, NOW + 1200)).toMatch(/^⚡ [\d.]+ tok\/s ⏱ 800 ms$/)
+
+    const second = streaming([{ wait: 1600 }, text(40), { wait: 400 }, text(40), stop(20)])
+
+    second.session.state.speed = session.state.speed
+    await second.run()
+    expect(second.session.state.speed.lag).toEqual([800, 1600])
+    expect(speedText(second.session.state.speed, NOW + 3000)).toContain('⏱ 1.6 s ')
+  })
+
+  test('says the model is silent while nothing has come, and an error ends the wait', async () => {
+    const waiting = { ...NO_SPEED, waitingSince: NOW }
+
+    expect(speedText(waiting, NOW + 3000)).toBe('⏳ 3s')
+    expect(speedText(waiting, NOW + 45_000)).toBe('⚠ no reply 45s')
+
+    const { run, session } = streaming([])
+    const broken = async function* (): AsyncGenerator<never> {
+      throw new Error('down')
+    }
+    const flow = liveSpeed(session, { now: async () => NOW, status: () => undefined } as unknown as Ports, {}, broken)
+
+    await expect(flow.next()).rejects.toThrow('down')
+    expect(session.state.speed.waitingSince).toBeNull()
+    await run()
+  })
+
+  test('a timer redraws the wait every second and stops at the first piece', async () => {
+    const { session, statuses } = streaming([])
+    let cancelled = false
+    let tick: () => void = () => undefined
+    const ports = {
+      now: async () => NOW,
+      status: (text: string | undefined) => void statuses.push(text),
+      every: (_ms: number, fn: () => void) => {
+        tick = fn
+
+        return { cancel: () => void (cancelled = true) }
+      },
+    } as unknown as Ports
+    let drawn = 0
+    const source = async function* () {
+      tick()
+      await Promise.resolve()
+      drawn = statuses.length
+      yield text(8)
+    }
+
+    for await (const _ of liveSpeed(session, ports, {}, source)) {
+      // drained
+    }
+    expect(cancelled).toBe(true)
+    // The start of the step drew once, and the tick drew again while the model was silent.
+    expect(drawn).toBe(2)
+  })
+
+  test('debug tells the average wait', () => {
+    const speed = { ...withTurn(NO_SPEED, turn(420, 10_000), NOW), lag: [800, 1200] }
+
+    expect(speedLine(speed)).toBe('42 tok/s last turn · 42 tok/s average of 1 turn · first piece 1.0 s on average of 2 steps')
+  })
+})
+
+describe('context in the stream', () => {
+  const prices = { 'cloud/auto': { input: 3, output: 15, context: 200_000 } }
+  const used = (input: number) => ({ input_tokens: input, output_tokens: 1000, cache_read_input_tokens: 5000, cache_creation_input_tokens: 0, model: 'cloud/auto' })
+
+  test('a step that ends with its usage puts the context in the status line, beside the speed', async () => {
+    const { run, session, statuses } = streaming([text(40), { wait: 500 }, text(40), { kind: 'stop', stopReason: 'end_turn', usage: used(78_000) }])
+
+    session.state.latest = { snapshot: { ...(await snapshotOf()), prices }, failure: null }
+    await run()
+    expect(session.state.context).toEqual({ used: 84_000, model: 'cloud/auto' })
+    expect(statuses.at(-1)).toMatch(/^⚡ [\d.]+ tok\/s ⏱ 0 ms · 🧠 84k\/200k 42% · /)
   })
 })

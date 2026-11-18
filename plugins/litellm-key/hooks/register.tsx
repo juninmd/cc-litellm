@@ -93,6 +93,7 @@ const portsOf = ($: EngineInterface): Ports => ({
     await update($, failureState, () => failure)
   },
   status: text => $.ui.status(text),
+  every: (ms, fn) => $.clock.every(ms, fn),
   toast: message => $.ui.toast(message, { timeoutMs: 8000 }),
   remembered: () => $.store.get('notified'),
   remember: async ids => void (await $.store.set('notified', ids)),
@@ -162,9 +163,7 @@ const contextOf = ($: EngineInterface, session: Session, pane: PaneMode): Comman
 
       return $.ui.open(paneArgs(shown))
     },
-    closePane: async () => {
-      await $.ui.close({ id: PANE })
-    },
+    closePane: async () => void (await $.ui.close({ id: PANE })),
     sleep: ms => $.clock.sleep(ms),
     view: async () => ({ tab: await read($, viewState), range: await read($, rangeState) }),
     copy: async text => {
