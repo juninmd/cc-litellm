@@ -44,6 +44,16 @@ describe('numbers', () => {
     expect(compact(2_300_000_000)).toBe('2.3B')
   })
 
+  test('compact steps up a unit instead of printing 1000k', () => {
+    expect(compact(999)).toBe('999')
+    expect(compact(999.5)).toBe('1k')
+    expect(compact(999_499)).toBe('999k')
+    expect(compact(999_500)).toBe('1M')
+    expect(compact(999_999)).toBe('1M')
+    expect(compact(999_500_000)).toBe('1B')
+    expect(compact(-999_999)).toBe('-1M')
+  })
+
   test('percent is rounded and null without a positive limit', () => {
     expect(percent(26.1, 50)).toBe(52)
     expect(percent(5, 0)).toBeNull()

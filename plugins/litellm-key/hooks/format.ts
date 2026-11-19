@@ -57,6 +57,11 @@ export const change = (current: number, previous: number): Change | null => {
   return { pct: Math.abs(pct), direction: pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat' }
 }
 
+// A step up starts where the smaller unit would round to 1000 (999,500 is "1M", not "1000k").
+const PROMOTE_K = 999.5
+const PROMOTE_M = 999_500
+const PROMOTE_B = 999_500_000
+
 /** A money amount in about six cells, for chart axes and narrow columns: $0, $0.42, $12.3, $412, $1.2k. */
 export const shortMoney = (value: number): string => {
   if (!Number.isFinite(value)) {
@@ -68,10 +73,10 @@ export const shortMoney = (value: number): string => {
   if (abs === 0) {
     return '$0'
   }
-  if (abs >= 1e6) {
+  if (abs >= PROMOTE_M) {
     return `${sign}$${trim(abs / 1e6)}M`
   }
-  if (abs >= 1e3) {
+  if (abs >= PROMOTE_K) {
     return `${sign}$${trim(abs / 1e3)}k`
   }
   if (abs >= 100) {
@@ -87,13 +92,13 @@ export const shortMoney = (value: number): string => {
 export const compact = (value: number): string => {
   const abs = Math.abs(value)
 
-  if (abs >= 1e9) {
+  if (abs >= PROMOTE_B) {
     return `${trim(value / 1e9)}B`
   }
-  if (abs >= 1e6) {
+  if (abs >= PROMOTE_M) {
     return `${trim(value / 1e6)}M`
   }
-  if (abs >= 1e3) {
+  if (abs >= PROMOTE_K) {
     return `${trim(value / 1e3)}k`
   }
 
