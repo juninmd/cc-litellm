@@ -2,6 +2,13 @@
 
 <!-- Written by release-please from Conventional Commits (see RELEASING.md). Edit the release PR, not this file. -->
 
+## [0.13.1](https://github.com/juninmd/cc-litellm/compare/litellm-key--v0.13.0...litellm-key--v0.13.1) (2026-11-19)
+
+
+### Fixed
+
+* **format:** step up a unit instead of printing 1000k ([#43](https://github.com/juninmd/cc-litellm/issues/43)) ([8e1f529](https://github.com/juninmd/cc-litellm/commit/8e1f5294b448802b7c6dca59be87b806d639d082))
+
 ## [0.13.0](https://github.com/juninmd/cc-litellm/compare/litellm-key--v0.12.1...litellm-key--v0.13.0) (2026-11-18)
 
 
